@@ -73,14 +73,18 @@ async def test_auto_heal_reruns_responsible_agent(vault, monkeypatch):
     calls = {}
     notified = []
 
-    class _FakeOrch:
-        async def continue_run(self, *, instruction, founder_id, prior_session_id, agents, session_id):
-            calls.update(instruction=instruction, founder_id=founder_id,
-                         prior_session_id=prior_session_id, agents=agents)
-            return {"ok": True}
+    async def _fake_start_continue_run(*, instruction, founder_id, prior_session_id, agents, run_id, **_kwargs):
+        calls.update(
+            instruction=instruction,
+            founder_id=founder_id,
+            prior_session_id=prior_session_id,
+            agents=agents,
+            run_id=run_id,
+        )
+        return {"ok": True}
 
     monkeypatch.setattr("backend.core.session_store.has_active_run", lambda *a, **k: False)
-    monkeypatch.setattr("backend.core.factory.get_orchestrator", lambda: _FakeOrch())
+    monkeypatch.setattr("backend.control_plane.start_run.start_continue_run", _fake_start_continue_run)
     monkeypatch.setattr("backend.core.session_ids.new_session_id", lambda: "sx")
     monkeypatch.setattr("backend.notifications.push.notify_founder",
                         lambda fid, title, body, url="/": notified.append((title, body)))
@@ -111,3 +115,43 @@ async def test_auto_heal_skips_when_run_active(vault, monkeypatch):
     monkeypatch.setattr("backend.core.session_store.has_active_run", lambda *a, **k: True)
     record = {"artifact_key": "landing_page", "artifact_title": "L", "agent": "web", "session_id": "s"}
     assert await scheduler._auto_heal("f", "c", record, _down_check()) is False
+
+
+def test_start_monitoring_scheduler_prefers_temporal_schedule(monkeypatch):
+    spawned = {}
+
+    def _fake_create_task(coro):
+        spawned["coro"] = coro
+        class _Task:
+            def done(self):
+                return False
+        return _Task()
+
+    monkeypatch.setattr(scheduler, "_temporal_scheduler_enabled", lambda: True)
+    monkeypatch.setattr(asyncio, "create_task", _fake_create_task)
+
+    status = scheduler.start_monitoring_scheduler(interval_seconds=300)
+
+    assert status["scheduler"]["mode"] == "temporal"
+    assert status["scheduler"]["schedule_id"] == "astra-monitoring-hourly"
+    assert spawned["coro"] is not None
+    spawned["coro"].close()
+
+
+async def test_stop_monitoring_scheduler_deletes_temporal_schedule(monkeypatch):
+    calls = []
+
+    async def _fake_delete():
+        calls.append("deleted")
+
+    scheduler._status.update({
+        "running": True,
+        "mode": "temporal",
+        "schedule_id": "astra-monitoring-hourly",
+    })
+    monkeypatch.setattr(scheduler, "_delete_temporal_schedule", _fake_delete)
+
+    status = await scheduler.stop_monitoring_scheduler()
+
+    assert calls == ["deleted"]
+    assert status["scheduler"]["running"] is False

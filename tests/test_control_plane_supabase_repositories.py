@@ -5,6 +5,7 @@ import pytest
 from backend.control_plane.models import Run
 from backend.control_plane.supabase_repositories import (
     SupabaseActionRepository,
+    SupabaseActionReceiptRepository,
     SupabaseApprovalRequestRepository,
     SupabaseArtifactRepository,
     SupabaseBudgetReservationRepository,
@@ -13,8 +14,9 @@ from backend.control_plane.supabase_repositories import (
     SupabaseRunStepRepository,
     durable_append_event,
     durable_create_run,
+    durable_create_run_with_event,
 )
-from backend.control_plane.models import Action, ApprovalRequest, Artifact, BudgetReservation, RunStep
+from backend.control_plane.models import Action, ActionReceipt, ApprovalRequest, Artifact, BudgetReservation, RunStep
 from datetime import datetime, timezone
 
 
@@ -89,6 +91,22 @@ async def test_durable_create_run_never_raises_on_failure(mock_supabase):
 
 
 @pytest.mark.asyncio
+async def test_durable_create_run_with_event_calls_transactional_rpc(mock_supabase):
+    mock_supabase.rpc.return_value.execute.return_value.data = 1
+
+    await durable_create_run_with_event(_run(), payload={"type": "run.created"})
+
+    mock_supabase.rpc.assert_called_once_with(
+        "astra_create_run_with_event",
+        {
+            "p_run": _run().model_dump(mode="json", exclude_none=True),
+            "p_event_type": "run.created",
+            "p_event_payload": {"type": "run.created"},
+        },
+    )
+
+
+@pytest.mark.asyncio
 async def test_durable_append_event_never_raises_on_fk_violation(mock_supabase):
     """The real-world case: astra_run_events has an FK to astra_runs. An
     event for a run that was never durably created (pre-Wave-1 session, or
@@ -124,6 +142,38 @@ def test_approval_repository_decide_updates_and_returns_row(mock_supabase):
     table.update.assert_called_once()
 
 
+def test_approval_repository_consume_updates_status_and_consumed_at(mock_supabase):
+    table = mock_supabase.table.return_value
+    table.select.return_value.eq.return_value.limit.return_value.execute.side_effect = [
+        MagicMock(data=[{
+            "id": "ap1",
+            "run_id": "run_1",
+            "gate_key": "phase_gate",
+            "action_digest": "d1",
+            "policy_version": "v1",
+            "status": "approved",
+        }]),
+        MagicMock(data=[{
+            "id": "ap1",
+            "run_id": "run_1",
+            "gate_key": "phase_gate",
+            "action_digest": "d1",
+            "policy_version": "v1",
+            "status": "consumed",
+            "consumed_at": "2026-07-12T00:00:00+00:00",
+        }]),
+    ]
+    approval = SupabaseApprovalRequestRepository().consume(
+        "ap1",
+        expected_action_digest="d1",
+        expected_policy_version="v1",
+    )
+    assert approval.status == "consumed"
+    update_payload = table.update.call_args.args[0]
+    assert update_payload["status"] == "consumed"
+    assert "consumed_at" in update_payload
+
+
 def test_artifact_repository_list_for_run_maps_rows(mock_supabase):
     mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
         {"id": "art1", "run_id": "run_1", "key": "deck", "verification_status": "passed", "metadata": {}}
@@ -131,6 +181,20 @@ def test_artifact_repository_list_for_run_maps_rows(mock_supabase):
     artifacts = SupabaseArtifactRepository().list_for_run("run_1")
     assert len(artifacts) == 1
     assert artifacts[0].key == "deck"
+
+
+def test_action_receipt_repository_round_trips_rows(mock_supabase):
+    table = mock_supabase.table.return_value
+    table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"id": "rc1", "action_id": "a1", "idempotency_key": "idem_1", "provider_result": {"ok": True}, "collision_status": "none"}
+    ]
+    repo = SupabaseActionReceiptRepository()
+    receipt = repo.create(ActionReceipt(id="rc1", action_id="a1", idempotency_key="idem_1", provider_result={"ok": True}))
+    assert receipt.id == "rc1"
+    assert repo.get_by_action_id("a1").id == "rc1"
+    assert repo.get_by_idempotency_key("idem_1").id == "rc1"
+    repo.update_collision_status("rc1", "detected")
+    assert table.update.call_args.args[0] == {"collision_status": "detected"}
 
 
 def test_budget_reservation_repository_persists_reservation_and_ledger(mock_supabase):

@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
+_completion_watch_tasks: set[asyncio.Task[Any]] = set()
 
 
 def _default_goal(spec: dict[str, Any]) -> str:
@@ -81,16 +82,12 @@ async def launch_custom_agent_run(
 
     Returns the new session_id immediately; the run continues in the background.
     """
-    from backend.core.factory import get_orchestrator
-    from backend.core.session_ids import new_session_id
-    from backend.core.events import _get_queue
-    from backend.core import cancellation
+    from backend.api.schemas import RunCreateRequest
+    from backend.control_plane.start_run import start_run
 
     agent_id = spec["id"]
     resolved_company = company_id or spec.get("company_id") or founder_id
     run_goal = (goal or "").strip() or _default_goal(spec)
-    session_id = new_session_id()
-    orch = get_orchestrator()
 
     # Unlimited credits for scale/beta plans, mirroring submit_goal.
     unlimited = False
@@ -118,54 +115,39 @@ async def launch_custom_agent_run(
         "unlimited_credits": unlimited,
         "custom_agent_id": agent_id,
     }
-
-    # Register session in the durable store before launching (best-effort).
-    try:
-        from backend.core.session_store import register_session
-        register_session(
-            session_id=session_id,
+    result = await start_run(
+        RunCreateRequest(
             founder_id=founder_id,
-            goal=run_goal,
+            instruction=run_goal,
             stack_id="custom",
-            company_name=str(spec.get("name", "")),
-            agents=[agent_id],
-            workspace_id=resolved_company,
+            constraints=constraints,
             company_id=resolved_company,
-            chapter_id="",
-            kind=kind,
-        )
-    except Exception as exc:
-        logger.warning("custom_agent run: register_session failed: %s", exc)
-
-    # Pre-create the SSE queue so the frontend can attach before the first event.
-    _get_queue(session_id)
-
+            workspace_id=resolved_company,
+        ),
+        request=None,
+    )
+    session_id = result.session_id
     agent_label = str(spec.get("name") or agent_id)
 
-    async def _run() -> None:
-        try:
-            await orch.run(
-                goal=run_goal,
-                founder_id=founder_id,
-                constraints=constraints,
-                session_id=session_id,
-            )
-            await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name)
-        except asyncio.CancelledError:
-            logger.info("custom_agent run killed session=%s", session_id)
-            raise
-        except Exception as exc:
-            logger.error("custom_agent run error session=%s: %s", session_id, exc, exc_info=True)
-            try:
-                from backend.core.events import publish
-                await publish(session_id, {"type": "goal_error", "error": str(exc)})
-            except Exception:
-                pass
-            await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name, error=str(exc))
-        finally:
-            cancellation.clear(session_id)
+    async def _watch_completion() -> None:
+        from backend.core.session_store import get_session_meta
 
-    task = asyncio.create_task(_run())
-    cancellation.register_task(session_id, task)
-    logger.info("custom_agent run launched: agent=%s session=%s", agent_id, session_id)
+        error = ""
+        try:
+            while True:
+                await asyncio.sleep(2)
+                meta = await asyncio.to_thread(get_session_meta, session_id)
+                status = str((meta or {}).get("status") or "")
+                if status in {"done", "error", "killed"}:
+                    if status == "error":
+                        error = str((meta or {}).get("last_error") or "")
+                    break
+            await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name, error=error)
+        except Exception as exc:
+            logger.warning("custom-agent completion watch failed session=%s: %s", session_id, exc)
+
+    watch_task = asyncio.create_task(_watch_completion())
+    _completion_watch_tasks.add(watch_task)
+    watch_task.add_done_callback(_completion_watch_tasks.discard)
+    logger.info("custom_agent run launched via StartRun: agent=%s session=%s", agent_id, session_id)
     return session_id

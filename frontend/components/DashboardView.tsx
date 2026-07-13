@@ -6,7 +6,21 @@ import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDig
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
-import { extractAgentMentions, type CopilotAgentOption } from "./AstraCopilotComposer";
+import AstraCopilotComposer, { type CopilotAgentOption } from "./AstraCopilotComposer";
+import { getRunSnapshot } from "@/lib/control-plane-api";
+
+function sessionStatusFromRunStatus(status: string): SessionIndexEntry["status"] {
+  const map: Record<string, SessionIndexEntry["status"]> = {
+    queued: "running",
+    running: "running",
+    awaiting_approval: "stalled",
+    cancelling: "running",
+    cancelled: "killed",
+    succeeded: "done",
+    failed: "error",
+  };
+  return map[status] || status;
+}
 
 const GREETINGS = [
   "Good to see you",
@@ -161,7 +175,27 @@ export default function DashboardView() {
     try {
       const fetched = await listSessions(userId, 50);
       setSessions(fetched.filter((x) => !deletedIdsRef.current.has(x.session_id)));
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions((p) => p ?? []); }
+      // The list endpoint remains the discovery mechanism during migration, but
+      // active cards take their state from the durable run projection whenever
+      // the session has been backfilled. This avoids a second broad list API.
+      const active = fetched.filter((session) => ["running", "stalled"].includes(session.status));
+      void Promise.allSettled(active.map(async (session) => {
+        const snapshot = await getRunSnapshot(session.session_id);
+        return [session.session_id, sessionStatusFromRunStatus(snapshot.run.status)] as const;
+      })).then((results) => {
+        const statuses = new Map(
+          results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []),
+        );
+        if (statuses.size === 0) return;
+        setSessions((current) => current?.map((session) => {
+          const status = statuses.get(session.session_id);
+          return status && status !== session.status ? { ...session, status } : session;
+        }) ?? current);
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setSessions((p) => p ?? []);
+    }
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);

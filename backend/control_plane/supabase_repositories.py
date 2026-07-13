@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 from backend.control_plane.models import (
     Action,
+    ActionReceipt,
     ApprovalRequest,
     Artifact,
     BudgetReservation,
@@ -19,6 +20,7 @@ from backend.control_plane.models import (
     Run,
     RunEvent,
     RunStep,
+    ShadowComparison,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,14 @@ def _row_to_reservation_ledger(row: dict[str, Any]) -> BudgetReservationLedger:
     return BudgetReservationLedger.model_validate(row)
 
 
+def _row_to_shadow_comparison(row: dict[str, Any]) -> ShadowComparison:
+    return ShadowComparison.model_validate(row)
+
+
+def _row_to_action_receipt(row: dict[str, Any]) -> ActionReceipt:
+    return ActionReceipt.model_validate(row)
+
+
 class SupabaseRunRepository:
     def create(self, run: Run) -> Run:
         from backend.db.client import get_supabase
@@ -79,6 +89,13 @@ class SupabaseRunRepository:
         patch: dict[str, Any] = {"status": status}
         if error is not None:
             patch["error"] = error
+        get_supabase().table("astra_runs").update(patch).eq("id", run_id).execute()
+
+    def update_fields(self, run_id: str, patch: dict[str, Any]) -> None:
+        from backend.db.client import get_supabase
+
+        if not patch:
+            return
         get_supabase().table("astra_runs").update(patch).eq("id", run_id).execute()
 
 
@@ -136,6 +153,13 @@ class SupabaseRunStepRepository:
         patch: dict[str, Any] = {"status": status}
         if error is not None:
             patch["error"] = error
+        get_supabase().table("astra_run_steps").update(patch).eq("id", step_id).execute()
+
+    def update_fields(self, step_id: str, patch: dict[str, Any]) -> None:
+        from backend.db.client import get_supabase
+
+        if not patch:
+            return
         get_supabase().table("astra_run_steps").update(patch).eq("id", step_id).execute()
 
 
@@ -222,6 +246,69 @@ class SupabaseApprovalRequestRepository:
             raise KeyError(f"unknown request_id {request_id!r}")
         return updated
 
+    def consume(
+        self,
+        request_id: str,
+        *,
+        expected_action_digest: str,
+        expected_policy_version: str,
+    ) -> ApprovalRequest:
+        from backend.db.client import get_supabase
+        from datetime import datetime, timezone
+
+        current = self.get(request_id)
+        if current is None:
+            raise KeyError(f"unknown request_id {request_id!r}")
+        if current.action_digest != expected_action_digest:
+            try:
+                from backend.control_plane.anomalies import record_anomaly
+
+                record_anomaly(
+                    "approval_mismatch",
+                    run_id=current.run_id,
+                    step_id=str(current.step_id or ""),
+                    payload={
+                        "approval_id": request_id,
+                        "expected_action_digest": expected_action_digest,
+                        "actual_action_digest": current.action_digest,
+                        "reason": "action_digest",
+                    },
+                )
+            except Exception:
+                pass
+            raise ValueError("approval action digest mismatch")
+        if current.policy_version != expected_policy_version:
+            try:
+                from backend.control_plane.anomalies import record_anomaly
+
+                record_anomaly(
+                    "approval_mismatch",
+                    run_id=current.run_id,
+                    step_id=str(current.step_id or ""),
+                    payload={
+                        "approval_id": request_id,
+                        "expected_policy_version": expected_policy_version,
+                        "actual_policy_version": current.policy_version,
+                        "reason": "policy_version",
+                    },
+                )
+            except Exception:
+                pass
+            raise ValueError("approval policy version mismatch")
+        if current.status == "consumed":
+            return current
+        if current.status not in {"approved", "skipped"}:
+            raise ValueError(f"approval {request_id!r} is not consumable from status {current.status!r}")
+        patch = {
+            "status": "consumed",
+            "consumed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        get_supabase().table("astra_approval_requests").update(patch).eq("id", request_id).execute()
+        updated = self.get(request_id)
+        if updated is None:
+            raise KeyError(f"unknown request_id {request_id!r}")
+        return updated
+
 
 class SupabaseRunEventRepository:
     def append(self, run_id: str, event_type: str, payload: dict[str, Any]) -> int:
@@ -245,7 +332,22 @@ class SupabaseRunEventRepository:
             .execute()
             .data
         )
-        return [_row_to_event(row) for row in rows]
+        events = [_row_to_event(row) for row in rows]
+        sequences = [event.sequence for event in events]
+        for previous, current in zip(sequences, sequences[1:]):
+            if current != previous + 1:
+                try:
+                    from backend.control_plane.anomalies import record_anomaly
+
+                    record_anomaly(
+                        "event_sequence_gap",
+                        run_id=run_id,
+                        payload={"previous_sequence": previous, "current_sequence": current},
+                    )
+                except Exception:
+                    pass
+                break
+        return events
 
 
 class SupabaseArtifactRepository:
@@ -267,6 +369,45 @@ class SupabaseArtifactRepository:
             .data
         )
         return [_row_to_artifact(row) for row in rows]
+
+
+class SupabaseActionReceiptRepository:
+    def create(self, receipt: ActionReceipt) -> ActionReceipt:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_action_receipts").upsert(_dump(receipt), on_conflict="id").execute()
+        return receipt
+
+    def get_by_action_id(self, action_id: str) -> Optional[ActionReceipt]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_action_receipts")
+            .select("*")
+            .eq("action_id", action_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_action_receipt(rows[0]) if rows else None
+
+    def get_by_idempotency_key(self, idempotency_key: str) -> Optional[ActionReceipt]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_action_receipts")
+            .select("*")
+            .eq("idempotency_key", idempotency_key)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_action_receipt(rows[0]) if rows else None
+
+    def update_collision_status(self, receipt_id: str, collision_status: str) -> None:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_action_receipts").update({"collision_status": collision_status}).eq("id", receipt_id).execute()
 
 
 class SupabaseBudgetReservationRepository:
@@ -392,11 +533,55 @@ class SupabaseBudgetReservationRepository:
         return [_row_to_reservation(row) for row in rows]
 
 
+class SupabaseShadowComparisonRepository:
+    def create(self, comparison: ShadowComparison) -> ShadowComparison:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_shadow_comparisons").upsert(_dump(comparison), on_conflict="id").execute()
+        return comparison
+
+    def list_for_run(self, run_id: str) -> list[ShadowComparison]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_shadow_comparisons")
+            .select("*")
+            .eq("run_id", run_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        return [_row_to_shadow_comparison(row) for row in rows]
+
+
 async def durable_create_run(run: Run) -> None:
     try:
         await asyncio.to_thread(SupabaseRunRepository().create, run)
     except Exception as exc:
         logger.warning("durable_create_run failed for run_id=%s: %s", run.id, exc)
+
+
+async def durable_create_run_with_event(
+    run: Run,
+    *,
+    event_type: str = "run.created",
+    payload: Optional[dict[str, Any]] = None,
+) -> None:
+    try:
+        from backend.db.client import get_supabase
+
+        await asyncio.to_thread(
+            lambda: get_supabase().rpc(
+                "astra_create_run_with_event",
+                {
+                    "p_run": _dump(run),
+                    "p_event_type": event_type,
+                    "p_event_payload": payload or {},
+                },
+            ).execute()
+        )
+    except Exception as exc:
+        logger.warning("durable_create_run_with_event failed for run_id=%s: %s", run.id, exc)
 
 
 async def durable_append_event(run_id: str, event_type: str, payload: dict[str, Any]) -> None:

@@ -59,15 +59,50 @@ def test_engine_reflects_control_plane_v2_resolution(monkeypatch):
 def test_temporal_shadow_is_independent_of_engine(monkeypatch):
     # Legacy engine (control_plane_v2 off) but still selected for shadow comparison.
     monkeypatch.setattr("backend.config.settings.astra_control_plane_v2", False)
-    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 100)
+    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 5)
+    monkeypatch.setattr("backend.control_plane.rollout._bucket", lambda *_args: 0)
 
-    result = assign_run_features("org_1", "run_1")
+    result = assign_run_features("org_1", "run_1", founder_id="founder_1", plan="beta")
     assert result["engine"] == "legacy"
     assert result["temporal_shadow"] is True
 
 
 def test_temporal_shadow_zero_percent_never_selects():
-    result = assign_run_features("org_1", "run_1")
+    result = assign_run_features("org_1", "run_1", founder_id="founder_1", plan="beta")
+    assert result["temporal_shadow"] is False
+
+
+def test_temporal_shadow_requires_internal_or_beta_eligibility(monkeypatch):
+    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 5)
+    monkeypatch.setattr("backend.control_plane.rollout._bucket", lambda *_args: 0)
+
+    result = assign_run_features("org_1", "run_1", founder_id="founder_1", plan="starter")
+    assert result["temporal_shadow"] is False
+
+
+def test_temporal_shadow_accepts_platform_admins(monkeypatch):
+    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 5)
+    monkeypatch.setattr("backend.config.settings.astra_platform_admins", "founder_1")
+    monkeypatch.setattr("backend.control_plane.rollout._bucket", lambda *_args: 0)
+
+    result = assign_run_features("org_1", "run_1", founder_id="founder_1", plan="starter")
+    assert result["temporal_shadow"] is True
+
+
+def test_temporal_shadow_accepts_beta_allowlist(monkeypatch):
+    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 5)
+    monkeypatch.setattr("backend.config.settings.astra_beta_allowlist", "Founder@One.com")
+    monkeypatch.setattr("backend.control_plane.rollout._bucket", lambda *_args: 0)
+
+    result = assign_run_features("org_1", "run_1", founder_id="google_founder_one_com", plan="starter")
+    assert result["temporal_shadow"] is True
+
+
+def test_temporal_shadow_percent_is_hard_capped_at_five(monkeypatch):
+    monkeypatch.setattr("backend.config.settings.astra_temporal_shadow_percent", 100)
+    monkeypatch.setattr("backend.control_plane.rollout._bucket", lambda *_args: 6)
+
+    result = assign_run_features("org_1", "run_1", founder_id="founder_1", plan="beta")
     assert result["temporal_shadow"] is False
 
 

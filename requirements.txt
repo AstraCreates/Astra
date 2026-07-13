@@ -37,3 +37,11 @@ pywebpush>=1.14,<2
 # confident of the exact latest patch version from this sandbox, tightened
 # once someone actually deploys against it.
 temporalio>=1.7,<2
+
+# Wave 5.2 control plane (PLAN.md): mandatory OTel tracing (backend/observability/
+# tracing.py). Loose major-version pin, matching the temporalio convention above --
+# chromadb already pulls opentelemetry-api/sdk/otlp-proto-grpc transitively on 1.x,
+# so this stays inside that same major line rather than pinning an exact patch.
+opentelemetry-api>=1.27,<2
+opentelemetry-sdk>=1.27,<2
+opentelemetry-exporter-otlp-proto-http>=1.27,<2

@@ -12,6 +12,7 @@ from typing import Optional
 
 from backend.control_plane.models import (
     Action,
+    ActionReceipt,
     ApprovalRequest,
     Artifact,
     BudgetReservation,
@@ -19,6 +20,7 @@ from backend.control_plane.models import (
     Run,
     RunEvent,
     RunStep,
+    ShadowComparison,
 )
 
 
@@ -82,6 +84,16 @@ class FakeRunStepRepository:
             attempts = self._attempts[(step.run_id, step.step_key)]
             attempts[attempts.index(step)] = updated
 
+    def update_fields(self, step_id: str, patch: dict[str, object]) -> None:
+        with self._lock:
+            step = self._by_id.get(step_id)
+            if step is None:
+                raise KeyError(f"unknown step_id {step_id!r}")
+            updated = step.model_copy(update=dict(patch or {}))
+            self._by_id[step_id] = updated
+            attempts = self._attempts[(step.run_id, step.step_key)]
+            attempts[attempts.index(step)] = updated
+
 
 class FakeActionRepository:
     def __init__(self) -> None:
@@ -140,6 +152,61 @@ class FakeApprovalRequestRepository:
             self._by_id[request_id] = updated
             return updated
 
+    def consume(
+        self,
+        request_id: str,
+        *,
+        expected_action_digest: str,
+        expected_policy_version: str,
+    ) -> ApprovalRequest:
+        with self._lock:
+            request = self._by_id.get(request_id)
+            if request is None:
+                raise KeyError(f"unknown request_id {request_id!r}")
+            if request.action_digest != expected_action_digest:
+                try:
+                    from backend.control_plane.anomalies import record_anomaly
+
+                    record_anomaly(
+                        "approval_mismatch",
+                        run_id=request.run_id,
+                        step_id=str(request.step_id or ""),
+                        payload={
+                            "approval_id": request_id,
+                            "expected_action_digest": expected_action_digest,
+                            "actual_action_digest": request.action_digest,
+                            "reason": "action_digest",
+                        },
+                    )
+                except Exception:
+                    pass
+                raise ValueError("approval action digest mismatch")
+            if request.policy_version != expected_policy_version:
+                try:
+                    from backend.control_plane.anomalies import record_anomaly
+
+                    record_anomaly(
+                        "approval_mismatch",
+                        run_id=request.run_id,
+                        step_id=str(request.step_id or ""),
+                        payload={
+                            "approval_id": request_id,
+                            "expected_policy_version": expected_policy_version,
+                            "actual_policy_version": request.policy_version,
+                            "reason": "policy_version",
+                        },
+                    )
+                except Exception:
+                    pass
+                raise ValueError("approval policy version mismatch")
+            if request.status not in {"approved", "skipped", "consumed"}:
+                raise ValueError(f"approval {request_id!r} is not consumable from status {request.status!r}")
+            if request.status == "consumed":
+                return request
+            updated = request.model_copy(update={"status": "consumed", "consumed_at": _now()})
+            self._by_id[request_id] = updated
+            return updated
+
 
 class FakeRunEventRepository:
     """Mirrors astra_append_run_event()'s locking property: sequence
@@ -161,7 +228,28 @@ class FakeRunEventRepository:
 
     def list_since(self, run_id: str, after_sequence: int = 0) -> list[RunEvent]:
         events = self._events.get(run_id, [])
-        return [e for e in events if e.sequence >= after_sequence]
+        filtered = [e for e in events if e.sequence >= after_sequence]
+        self._record_gap_if_present(run_id, filtered)
+        return filtered
+
+    @staticmethod
+    def _record_gap_if_present(run_id: str, events: list[RunEvent]) -> None:
+        if not events:
+            return
+        sequences = [event.sequence for event in events]
+        for previous, current in zip(sequences, sequences[1:]):
+            if current != previous + 1:
+                try:
+                    from backend.control_plane.anomalies import record_anomaly
+
+                    record_anomaly(
+                        "event_sequence_gap",
+                        run_id=run_id,
+                        payload={"previous_sequence": previous, "current_sequence": current},
+                    )
+                except Exception:
+                    pass
+                return
 
 
 class FakeArtifactRepository:
@@ -176,6 +264,39 @@ class FakeArtifactRepository:
 
     def list_for_run(self, run_id: str) -> list[Artifact]:
         return list(self._by_run.get(run_id, {}).values())
+
+
+class FakeActionReceiptRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_id: dict[str, ActionReceipt] = {}
+        self._by_action_id: dict[str, str] = {}
+        self._by_idempotency_key: dict[str, str] = {}
+
+    def create(self, receipt: ActionReceipt) -> ActionReceipt:
+        with self._lock:
+            existing_id = self._by_idempotency_key.get(receipt.idempotency_key)
+            if existing_id and existing_id != receipt.id:
+                raise KeyError(f"duplicate idempotency_key {receipt.idempotency_key!r}")
+            self._by_id[receipt.id] = receipt
+            self._by_action_id[receipt.action_id] = receipt.id
+            self._by_idempotency_key[receipt.idempotency_key] = receipt.id
+            return receipt
+
+    def get_by_action_id(self, action_id: str) -> Optional[ActionReceipt]:
+        receipt_id = self._by_action_id.get(action_id)
+        return self._by_id.get(receipt_id) if receipt_id else None
+
+    def get_by_idempotency_key(self, idempotency_key: str) -> Optional[ActionReceipt]:
+        receipt_id = self._by_idempotency_key.get(idempotency_key)
+        return self._by_id.get(receipt_id) if receipt_id else None
+
+    def update_collision_status(self, receipt_id: str, collision_status: str) -> None:
+        with self._lock:
+            receipt = self._by_id.get(receipt_id)
+            if receipt is None:
+                raise KeyError(f"unknown receipt_id {receipt_id!r}")
+            self._by_id[receipt_id] = receipt.model_copy(update={"collision_status": collision_status})
 
 
 class FakeBudgetReservationRepository:
@@ -282,3 +403,17 @@ class FakeBudgetReservationRepository:
     def list_expired(self, *, now: Optional[str] = None) -> list[BudgetReservation]:
         cutoff = datetime.fromisoformat(now) if now else _now()
         return [r for r in self._by_id.values() if r.status == "reserved" and r.expires_at <= cutoff]
+
+
+class FakeShadowComparisonRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_run: dict[str, list[ShadowComparison]] = {}
+
+    def create(self, comparison: ShadowComparison) -> ShadowComparison:
+        with self._lock:
+            self._by_run.setdefault(comparison.run_id, []).append(comparison)
+        return comparison
+
+    def list_for_run(self, run_id: str) -> list[ShadowComparison]:
+        return list(self._by_run.get(run_id, []))

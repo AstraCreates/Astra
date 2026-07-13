@@ -50,6 +50,8 @@ def test_platform_status_readiness_includes_platform_subsystems(tmp_path, monkey
     assert set(ready["checks"]) == {"redis", "models", "production_env", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"}
     assert "astra_redis_up 1" in metrics
     assert "astra_company_brain_scheduler_up 1" in metrics
+    assert "astra_control_plane_anomalies_total" in metrics
+    assert "astra_receipt_collision_alerts" in metrics
 
 
 def test_platform_status_flags_missing_platform_admins_when_auth_enabled(monkeypatch):

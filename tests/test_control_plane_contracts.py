@@ -2,8 +2,17 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from backend.control_plane.backfill import backfill_runs, build_run_from_session_meta, supabase_run_writer
+from backend.control_plane.action_executor import (
+    ApprovalRequiredError,
+    CancellationFenceError,
+    ReceiptCollisionError,
+    compute_action_hashes,
+    execute_external_action,
+    ExternalActionRequest,
+)
 from backend.control_plane.fakes import (
     FakeActionRepository,
+    FakeActionReceiptRepository,
     FakeApprovalRequestRepository,
     FakeArtifactRepository,
     FakeBudgetReservationRepository,
@@ -13,6 +22,7 @@ from backend.control_plane.fakes import (
 )
 from backend.control_plane.models import (
     Action,
+    ActionReceipt,
     ApprovalRequest,
     Artifact,
     BudgetReservation,
@@ -138,6 +148,26 @@ def test_fake_action_repository_lookup_by_idempotency_key():
     assert repo.get("a1").status == "succeeded"
 
 
+def test_compute_action_hashes_are_stable_for_same_inputs():
+    first = compute_action_hashes(
+        run_id="run_1",
+        step_id="step_1",
+        action_id="action_1",
+        tool="deploy",
+        args={"b": 2, "a": 1},
+        policy_version="v1",
+    )
+    second = compute_action_hashes(
+        run_id="run_1",
+        step_id="step_1",
+        action_id="action_1",
+        tool="deploy",
+        args={"a": 1, "b": 2},
+        policy_version="v1",
+    )
+    assert first == second
+
+
 def test_fake_approval_request_repository_decide_records_decision():
     repo = FakeApprovalRequestRepository()
     repo.create(ApprovalRequest(id="ap1", run_id="run_1", gate_key="phase_gate_research", action_digest="d1"))
@@ -149,6 +179,30 @@ def test_fake_approval_request_repository_decide_records_decision():
     assert repo.get_pending_for_gate("run_1", "phase_gate_research") == []
 
 
+def test_fake_approval_request_repository_consume_marks_request_consumed():
+    repo = FakeApprovalRequestRepository()
+    repo.create(ApprovalRequest(
+        id="ap1",
+        run_id="run_1",
+        gate_key="phase_gate_research",
+        action_digest="d1",
+        policy_version="v1",
+        status="approved",
+    ))
+    consumed = repo.consume("ap1", expected_action_digest="d1", expected_policy_version="v1")
+    assert consumed.status == "consumed"
+    assert consumed.consumed_at is not None
+
+
+def test_fake_action_receipt_repository_round_trips_by_action_and_idempotency_key():
+    repo = FakeActionReceiptRepository()
+    receipt = repo.create(ActionReceipt(id="r1", action_id="a1", idempotency_key="idem_1", provider_result={"ok": True}))
+    assert repo.get_by_action_id("a1") == receipt
+    assert repo.get_by_idempotency_key("idem_1") == receipt
+    repo.update_collision_status("r1", "detected")
+    assert repo.get_by_action_id("a1").collision_status == "detected"
+
+
 def test_fake_artifact_repository_upsert_replaces_by_key():
     repo = FakeArtifactRepository()
     repo.upsert(Artifact(id="art1", run_id="run_1", key="pitch_deck", uri="s3://v1"))
@@ -156,6 +210,168 @@ def test_fake_artifact_repository_upsert_replaces_by_key():
     artifacts = repo.list_for_run("run_1")
     assert len(artifacts) == 1
     assert artifacts[0].uri == "s3://v2"
+
+
+def test_execute_external_action_consumes_approval_and_persists_receipt():
+    action_repo = FakeActionRepository()
+    approval_repo = FakeApprovalRequestRepository()
+    receipt_repo = FakeActionReceiptRepository()
+    approval_repo.create(ApprovalRequest(
+        id="approval_1",
+        run_id="run_1",
+        step_id="step_1",
+        gate_key="deploy_gate",
+        action_digest="digest_1",
+        policy_version="v1",
+        status="approved",
+    ))
+
+    async def _effect(args, idempotency_key):
+        return {"args": args, "idempotency_key": idempotency_key}
+
+    result = __import__("asyncio").run(execute_external_action(
+        ExternalActionRequest(
+            run_id="run_1",
+            step_id="step_1",
+            tool="deploy",
+            args={"target": "prod"},
+            require_approval=True,
+            approval_id="approval_1",
+            approval_action_digest="digest_1",
+        ),
+        action_repo=action_repo,
+        receipt_repo=receipt_repo,
+        approval_repo=approval_repo,
+        execute_effect=_effect,
+    ))
+
+    assert result.action.status == "succeeded"
+    assert result.receipt.provider_result["args"] == {"target": "prod"}
+    assert approval_repo.get("approval_1").status == "consumed"
+
+
+def test_execute_external_action_replays_existing_receipt_without_reinvoking_effect():
+    action_repo = FakeActionRepository()
+    receipt_repo = FakeActionReceiptRepository()
+    calls = {"count": 0}
+
+    async def _effect(_args, _idempotency_key):
+        calls["count"] += 1
+        return {"ok": True}
+
+    request = ExternalActionRequest(
+        run_id="run_1",
+        step_id="step_1",
+        action_id="action_fixed",
+        tool="deploy",
+        args={"target": "prod"},
+    )
+    first = __import__("asyncio").run(execute_external_action(
+        request,
+        action_repo=action_repo,
+        receipt_repo=receipt_repo,
+        approval_repo=None,
+        execute_effect=_effect,
+    ))
+    second = __import__("asyncio").run(execute_external_action(
+        request,
+        action_repo=action_repo,
+        receipt_repo=receipt_repo,
+        approval_repo=None,
+        execute_effect=_effect,
+    ))
+
+    assert calls["count"] == 1
+    assert first.replayed is False
+    assert second.replayed is True
+    assert second.receipt.id == first.receipt.id
+
+
+def test_execute_external_action_fails_closed_for_missing_approval_or_cancellation():
+    action_repo = FakeActionRepository()
+    receipt_repo = FakeActionReceiptRepository()
+
+    async def _effect(_args, _idempotency_key):
+        return {"ok": True}
+
+    try:
+        __import__("asyncio").run(execute_external_action(
+            ExternalActionRequest(
+                run_id="run_1",
+                step_id="step_1",
+                tool="deploy",
+                args={},
+                require_approval=True,
+            ),
+            action_repo=action_repo,
+            receipt_repo=receipt_repo,
+            approval_repo=None,
+            execute_effect=_effect,
+        ))
+        assert False, "expected ApprovalRequiredError"
+    except ApprovalRequiredError:
+        pass
+
+    try:
+        __import__("asyncio").run(execute_external_action(
+            ExternalActionRequest(run_id="run_1", step_id="step_1", tool="deploy", args={}),
+            action_repo=action_repo,
+            receipt_repo=receipt_repo,
+            approval_repo=None,
+            execute_effect=_effect,
+            is_cancelled=lambda _run_id: True,
+        ))
+        assert False, "expected CancellationFenceError"
+    except CancellationFenceError:
+        pass
+
+
+def test_execute_external_action_marks_receipt_collision():
+    action_repo = FakeActionRepository()
+    receipt_repo = FakeActionReceiptRepository()
+    existing = receipt_repo.create(ActionReceipt(
+        id="receipt_1",
+        action_id="other_action",
+        idempotency_key="shared",
+        provider_result={"ok": True},
+    ))
+
+    async def _effect(_args, _idempotency_key):
+        return {"ok": True}
+
+    original = compute_action_hashes
+
+    def _fixed_hashes(**_kwargs):
+        canonical_args_hash, _ = original(
+            run_id="run_1",
+            step_id="step_1",
+            action_id="action_1",
+            tool="deploy",
+            args={},
+            policy_version="v1",
+        )
+        return canonical_args_hash, "shared"
+
+    import backend.control_plane.action_executor as executor_mod
+
+    saved = executor_mod.compute_action_hashes
+    executor_mod.compute_action_hashes = _fixed_hashes
+    try:
+        try:
+            __import__("asyncio").run(execute_external_action(
+                ExternalActionRequest(run_id="run_1", step_id="step_1", action_id="action_1", tool="deploy", args={}),
+                action_repo=action_repo,
+                receipt_repo=receipt_repo,
+                approval_repo=None,
+                execute_effect=_effect,
+            ))
+            assert False, "expected ReceiptCollisionError"
+        except ReceiptCollisionError:
+            pass
+    finally:
+        executor_mod.compute_action_hashes = saved
+
+    assert receipt_repo.get_by_action_id(existing.action_id).collision_status == "detected"
 
 
 def test_fake_budget_reservation_repository_lifecycle_and_expiry_sweep():

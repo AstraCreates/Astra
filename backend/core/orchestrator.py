@@ -1545,6 +1545,7 @@ class Orchestrator:
                     session_id=session_id,
                     founder_id=founder_id,
                     task_id=tid,
+                    shadow_mode=bool((constraints or {}).get("shadow_mode", False)),
                     unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                     shared=context_policy.build_agent_shared(
                         base_shared=shared,
@@ -1586,7 +1587,13 @@ class Orchestrator:
 
         # Run only configured research specialists in parallel.
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
-        candidate_research = candidate_research_agents_for_default_provider(set(self.specialists))
+        try:
+            candidate_research = candidate_research_agents_for_default_provider(set(self.specialists))
+        except TypeError:
+            # Older tests and shims still monkeypatch this helper with the
+            # pre-parameter zero-arg shape. Keep the runtime tolerant while the
+            # control-plane extraction is in flight.
+            candidate_research = candidate_research_agents_for_default_provider()
         parallel_research_tasks = [
             {
                 "id": tid,
@@ -1745,6 +1752,7 @@ class Orchestrator:
                 founder_id=founder_id,
                 session_id=session_id,
                 task_id=tid,
+                shadow_mode=bool((constraints or {}).get("shadow_mode", False)),
                 unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                 shared=context_policy.build_agent_shared(
                     base_shared=shared,
@@ -1839,6 +1847,7 @@ class Orchestrator:
                     founder_id=founder_id,
                     session_id=session_id,
                     task_id=tid,
+                    shadow_mode=bool((constraints or {}).get("shadow_mode", False)),
                     unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                     budget=ctx.budget,  # inherit remaining budget — prevents each retry from getting fresh cap
                     shared={**ctx.shared, "verification_retry": True, "verification_retry_count": _attempt},
@@ -2998,6 +3007,7 @@ class Orchestrator:
                 founder_id=founder_id,
                 session_id=session_id,
                 task_id=tid,
+                shadow_mode=bool((shared.get("shadow_mode") or False)),
                 shared={
                     **context_policy.build_agent_shared(
                         base_shared=shared,

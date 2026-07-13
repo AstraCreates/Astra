@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, artifactSources, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, shouldRetainOriginalSession, stopStatusAfterKill, type SessionImages, type StreamSubscription } from "@/lib/api";
+import { apiFetch, artifactSources, killSession, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, shouldRetainOriginalSession, stopStatusAfterKill, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -17,6 +17,10 @@ import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard"
 import LLCFilingModal from "@/components/LLCFilingModal";
 import AstraCopilotComposer, { type CopilotAgentOption } from "@/components/AstraCopilotComposer";
 import SessionCopilotSurface, { type SessionActivityItem } from "@/components/SessionCopilotSurface";
+import RunStatusBadge from "@/components/RunStatusBadge";
+import RunTraceLink from "@/components/RunTraceLink";
+import { decideApproval as decideDurableApproval, getRunEvents, getRunSnapshot, type RunEvent, type RunSnapshot } from "@/lib/control-plane-api";
+import type { RunStatus } from "@/lib/run-status";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -29,10 +33,64 @@ type LogEntry = { ts: number; type: string; text: string };
 type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
+// `request_id` here IS the durable approval_id, not a separate legacy id: the
+// in-memory ledger (backend/approval_workflows.py::create_approval_request)
+// mints `payload["id"] === payload["approval_id"]`, and backend/core/agent.py
+// mirrors that exact same string as the Supabase astra_approval_requests.id
+// when it creates the durable ApprovalRequest row. So normalizeApprovals()
+// below reading `a.request_id || a.approval_id || a.id` is not "falling back
+// to a different ID" — all three keys carry the same value for one request.
 type Approval = { gate_key: string; request_id: string; action_digest: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
 type PlanTask = { id: string; agent: string; instruction: string };
+
+function legacyStatusFromControlPlane(status: string): string {
+  const map: Record<string, string> = {
+    queued: "queued",
+    running: "running",
+    awaiting_approval: "awaiting_approval",
+    cancelling: "cancelling",
+    cancelled: "killed",
+    succeeded: "done",
+    failed: "error",
+  };
+  return map[status] || status;
+}
+
+function legacyAgentStatus(status: string): string {
+  const map: Record<string, string> = {
+    queued: "waiting",
+    running: "running",
+    awaiting_approval: "waiting",
+    cancelling: "waiting",
+    cancelled: "error",
+    succeeded: "done",
+    failed: "error",
+  };
+  return map[status] || "waiting";
+}
+
+function eventForLegacyReducer(event: RunEvent): Record<string, unknown> | null {
+  const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+  const type = event.event_type.replace(/[.:]/g, "_");
+  const mapped: Record<string, string> = {
+    run_created: "goal_start",
+    run_started: "goal_start",
+    step_started: "agent_start",
+    step_completed: "agent_done",
+    step_failed: "agent_error",
+    approval_requested: "approval_request",
+    artifact_created: "artifact",
+    artifact_verified: "artifact",
+    research_summary: "agent_summary",
+    technical_summary: "agent_summary",
+    image_generated: "agent_summary",
+  };
+  const legacyType = mapped[type];
+  if (!legacyType) return null;
+  return { ...payload, type: legacyType, sequence: event.sequence };
+}
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
@@ -294,6 +352,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
   const [streamEpoch, setStreamEpoch] = useState(0);
+  const [controlPlaneStatus, setControlPlaneStatus] = useState<RunStatus | null>(null);
   const [copilotInput, setCopilotInput] = useState("");
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
@@ -594,18 +653,24 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           next_phase: raw.next_phase || "",
           artifacts: raw.artifacts || [],
         };
-        if (!apv.gate_key || st.decidedKeys.has(apv.gate_key)) break;
-        // Replace existing gate with same key (e.g. after rejection re-fire)
-        const existIdx = st.approvals.findIndex((a) => a.gate_key === apv.gate_key);
+        if (!apv.request_id || st.decidedKeys.has(apv.request_id)) break;
+        // Requests are addressed by immutable approval IDs. Two actions can share
+        // a gate_key and still require independent founder decisions.
+        const existIdx = st.approvals.findIndex((a) => a.request_id === apv.request_id);
         if (existIdx >= 0) st.approvals[existIdx] = apv;
         else st.approvals.push(apv);
         st.approvals = normalizeApprovals(st.approvals);
         break;
       }
       case "stack_approval_decision":
-        if (ev.gate_key && ev.decision !== "rejected") st.decidedKeys.add(ev.gate_key);
-        else if (ev.gate_key && ev.decision === "rejected") st.decidedKeys.delete(ev.gate_key);
-        st.approvals = st.approvals.filter((a) => a.gate_key !== ev.gate_key); break;
+        if (ev.request_id && ev.decision !== "rejected") st.decidedKeys.add(String(ev.request_id));
+        else if (ev.request_id && ev.decision === "rejected") st.decidedKeys.delete(String(ev.request_id));
+        st.approvals = st.approvals.filter((a) => a.request_id !== String(ev.request_id || "")); break;
+      case "agent_summary": {
+        const agent = String(ev.agent || ev.step_key || "astra");
+        addLog(agent, "result", ev.summary || ev.text || ev.content || ev.description || "Updated");
+        break;
+      }
       case "company_operating":
         st.status = "done";
         st.operating = { count: Number(ev.mission_count || (ev.missions?.length ?? 0)), summary: String(ev.summary || "") };
@@ -644,6 +709,50 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     }
     commitState();
   }, [commitState, pushAgentToast, reconcileTerminalState]);
+
+  const applyControlPlaneSnapshot = useCallback((snapshot: RunSnapshot) => {
+    const st = S.current;
+    const run = snapshot.run;
+    setControlPlaneStatus(run.status);
+    st.status = legacyStatusFromControlPlane(run.status);
+    if (run.goal) {
+      const { projectName, cleanGoal } = extractProjectName(run.goal);
+      st.goal = cleanGoal;
+      if (!st.projectName) st.projectName = projectName;
+    }
+    if (run.stack_id) st.stackId = run.stack_id;
+    if (run.created_at && !st.startedAt) {
+      const createdAt = Date.parse(run.created_at);
+      if (!Number.isNaN(createdAt)) st.startedAt = createdAt;
+    }
+    for (const step of snapshot.steps) {
+      const key = step.agent || step.step_key;
+      if (!key) continue;
+      ensureAg(key);
+      const agent = st.agents[key];
+      agent.status = legacyAgentStatus(step.status);
+      if (step.error) addLog(key, "error", step.error);
+    }
+    st.approvals = normalizeApprovals(snapshot.approvals.map((approval) => ({
+      ...approval,
+      request_id: approval.id,
+      approval_id: approval.id,
+      ts: approval.created_at ? Date.parse(approval.created_at) : Date.now(),
+    })));
+    for (const artifact of snapshot.artifacts) {
+      const index = st.artifacts.findIndex((existing) => existing.key === artifact.key);
+      const normalized: Artifact = {
+        key: artifact.key,
+        title: String(artifact.metadata?.title || artifact.key),
+        status: artifact.verification_status === "passed" ? "ready" : artifact.verification_status,
+        preview: typeof artifact.metadata?.preview === "string" ? artifact.metadata.preview : undefined,
+        content: typeof artifact.metadata?.content === "string" ? artifact.metadata.content : undefined,
+        owner_agent: typeof artifact.metadata?.owner_agent === "string" ? artifact.metadata.owner_agent : undefined,
+      };
+      if (index >= 0) st.artifacts[index] = { ...st.artifacts[index], ...normalized };
+      else st.artifacts.push(normalized);
+    }
+  }, []);
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
@@ -732,6 +841,40 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
   }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState, streamEpoch]);
 
+  // Durable control-plane projection is the source of truth when present. The
+  // legacy session feed stays connected for older runs while rollout is active.
+  useEffect(() => {
+    if (!sessionId || !isSignedIn) return;
+    let cancelled = false;
+    let afterSequence = 0;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const sync = async () => {
+      try {
+        const snapshot = await getRunSnapshot(sessionId);
+        if (cancelled) return;
+        applyControlPlaneSnapshot(snapshot);
+        const events = await getRunEvents(sessionId, afterSequence);
+        if (cancelled) return;
+        for (const event of events) {
+          afterSequence = Math.max(afterSequence, event.sequence);
+          const legacyEvent = eventForLegacyReducer(event);
+          if (legacyEvent) handleEvent(legacyEvent as Record<string, any>);
+        }
+        commitState();
+      } catch {
+        // A legacy run may not have been backfilled yet. Its existing endpoint
+        // remains a supported compatibility path during the strangler rollout.
+      }
+    };
+    void sync();
+    timer = setInterval(() => { void sync(); }, 5_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [applyControlPlaneSnapshot, commitState, handleEvent, isSignedIn, sessionId]);
+
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
     if (!sessionId) return;
@@ -781,14 +924,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (!key) { showErr("Approval missing gate key — refresh the page and try again."); return; }
     if (!approval.request_id || !approval.action_digest) { showErr("Approval request details are incomplete. Reload the session before deciding."); return; }
     const snapshot = S.current.approvals;
-    if (decision !== "rejected") S.current.decidedKeys.add(key);
-    S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
+    if (decision !== "rejected") S.current.decidedKeys.add(approval.request_id);
+    S.current.approvals = S.current.approvals.filter((a) => a.request_id !== approval.request_id);
     S.current.revisionGate = null; S.current.revisionNote = "";
     commitState();
     try {
-      await decideStackApproval(sessionId, key, decision, founderId, note, approval.request_id, approval.action_digest);
+      await decideDurableApproval(sessionId, approval.request_id, decision, note, approval.action_digest);
     } catch (e) {
-      if (decision !== "rejected") S.current.decidedKeys.delete(key);
+      if (decision !== "rejected") S.current.decidedKeys.delete(approval.request_id);
       S.current.approvals = snapshot;
       commitState();
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -872,11 +1015,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   // made Stop/Restart silently no-op. Roll back and reconnect when the kill fails.
   const stop = async () => {
     const previousStatus = S.current.status;
-    S.current.status = "killed";
-    sseRef.current?.close();
+    S.current.status = controlPlaneStatus ? "cancelling" : "killed";
     commitState();
-    const killed = await killSession(sessionId);
-    S.current.status = stopStatusAfterKill(previousStatus, killed);
+    let killed = false;
+    try {
+      const response = await apiFetch(`${API}/runs/${encodeURIComponent(sessionId)}/cancel`, { method: "POST" });
+      if (!response.ok) throw new Error("Control-plane cancel unavailable");
+      killed = response.ok;
+    } catch {
+      killed = await killSession(sessionId);
+    }
+    S.current.status = controlPlaneStatus && killed ? "cancelling" : stopStatusAfterKill(previousStatus, killed);
     commitState();
     if (!killed) {
       setToastErr("Stop failed. The run may still be active; reconnecting to its updates.");
@@ -924,8 +1073,36 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         items.push({ id: `${agent.key}-${entry.ts}-${entry.type}-${entry.text.slice(0, 12)}`, ts: entry.ts, agent: agent.key, label: kind === "start" ? `${label} started` : kind === "done" ? `${label} completed` : kind === "error" ? `${label} needs attention` : label, detail, kind });
       }
     }
+    for (const artifact of st.artifacts) {
+      if (!artifact.key) continue;
+      const owner = artifact.owner_agent ? (AGENT_LABELS[artifact.owner_agent] ?? artifact.owner_agent) : "Astra";
+      const detail = artifact.preview || artifact.description || artifact.content?.slice(0, 240) || undefined;
+      items.push({
+        id: `artifact-${artifact.key}`,
+        ts: st.startedAt || 0,
+        agent: artifact.owner_agent,
+        label: `${owner} produced ${artifact.title || artifact.key}`,
+        detail,
+        kind: "artifact",
+      });
+    }
+    for (const approval of st.approvals) {
+      const label = approval.is_phase_gate
+        ? `${approval.phase || "Phase"} waiting for approval`
+        : `${approval.title || approval.gate_key || "Approval"} waiting`;
+      items.push({
+        id: `approval-${approval.request_id}`,
+        ts: approval.ts,
+        agent: approval.agent,
+        label,
+        detail: approval.reason || approval.description || approval.next_phase,
+        kind: "action",
+      });
+    }
     if (st.goal) items.unshift({ id: "goal", ts: st.startedAt || 0, label: "Goal active", detail: st.goal, kind: "goal" });
-    return items.sort((a, b) => a.ts - b.ts);
+    return items
+      .sort((a, b) => a.ts - b.ts)
+      .filter((item, index, arr) => index === 0 || item.id !== arr[index - 1].id);
   }, [stateVersion]);
   const agents = Object.values(st.agents);
   const total = agents.length, run = agents.filter((a) => a.status === "running").length,
@@ -1304,7 +1481,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               {fmtElapsed(Date.now() - st.startedAt)}
             </span>
           )}
-          {statusPill(st.status)}
+          {controlPlaneStatus
+            ? <RunStatusBadge status={controlPlaneStatus} degraded={controlPlaneStatus === "running" && err > 0} />
+            : statusPill(st.status)}
+          {controlPlaneStatus && <RunTraceLink runId={sessionId} />}
         </div>
         {(st.status === "running" || st.status === "loading") && (
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, borderLeft: "1px solid var(--bd)", paddingLeft: 7 }}>
@@ -1742,7 +1922,23 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         {label}
                         {rerunnable && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); rerunAgent(sessionId, k, founderId).then(() => { S.current.agents[k].status = "queued"; commitState(); }).catch(() => showErr("Rerun failed")); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              apiFetch(`${API}/runs/${encodeURIComponent(sessionId)}/steps/${encodeURIComponent(k)}/retry`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ founder_id: founderId }),
+                              })
+                                .then((response) => {
+                                  if (!response.ok) throw new Error("Control-plane retry unavailable");
+                                  S.current.agents[k].status = "waiting";
+                                  commitState();
+                                })
+                                .catch(() => rerunAgent(sessionId, k, founderId).then(() => {
+                                  S.current.agents[k].status = "waiting";
+                                  commitState();
+                                }).catch(() => showErr("Rerun failed")));
+                            }}
                             style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1, color, opacity: .7 }}
                             title={`Rerun ${label}`}
                           >↻</button>

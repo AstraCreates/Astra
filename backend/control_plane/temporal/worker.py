@@ -21,10 +21,30 @@ async def run_worker() -> None:
     from temporalio.worker import Worker
 
     from backend.control_plane.temporal.activities import (
+        CreatePhaseApprovalActivity,
+        ExecuteCompanyBrainTickActivity,
+        ExecuteCustomAgentsTickActivity,
+        ExecuteDeepResearchActivity,
+        ExecuteLaneAttemptActivity,
+        ExecuteMissionSchedulerTickActivity,
+        ExecuteMonitoringTickActivity,
         ExecuteOrchestratorActivity,
+        ExecuteVerificationActivity,
+        ExpireApprovalActivity,
+        LoadRunPlanActivity,
+        ObserveRunActivity,
         PublishEventActivity,
         UpdateRunStatusActivity,
     )
+    from backend.control_plane.temporal.company_brain_workflow import CompanyBrainTickWorkflow
+    from backend.control_plane.temporal.custom_agents_workflow import CustomAgentsTickWorkflow
+    from backend.control_plane.temporal.deep_research_workflow import DeepResearchWorkflow
+    from backend.control_plane.temporal.lane_attempt_workflow import LaneAttemptWorkflow
+    from backend.control_plane.temporal.missions_workflow import MissionSchedulerTickWorkflow
+    from backend.control_plane.temporal.monitoring_workflow import MonitoringTickWorkflow
+    from backend.control_plane.temporal.multi_phase_workflow import MultiPhaseRunWorkflow
+    from backend.control_plane.temporal.phase_gate_workflow import PhaseGateWorkflow
+    from backend.control_plane.temporal.phase_workflow import PhaseRunWorkflow
     from backend.control_plane.temporal.workflows import AstraRunWorkflow
 
     address = os.environ.get("TEMPORAL_ADDRESS", "temporal:7233")
@@ -34,9 +54,20 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[AstraRunWorkflow],
+        workflows=[AstraRunWorkflow, PhaseGateWorkflow, LaneAttemptWorkflow, PhaseRunWorkflow, MultiPhaseRunWorkflow, MonitoringTickWorkflow, MissionSchedulerTickWorkflow, CompanyBrainTickWorkflow, CustomAgentsTickWorkflow, DeepResearchWorkflow],
         activities=[
+            CreatePhaseApprovalActivity.create,
+            ExecuteCompanyBrainTickActivity.execute,
+            ExecuteCustomAgentsTickActivity.execute,
+            ExecuteDeepResearchActivity.execute,
+            ExecuteLaneAttemptActivity.execute,
+            ExecuteMissionSchedulerTickActivity.execute,
+            ExecuteMonitoringTickActivity.execute,
             ExecuteOrchestratorActivity.execute,
+            ExecuteVerificationActivity.execute,
+            ExpireApprovalActivity.expire,
+            LoadRunPlanActivity.load,
+            ObserveRunActivity.record,
             PublishEventActivity.publish,
             UpdateRunStatusActivity.update,
         ],

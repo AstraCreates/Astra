@@ -44,7 +44,34 @@ def _feature_enabled(org_id: str, run_id: str, feature: str) -> bool:
     return percentage >= 100 or _bucket(org_id, run_id, feature) < percentage
 
 
-def assign_run_features(org_id: str, run_id: str) -> dict[str, "bool | str"]:
+def _eligible_for_temporal_shadow(founder_id: str, *, plan: Optional[str] = None) -> bool:
+    from backend.config import settings
+    from backend.tenant_auth import _beta_allowlist_founder_ids
+
+    founder_id = str(founder_id or "").strip()
+    if not founder_id:
+        return False
+
+    platform_admins = {
+        item.strip() for item in str(settings.astra_platform_admins or "").split(",") if item.strip()
+    }
+    if founder_id in platform_admins:
+        return True
+
+    beta_allowlist = _beta_allowlist_founder_ids()
+    if beta_allowlist is not None and founder_id in beta_allowlist:
+        return True
+
+    return str(plan or "").strip().lower() == "beta"
+
+
+def assign_run_features(
+    org_id: str,
+    run_id: str,
+    *,
+    founder_id: str = "",
+    plan: Optional[str] = None,
+) -> dict[str, "bool | str"]:
     """Resolve every control-plane feature flag ONCE for a run, deterministically,
     keyed on (org_id, run_id) rather than founder_id. Call this exactly once when
     a run is created (Wave 2's StartRun); persist the result on the run record.
@@ -55,8 +82,10 @@ def assign_run_features(org_id: str, run_id: str) -> dict[str, "bool | str"]:
 
     resolved = {feature: _feature_enabled(org_id, run_id, feature) for feature in _FEATURES}
 
-    shadow_percentage = max(0, min(100, int(settings.astra_temporal_shadow_percent)))
+    shadow_percentage = max(0, min(5, int(settings.astra_temporal_shadow_percent)))
     temporal_shadow = (
+        _eligible_for_temporal_shadow(founder_id, plan=plan)
+        and
         not is_disabled("temporal_shadow")
         and (shadow_percentage >= 100 or _bucket(org_id, run_id, "temporal_shadow") < shadow_percentage)
         and shadow_percentage > 0

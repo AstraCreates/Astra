@@ -17,6 +17,7 @@ import openai
 
 from backend.config import settings
 from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
+from backend.observability.tracing import model_call_span, tool_call_span
 from backend.runtime.budget import RunBudget
 from backend.runtime.context_compressor import AstraContextCompressor
 from backend.runtime.manifests import SpecialistManifest
@@ -684,6 +685,7 @@ class AgentContext:
     session_id: str
     shared: dict = field(default_factory=dict)
     bypass_approvals: bool = False
+    shadow_mode: bool = False
     task_id: str = ""
     dep_results: dict = field(default_factory=dict)
     vault_context: str = ""
@@ -922,162 +924,246 @@ class Agent:
             except Exception as _re:
                 logger.debug("[%s] budget reservation skipped: %s", self.name, _re)
 
-        _t0 = _time.monotonic()
-        resp = None
-        for _attempt in range(_max_attempts):
+        # Model gateway (Wave 5.1): route through LiteLLM instead of the direct
+        # OpenRouter client when this run's persisted feature_assignment has
+        # model_gateway_v2 on (backend/control_plane/rollout.py resolves it once
+        # at run creation -- never re-checked mid-run). Soft-fail to the direct
+        # path on any setup error so a gateway misconfiguration can't break
+        # agent calls, matching every other soft-fail in this method.
+        _gateway_active = False
+        _gateway_client = None
+        _gateway_kwargs = None
+        if ctx:
             try:
-                resp = self._get_llm().chat.completions.create(**kwargs)
-                # Some providers return a 200 with choices=None on an internal error
-                # (e.g. rate limit, 'json mode not supported'). Treat as transient and
-                # retry instead of crashing on resp.choices[0] later.
-                if getattr(resp, "choices", None):
-                    break
-                if _attempt < _max_attempts - 1:
-                    logger.warning("%s LLM returned no choices (attempt %d/%d) — rotating key + retry",
-                                   self.name, _attempt + 1, _max_attempts)
-                    self._llm = None
-                    _time.sleep(min(2.0 * (2 ** _attempt), 20.0))
-                    continue
-                break
-            except Exception as _e:
-                _status = getattr(_e, "status_code", None)
-                _is_rate = isinstance(_e, _openai.RateLimitError) or _status == 429
-                # A malformed/truncated HTTP body (provider returned non-JSON, partial
-                # JSON, or an HTML error page) surfaces as JSONDecodeError / APIError with
-                # no status code. That is a transient provider glitch, not a fatal bug —
-                # retrying usually succeeds. Without this, one bad response killed the
-                # entire run (every downstream agent orphaned).
-                # The OpenAI SDK itself raises raw TypeError/KeyError/IndexError while
-                # parsing a malformed/empty provider body (e.g. hy3-preview returns a
-                # response with no `choices`, and `_process_response` subscripts None →
-                # 'NoneType' object is not subscriptable). Treat those as a transient
-                # bad body and retry rather than letting them kill the agent.
-                _is_badbody = isinstance(_e, (_json.JSONDecodeError, _openai.APIResponseValidationError, TypeError, KeyError, IndexError)) or (
-                    isinstance(_e, _openai.APIError) and _status is None
-                )
-                _is_transient = (
-                    isinstance(_e, (_openai.APITimeoutError, _openai.APIConnectionError))
-                    or (isinstance(_status, int) and _status >= 500)
-                    or _is_badbody
-                )
-                if not (_is_rate or _is_transient):
-                    raise
-                if _attempt == _max_attempts - 1:
-                    # Exhausted retries on a flaky provider — return empty so the agent
-                    # loop handles it (re-prompt / finish) instead of crashing the run.
-                    logger.warning("%s LLM call failed after %d attempts (%s) — returning empty",
-                                   self.name, _max_attempts, type(_e).__name__)
-                    fallback = settings.astra_fallback_model
-                    if fallback and fallback != self.model:
-                        try:
-                            fallback_kwargs = {**kwargs, "model": fallback}
-                            resp = self._get_llm().chat.completions.create(**fallback_kwargs)
-                            if getattr(resp, "choices", None):
-                                runtime_metric("model_fallback_success_total")
-                                break
-                        except Exception:
-                            runtime_metric("model_fallback_failure_total")
-                    if _reservation is not None:
-                        # Early exit from inside the retry loop -- bypasses the
-                        # post-loop release-on-failure check below entirely.
-                        # Must release here too, or a total-failure call whose
-                        # fallback also fails leaks its reservation until TTL.
-                        try:
-                            from backend.control_plane.budget import get_default_budget_service
-                            get_default_budget_service().release(_reservation.id)
-                        except Exception:
-                            pass
-                    return ""
-                # Prefer the provider's Retry-After; else exponential backoff + jitter.
-                _retry_after = None
-                _r = getattr(_e, "response", None)
-                if _r is not None:
-                    try:
-                        _retry_after = float(_r.headers.get("retry-after"))
-                    except Exception:
-                        _retry_after = None
-                _base = 2.0 if _is_rate else 1.0
-                _delay = _retry_after if _retry_after else _base * (2 ** _attempt) + _random.uniform(0, 0.5)
-                _delay = min(_delay, 30.0)
-                logger.warning(
-                    "%s LLM call attempt %d/%d failed (%s status=%s); %s retry in %.1fs",
-                    self.name, _attempt + 1, _max_attempts, type(_e).__name__, _status,
-                    "rotating key," if _is_rate else "", _delay,
-                )
-                # Force a fresh client so OpenRouter rotates to the next key.
-                self._llm = None
-                _time.sleep(_delay)
-        _elapsed = _time.monotonic() - _t0
-        # Track token usage and deduct credits per call
-        if resp and getattr(resp, "usage", None) and ctx:
-            from backend.core.usage import record_usage
-            from backend.core.usage import _cost_usd
-            cached = getattr(resp.usage, "prompt_tokens_details", None)
-            def _usage_int(value) -> int:
-                return int(value) if isinstance(value, (int, float)) else 0
+                from backend.control_plane.gateway import get_gateway_client, is_model_gateway_enabled
+                from backend.control_plane.rollout import get_run_feature_assignment
 
-            cached_tokens = _usage_int(getattr(cached, "cached_tokens", 0) if cached else 0)
-            prompt_t = _usage_int(getattr(resp.usage, "prompt_tokens", 0))
-            completion_t = _usage_int(getattr(resp.usage, "completion_tokens", 0))
-            record_usage(ctx.session_id, self.model, prompt_t, completion_t, cached_tokens=cached_tokens)
-            if ctx.budget:
-                ctx.budget.record_usage(
-                    tokens=prompt_t + completion_t,
-                    cost_usd=_cost_usd(self.model, prompt_t, completion_t, cached_tokens),
-                )
-            # Emit model stats event (model name + tk/s) for UI display
-            try:
-                from backend.core.events import publish_sync
-                tks = round(completion_t / _elapsed, 1) if _elapsed > 0 else 0
-                publish_sync(ctx.session_id, {
-                    "type": "model_stats",
-                    "agent": self.name,
-                    "model": self.model,
-                    "tokens": prompt_t + completion_t,
-                    "completion_tokens": completion_t,
-                    "tks": tks,
-                })
-            except Exception:
-                pass
-            # Deduct credits = real API cost × markup (10×). Revenue scales with spend.
-            if not ctx.unlimited_credits:
+                _feature_assignment = get_run_feature_assignment(ctx.session_id, org_id=ctx.founder_id)
+                if is_model_gateway_enabled(_feature_assignment):
+                    _gateway_client = get_gateway_client(ctx.founder_id, ctx.session_id, ctx.task_id or None)
+                    _gateway_active = True
+            except Exception as _gs:
+                logger.debug("[%s] model gateway setup skipped: %s", self.name, _gs)
+
+        with model_call_span(
+            ctx.session_id if ctx else "",
+            str(getattr(ctx, "task_id", "") or "") if ctx else "",
+            self.model,
+            ("openrouter" if is_openrouter else "direct"),
+            0,
+            org_id=(ctx.founder_id if ctx else ""),
+        ) as _model_span:
+            if _gateway_active:
+                # Built here, not at gateway-setup time above: trace_id/span_id
+                # only exist once model_call_span has actually opened a span,
+                # and _reservation (if any) was already resolved earlier in
+                # this method -- both are best-effort join keys on the
+                # LiteLLM spend row, per PLAN.md's "request IDs linked to
+                # reservations and traces".
+                from backend.control_plane.gateway import gateway_extra_body, normalize_model_alias
+                from backend.observability.tracing import get_trace_ids
+
+                _trace_id, _span_id = get_trace_ids(_model_span)
+                _gateway_kwargs = {
+                    **kwargs,
+                    "model": normalize_model_alias(self.model),
+                    "extra_body": {
+                        **(kwargs.get("extra_body") or {}),
+                        **gateway_extra_body(
+                            ctx.founder_id, ctx.session_id, ctx.task_id or None,
+                            reservation_id=(_reservation.id if _reservation is not None else None),
+                            trace_id=_trace_id or None,
+                            span_id=_span_id or None,
+                        ),
+                    },
+                }
+            _t0 = _time.monotonic()
+            resp = None
+            for _attempt in range(_max_attempts):
                 try:
-                    from backend.credits.store import deduct_credits
-                    from backend.core.usage import cost_to_credits
-                    total_t = prompt_t + completion_t
-                    # Pass cached_tokens so cache hits bill at the cheaper cache rate.
-                    credits = cost_to_credits(self.model, prompt_t, completion_t, cached_tokens)
-                    if ctx.budget:
-                        ctx.budget.record_usage(credits=credits)
-                    if _reservation is not None:
-                        # Reconciles against the reservation (caps billing at
-                        # whichever of actual/reserved is smaller) instead of
-                        # deducting directly -- deduct_credits() would double-bill,
-                        # since commit() already calls the same underlying ledger.
-                        from backend.control_plane.budget import get_default_budget_service
-                        get_default_budget_service().commit(
-                            _reservation.id,
-                            actual_usd=_cost_usd(self.model, prompt_t, completion_t, cached_tokens),
-                            founder_id=ctx.founder_id,
-                        )
+                    if _gateway_active:
+                        try:
+                            resp = _gateway_client.chat.completions.create(**_gateway_kwargs)
+                        except (_openai.APIConnectionError, _openai.APITimeoutError) as _gw_e:
+                            from backend.control_plane.gateway import handle_gateway_connection_error
+
+                            handle_gateway_connection_error(
+                                _gw_e, direct_provider_disabled=settings.astra_direct_provider_disabled,
+                            )
+                            logger.warning(
+                                "%s gateway call failed (%s) -- falling back to direct provider",
+                                self.name, type(_gw_e).__name__,
+                            )
+                            _gateway_active = False
+                            resp = self._get_llm().chat.completions.create(**kwargs)
                     else:
-                        deduct_credits(ctx.founder_id, credits,
-                                       f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
-                    # Per-session running tally (durable) so each session/goal shows its
-                    # own credit spend, not just the founder-wide balance.
-                    from backend.core.session_store import add_session_credits
-                    add_session_credits(ctx.session_id, credits)
-                except Exception as _ce:
-                    logger.warning("Per-call credit deduction failed: %s", _ce)
-        if _reservation is not None and not (resp and getattr(resp, "usage", None) and ctx):
-            # Call never produced a usable response -- nothing was actually
-            # spent against this reservation (or ctx vanished), release it
-            # rather than leaving it "reserved" until TTL expiry for no reason.
-            try:
-                from backend.control_plane.budget import get_default_budget_service
-                get_default_budget_service().release(_reservation.id)
-            except Exception:
-                pass
+                        resp = self._get_llm().chat.completions.create(**kwargs)
+                    # Some providers return a 200 with choices=None on an internal error
+                    # (e.g. rate limit, 'json mode not supported'). Treat as transient and
+                    # retry instead of crashing on resp.choices[0] later.
+                    if getattr(resp, "choices", None):
+                        break
+                    if _attempt < _max_attempts - 1:
+                        logger.warning("%s LLM returned no choices (attempt %d/%d) — rotating key + retry",
+                                       self.name, _attempt + 1, _max_attempts)
+                        self._llm = None
+                        _time.sleep(min(2.0 * (2 ** _attempt), 20.0))
+                        continue
+                    break
+                except Exception as _e:
+                    _status = getattr(_e, "status_code", None)
+                    _is_rate = isinstance(_e, _openai.RateLimitError) or _status == 429
+                    # A malformed/truncated HTTP body (provider returned non-JSON, partial
+                    # JSON, or an HTML error page) surfaces as JSONDecodeError / APIError with
+                    # no status code. That is a transient provider glitch, not a fatal bug —
+                    # retrying usually succeeds. Without this, one bad response killed the
+                    # entire run (every downstream agent orphaned).
+                    # The OpenAI SDK itself raises raw TypeError/KeyError/IndexError while
+                    # parsing a malformed/empty provider body (e.g. hy3-preview returns a
+                    # response with no `choices`, and `_process_response` subscripts None →
+                    # 'NoneType' object is not subscriptable). Treat those as a transient
+                    # bad body and retry rather than letting them kill the agent.
+                    _is_badbody = isinstance(_e, (_json.JSONDecodeError, _openai.APIResponseValidationError, TypeError, KeyError, IndexError)) or (
+                        isinstance(_e, _openai.APIError) and _status is None
+                    )
+                    _is_transient = (
+                        isinstance(_e, (_openai.APITimeoutError, _openai.APIConnectionError))
+                        or (isinstance(_status, int) and _status >= 500)
+                        or _is_badbody
+                    )
+                    if not (_is_rate or _is_transient):
+                        raise
+                    if _attempt == _max_attempts - 1:
+                        # Exhausted retries on a flaky provider — return empty so the agent
+                        # loop handles it (re-prompt / finish) instead of crashing the run.
+                        logger.warning("%s LLM call failed after %d attempts (%s) — returning empty",
+                                       self.name, _max_attempts, type(_e).__name__)
+                        fallback = settings.astra_fallback_model
+                        if fallback and fallback != self.model:
+                            try:
+                                fallback_kwargs = {**kwargs, "model": fallback}
+                                resp = self._get_llm().chat.completions.create(**fallback_kwargs)
+                                if getattr(resp, "choices", None):
+                                    runtime_metric("model_fallback_success_total")
+                                    break
+                            except Exception:
+                                runtime_metric("model_fallback_failure_total")
+                        if _reservation is not None:
+                            # Early exit from inside the retry loop -- bypasses the
+                            # post-loop release-on-failure check below entirely.
+                            # Must release here too, or a total-failure call whose
+                            # fallback also fails leaks its reservation until TTL.
+                            try:
+                                from backend.control_plane.budget import get_default_budget_service
+                                get_default_budget_service().release(_reservation.id)
+                            except Exception:
+                                pass
+                        return ""
+                    # Prefer the provider's Retry-After; else exponential backoff + jitter.
+                    _retry_after = None
+                    _r = getattr(_e, "response", None)
+                    if _r is not None:
+                        try:
+                            _retry_after = float(_r.headers.get("retry-after"))
+                        except Exception:
+                            _retry_after = None
+                    _base = 2.0 if _is_rate else 1.0
+                    _delay = _retry_after if _retry_after else _base * (2 ** _attempt) + _random.uniform(0, 0.5)
+                    _delay = min(_delay, 30.0)
+                    logger.warning(
+                        "%s LLM call attempt %d/%d failed (%s status=%s); %s retry in %.1fs",
+                        self.name, _attempt + 1, _max_attempts, type(_e).__name__, _status,
+                        "rotating key," if _is_rate else "", _delay,
+                    )
+                    # Force a fresh client so OpenRouter rotates to the next key.
+                    self._llm = None
+                    _time.sleep(_delay)
+            _elapsed = _time.monotonic() - _t0
+            _model_span.set_attribute("retry.count", _attempt)
+            if _gateway_active:
+                _model_span.set_attribute("model.provider", "litellm_gateway")
+            # Track token usage and deduct credits per call
+            if resp and getattr(resp, "usage", None) and ctx:
+                from backend.core.usage import record_usage
+                from backend.core.usage import _cost_usd
+                cached = getattr(resp.usage, "prompt_tokens_details", None)
+                def _usage_int(value) -> int:
+                    return int(value) if isinstance(value, (int, float)) else 0
+
+                cached_tokens = _usage_int(getattr(cached, "cached_tokens", 0) if cached else 0)
+                prompt_t = _usage_int(getattr(resp.usage, "prompt_tokens", 0))
+                completion_t = _usage_int(getattr(resp.usage, "completion_tokens", 0))
+                _model_span.set_attribute("tokens.prompt", prompt_t)
+                _model_span.set_attribute("tokens.completion", completion_t)
+                _model_span.set_attribute("cost.usd", _cost_usd(self.model, prompt_t, completion_t, cached_tokens))
+                record_usage(ctx.session_id, self.model, prompt_t, completion_t, cached_tokens=cached_tokens)
+                if ctx.budget:
+                    ctx.budget.record_usage(
+                        tokens=prompt_t + completion_t,
+                        cost_usd=_cost_usd(self.model, prompt_t, completion_t, cached_tokens),
+                    )
+                # Emit model stats event (model name + tk/s) for UI display
+                try:
+                    from backend.core.events import publish_sync
+                    tks = round(completion_t / _elapsed, 1) if _elapsed > 0 else 0
+                    publish_sync(ctx.session_id, {
+                        "type": "model_stats",
+                        "agent": self.name,
+                        "model": self.model,
+                        "tokens": prompt_t + completion_t,
+                        "completion_tokens": completion_t,
+                        "tks": tks,
+                    })
+                except Exception:
+                    pass
+                # Deduct credits = real API cost × markup (10×). Revenue scales with spend.
+                if not ctx.unlimited_credits:
+                    try:
+                        from backend.credits.store import deduct_credits
+                        from backend.core.usage import cost_to_credits
+                        total_t = prompt_t + completion_t
+                        # Pass cached_tokens so cache hits bill at the cheaper cache rate.
+                        credits = cost_to_credits(self.model, prompt_t, completion_t, cached_tokens)
+                        if ctx.budget:
+                            ctx.budget.record_usage(credits=credits)
+                        if _reservation is not None:
+                            # Reconciles against the reservation (caps billing at
+                            # whichever of actual/reserved is smaller) instead of
+                            # deducting directly -- deduct_credits() would double-bill,
+                            # since commit() already calls the same underlying ledger.
+                            from backend.control_plane.budget import get_default_budget_service
+                            _actual_usd = _cost_usd(self.model, prompt_t, completion_t, cached_tokens)
+                            if _gateway_active:
+                                # Gateway reports its own real provider cost via LiteLLM's
+                                # response_cost -- more accurate than our static rate table
+                                # (backend/core/usage.py's _cost_usd), so prefer it when present.
+                                from backend.control_plane.gateway import reconcile_gateway_usage
+                                _, _, _gw_cost, _ = reconcile_gateway_usage(resp)
+                                if _gw_cost > 0:
+                                    _actual_usd = _gw_cost
+                            get_default_budget_service().commit(
+                                _reservation.id,
+                                actual_usd=_actual_usd,
+                                founder_id=ctx.founder_id,
+                            )
+                        else:
+                            deduct_credits(ctx.founder_id, credits,
+                                           f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
+                        # Per-session running tally (durable) so each session/goal shows its
+                        # own credit spend, not just the founder-wide balance.
+                        from backend.core.session_store import add_session_credits
+                        add_session_credits(ctx.session_id, credits)
+                    except Exception as _ce:
+                        logger.warning("Per-call credit deduction failed: %s", _ce)
+            if _reservation is not None and not (resp and getattr(resp, "usage", None) and ctx):
+                # Call never produced a usable response -- nothing was actually
+                # spent against this reservation (or ctx vanished), release it
+                # rather than leaving it "reserved" until TTL expiry for no reason.
+                try:
+                    from backend.control_plane.budget import get_default_budget_service
+                    get_default_budget_service().release(_reservation.id)
+                except Exception:
+                    pass
         if not resp or not getattr(resp, "choices", None):
             # Provider never returned a usable completion after all retries — return
             # empty so the agent loop handles it (re-prompt / finish) instead of crashing.
@@ -2443,6 +2529,26 @@ class Agent:
                              reason=snapshot.exhausted_reason, budget=snapshot.__dict__)
             return {"error": f"Tool budget exhausted: {snapshot.exhausted_reason}"}
         guardrail_decision = None
+        if ctx.shadow_mode:
+            try:
+                from backend.runtime.catalog import infer_mutability
+
+                if infer_mutability(tool_name) == "external":
+                    await self._emit(
+                        ctx,
+                        "tool_guardrail_blocked",
+                        tool=tool_name,
+                        code="shadow_no_side_effects",
+                        message=f"Shadow mode blocked external side effect: {tool_name}",
+                        count=1,
+                    )
+                    return {
+                        "error": f"Shadow mode blocked external side effect: {tool_name}",
+                        "guardrail": "shadow_no_side_effects",
+                        "shadow_mode": True,
+                    }
+            except Exception:
+                pass
         if ctx.guardrails:
             guardrail_decision = ctx.guardrails.before_call(tool_name, args)
             if guardrail_decision.action == "warn":
@@ -2456,6 +2562,7 @@ class Agent:
                 return {"error": guardrail_decision.message, "guardrail": guardrail_decision.code}
         import time as _time
         saferun_action = None
+        approval_request = None
         try:
             from backend.core.events import publish
             from backend.safety import build_saferun_action
@@ -2482,6 +2589,25 @@ class Agent:
                     agent=self.name,
                     risk_level=saferun_action.get("risk_level", "medium"),
                 )
+                try:
+                    from backend.control_plane.action_executor import get_default_repo_bundle
+                    from backend.control_plane.models import ApprovalRequest as DurableApprovalRequest
+
+                    durable_approval = DurableApprovalRequest(
+                        id=str(approval_request["id"]),
+                        run_id=ctx.session_id,
+                        action_id=str(saferun_action.get("id") or ""),
+                        gate_key=str(gate_key),
+                        action_digest=str(approval_request["action_digest"]),
+                        required_role="owner",
+                        policy_version="v1",
+                        status="pending",
+                        expires_at=approval_request.get("expires_at"),
+                        revision=int(approval_request.get("revision") or 1),
+                    )
+                    await asyncio.to_thread(get_default_repo_bundle().approval_repo.create, durable_approval)
+                except Exception as durable_exc:
+                    logger.warning("[%s] Durable SafeRun approval mirror failed for %s: %s", self.name, tool_name, durable_exc)
                 await publish(ctx.session_id, {
                     "type": "approval_request",
                     "request": approval_request,
@@ -2578,95 +2704,138 @@ class Agent:
         logger.debug("[%s] → %s  args=%s", self.name, tool_name, args_preview)
         t0 = _time.monotonic()
         _tool_timeout = _LONG_RUNNING_TOOL_TIMEOUTS.get(tool_name, _DEFAULT_TOOL_TIMEOUT_SECONDS)
-        try:
+        entry = self._runtime_entries.get(tool_name)
+
+        async def _invoke_effect(invocation_args: dict, provider_idempotency_key: str | None = None) -> Any:
+            call_args = dict(invocation_args or {})
+            if provider_idempotency_key and "idempotency_key" in _sig_params and "idempotency_key" not in call_args:
+                call_args["idempotency_key"] = provider_idempotency_key
             from backend.core import cancellation
+
             cancellation.check_fence(ctx.session_id, self.name)
-            entry = self._runtime_entries.get(tool_name)
             if settings.astra_tool_registry_v2 and entry:
-                result = await asyncio.wait_for(
-                    runtime_tool_registry.dispatch(entry, args, {
+                return await asyncio.wait_for(
+                    runtime_tool_registry.dispatch(entry, call_args, {
                         "session_id": ctx.session_id,
                         "founder_id": ctx.founder_id,
                         "agent": self.name,
                     }),
                     timeout=_tool_timeout,
                 )
-            elif asyncio.iscoroutinefunction(fn):
+            if asyncio.iscoroutinefunction(fn):
                 cancellation.check_fence(ctx.session_id, self.name)
-                result = await asyncio.wait_for(fn(**args), timeout=_tool_timeout)
-            else:
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(cancellation.run_sync_with_fence, ctx.session_id, self.name, fn, args),
-                    timeout=_tool_timeout,
-                )
-            elapsed = _time.monotonic() - t0
-            if ctx.guardrails:
-                post = ctx.guardrails.after_call(
-                    tool_name, args, result,
-                    failed=isinstance(result, dict) and bool(result.get("error")),
-                )
-                if post.action == "warn":
-                    await self._emit(ctx, "tool_guardrail_warning", tool=tool_name,
-                                     code=post.code, message=post.message, count=post.count)
-            # Redact credential-bearing keys before result enters LLM context
-            if isinstance(result, dict):
-                try:
-                    result = self._security_layer.sanitize_output(tool_name, result)  # type: ignore[attr-defined]
-                except Exception:
-                    pass
-            result_preview = str(result)[:200] if result is not None else "None"
-            logger.debug("[%s] ← %s  %.1fs  result=%.200s", self.name, tool_name, elapsed, result_preview)
-            if saferun_action:
-                try:
-                    from backend.core.events import publish
-                    await publish(ctx.session_id, {
-                        "type": "saferun_result",
-                        "action_id": saferun_action["id"],
-                        "tool": tool_name,
-                        "agent": self.name,
-                        "status": "error" if isinstance(result, dict) and result.get("error") else "executed",
-                        "result_preview": result_preview,
-                        "elapsed_seconds": round(elapsed, 2),
-                    })
-                except Exception as e:
-                    logger.warning("[%s] SafeRun result emit failed for %s: %s", self.name, tool_name, e)
-            return result
-        except asyncio.TimeoutError:
-            elapsed = _time.monotonic() - t0
-            logger.error("[%s] ✗ %s  %.1fs  TimeoutError: timed out after %ss", self.name, tool_name, elapsed, _tool_timeout)
-            if saferun_action:
-                try:
-                    from backend.core.events import publish
-                    await publish(ctx.session_id, {
-                        "type": "saferun_result",
-                        "action_id": saferun_action["id"],
-                        "tool": tool_name,
-                        "agent": self.name,
-                        "status": "error",
-                        "result_preview": f"timed out after {_tool_timeout}s",
-                        "elapsed_seconds": round(elapsed, 2),
-                    })
-                except Exception as emit_error:
-                    logger.warning("[%s] SafeRun timeout emit failed for %s: %s", self.name, tool_name, emit_error)
-            return {"error": f"Tool '{tool_name}' timed out after {_tool_timeout}s", "timed_out": True, "tool": tool_name}
-        except Exception as e:
-            elapsed = _time.monotonic() - t0
-            logger.error("[%s] ✗ %s  %.1fs  %s: %s", self.name, tool_name, elapsed, type(e).__name__, e)
-            if saferun_action:
-                try:
-                    from backend.core.events import publish
-                    await publish(ctx.session_id, {
-                        "type": "saferun_result",
-                        "action_id": saferun_action["id"],
-                        "tool": tool_name,
-                        "agent": self.name,
-                        "status": "error",
-                        "result_preview": str(e)[:240],
-                        "elapsed_seconds": round(elapsed, 2),
-                    })
-                except Exception as emit_error:
-                    logger.warning("[%s] SafeRun error emit failed for %s: %s", self.name, tool_name, emit_error)
-            return {"error": str(e)}
+                return await asyncio.wait_for(fn(**call_args), timeout=_tool_timeout)
+            return await asyncio.wait_for(
+                asyncio.to_thread(cancellation.run_sync_with_fence, ctx.session_id, self.name, fn, call_args),
+                timeout=_tool_timeout,
+            )
+
+        with tool_call_span(ctx.session_id, str(ctx.task_id or ""), tool_name, org_id=ctx.founder_id):
+            try:
+                if saferun_action:
+                    from backend.control_plane.action_executor import (
+                        ExternalActionRequest,
+                        execute_external_action,
+                        get_default_repo_bundle,
+                    )
+                    from backend.core import cancellation
+
+                    bundle = get_default_repo_bundle()
+                    execution = await execute_external_action(
+                        ExternalActionRequest(
+                            run_id=ctx.session_id,
+                            step_id=ctx.task_id or self.name,
+                            action_id=str(saferun_action.get("id") or ""),
+                            tool=tool_name,
+                            args=args,
+                            risk_level=str(saferun_action.get("risk_level") or "low"),
+                            policy_version="v1",
+                            org_id=ctx.founder_id,
+                            approval_id=(str(approval_request["id"]) if approval_request else None),
+                            approval_action_digest=(str(approval_request["action_digest"]) if approval_request else None),
+                            require_approval=bool(
+                                approval_request
+                                and saferun_action.get("approval_required")
+                                and not ctx.bypass_approvals
+                            ),
+                        ),
+                        action_repo=bundle.action_repo,
+                        receipt_repo=bundle.receipt_repo,
+                        approval_repo=bundle.approval_repo,
+                        execute_effect=_invoke_effect,
+                        is_cancelled=lambda run_id: cancellation.is_killed(run_id),
+                    )
+                    result = execution.provider_result
+                else:
+                    result = await _invoke_effect(args)
+                elapsed = _time.monotonic() - t0
+                if ctx.guardrails:
+                    post = ctx.guardrails.after_call(
+                        tool_name, args, result,
+                        failed=isinstance(result, dict) and bool(result.get("error")),
+                    )
+                    if post.action == "warn":
+                        await self._emit(ctx, "tool_guardrail_warning", tool=tool_name,
+                                         code=post.code, message=post.message, count=post.count)
+                # Redact credential-bearing keys before result enters LLM context
+                if isinstance(result, dict):
+                    try:
+                        result = self._security_layer.sanitize_output(tool_name, result)  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+                result_preview = str(result)[:200] if result is not None else "None"
+                logger.debug("[%s] ← %s  %.1fs  result=%.200s", self.name, tool_name, elapsed, result_preview)
+                if saferun_action:
+                    try:
+                        from backend.core.events import publish
+                        await publish(ctx.session_id, {
+                            "type": "saferun_result",
+                            "action_id": saferun_action["id"],
+                            "tool": tool_name,
+                            "agent": self.name,
+                            "status": "error" if isinstance(result, dict) and result.get("error") else "executed",
+                            "result_preview": result_preview,
+                            "elapsed_seconds": round(elapsed, 2),
+                        })
+                    except Exception as e:
+                        logger.warning("[%s] SafeRun result emit failed for %s: %s", self.name, tool_name, e)
+                return result
+            except asyncio.TimeoutError:
+                elapsed = _time.monotonic() - t0
+                logger.error("[%s] ✗ %s  %.1fs  TimeoutError: timed out after %ss", self.name, tool_name, elapsed, _tool_timeout)
+                if saferun_action:
+                    try:
+                        from backend.core.events import publish
+                        await publish(ctx.session_id, {
+                            "type": "saferun_result",
+                            "action_id": saferun_action["id"],
+                            "tool": tool_name,
+                            "agent": self.name,
+                            "status": "error",
+                            "result_preview": f"timed out after {_tool_timeout}s",
+                            "elapsed_seconds": round(elapsed, 2),
+                        })
+                    except Exception as emit_error:
+                        logger.warning("[%s] SafeRun timeout emit failed for %s: %s", self.name, tool_name, emit_error)
+                return {"error": f"Tool '{tool_name}' timed out after {_tool_timeout}s", "timed_out": True, "tool": tool_name}
+            except Exception as e:
+                elapsed = _time.monotonic() - t0
+                logger.error("[%s] ✗ %s  %.1fs  %s: %s", self.name, tool_name, elapsed, type(e).__name__, e)
+                if saferun_action:
+                    try:
+                        from backend.core.events import publish
+                        await publish(ctx.session_id, {
+                            "type": "saferun_result",
+                            "action_id": saferun_action["id"],
+                            "tool": tool_name,
+                            "agent": self.name,
+                            "status": "error",
+                            "result_preview": str(e)[:240],
+                            "elapsed_seconds": round(elapsed, 2),
+                        })
+                    except Exception as emit_error:
+                        logger.warning("[%s] SafeRun error emit failed for %s: %s", self.name, tool_name, emit_error)
+                return {"error": str(e)}
 
     def _normalize_done_output(
         self,

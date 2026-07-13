@@ -84,6 +84,12 @@ async def startup_background_jobs():
     if not runtime_env.get("ok") and runtime_env.get("mode") == "production":
         raise RuntimeError(runtime_env.get("summary") or "Production env validation failed.")
 
+    # Wave 5.2: OTel is mandatory (unlike the still-disabled Langfuse flag). Must run
+    # before any run/workflow/agent code so get_tracer() is populated by the time the
+    # first request lands; init_tracing() itself never raises.
+    from backend.observability.tracing import init_tracing
+    init_tracing()
+
     # Store main event loop so publish_sync works from threads
     from backend.core.events import set_main_loop
     loop = asyncio.get_running_loop()

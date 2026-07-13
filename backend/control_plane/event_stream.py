@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 _STREAM_MAXLEN = 5000
 _STREAM_BLOCK_MS = 30000
+_OUTBOX_MAX_ATTEMPTS = 5
+_STREAM_MAX_AGE_MS = 1000 * 60 * 60 * 24
 
 
 def _fmt_sse(sequence: int, payload: dict[str, Any]) -> str:
@@ -34,6 +36,18 @@ def _parse_stream_sequence(stream_id: str) -> int:
         return 0
 
 
+def _utc_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _trim_stream(redis_client: Any, key: str) -> None:
+    try:
+        min_timestamp_ms = max(0, int(time.time() * 1000) - _STREAM_MAX_AGE_MS)
+        redis_client.xtrim(key, minid=f"{min_timestamp_ms}-0", approximate=True)
+    except Exception:
+        pass
+
+
 async def publish_outbox_batch(limit: int = 100) -> int:
     return await asyncio.to_thread(_publish_outbox_batch_sync, limit)
 
@@ -48,8 +62,9 @@ def _publish_outbox_batch_sync(limit: int = 100) -> int:
 
     rows = (
         get_supabase().table("astra_outbox")
-        .select("id,run_id,event_sequence,payload,attempts")
+        .select("id,run_id,event_sequence,payload,attempts,last_error")
         .is_("published_at", "null")
+        .is_("dead_lettered_at", "null")
         .order("created_at")
         .limit(limit)
         .execute()
@@ -75,19 +90,41 @@ def _publish_outbox_batch_sync(limit: int = 100) -> int:
                 maxlen=_STREAM_MAXLEN,
                 approximate=True,
             )
+            _trim_stream(redis_client, key)
         except Exception as exc:
             if "equal or smaller" not in str(exc).lower():
-                logger.warning("Redis stream publish failed for outbox_id=%s run_id=%s: %s", outbox_id, run_id, exc)
+                attempts = int(row.get("attempts") or 0) + 1
+                patch: dict[str, Any] = {
+                    "attempts": attempts,
+                    "last_error": str(exc)[:2000],
+                }
+                if attempts >= _OUTBOX_MAX_ATTEMPTS:
+                    patch["dead_lettered_at"] = _utc_now()
+                    logger.error(
+                        "Redis stream publish dead-lettered outbox_id=%s run_id=%s attempts=%s error=%s",
+                        outbox_id, run_id, attempts, exc,
+                    )
+                else:
+                    logger.warning(
+                        "Redis stream publish failed for outbox_id=%s run_id=%s attempt=%s: %s",
+                        outbox_id, run_id, attempts, exc,
+                    )
+                (
+                    get_supabase().table("astra_outbox")
+                    .update(patch)
+                    .eq("id", outbox_id)
+                    .execute()
+                )
                 continue
         (
             get_supabase().table("astra_outbox")
-            .update({"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "attempts": int(row.get("attempts") or 0) + 1})
+            .update({"published_at": _utc_now(), "attempts": int(row.get("attempts") or 0) + 1, "last_error": None})
             .eq("id", outbox_id)
             .execute()
         )
         (
             get_supabase().table("astra_run_events")
-            .update({"published_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            .update({"published_at": _utc_now()})
             .eq("run_id", run_id)
             .eq("sequence", event_sequence)
             .execute()

@@ -315,7 +315,7 @@ async def run_company_cycle(
     """Run the current goal now — dispatch the whole agent system on its open tasks
     in a child session linked to the launch session."""
     from backend.missions.company_goal import get_company_goal as load_company_goal, current_goal, reconcile_operating_sessions
-    from backend.missions.goal_engine import dispatch_current_goal
+    from backend.missions.goal_engine import launch_current_goal_dispatch
     from backend.core.session_store import has_active_run
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
@@ -338,28 +338,8 @@ async def run_company_cycle(
     reconcile_operating_sessions(founder_id, resolved_company_id)
     if has_active_run(founder_id, company_id=resolved_company_id):
         raise HTTPException(status_code=409, detail="A run is already in progress — wait for it to finish")
-    # Pre-register the operating session so we can return its ID immediately.
-    # The orchestrator is then kicked off as an asyncio task (non-blocking).
-    from backend.core.session_ids import new_session_id
-    from backend.core.session_store import register_session, get_session_meta
-    import asyncio as _asyncio
-    root = goal.get("root_session_id") or goal.get("source_session_id") or ""
-    root_meta = get_session_meta(root) if root else {}
-    pre_sid = new_session_id()
-    try:
-        register_session(
-            session_id=pre_sid,
-            founder_id=founder_id,
-            goal=f"GOAL: {cg.get('title', 'Goal run')}",
-            workspace_id=str((root_meta or {}).get("workspace_id") or ""),
-            company_id=str((root_meta or {}).get("company_id") or resolved_company_id),
-            parent_session_id=root,
-            kind="user",
-        )
-    except Exception:
-        pass
-    _asyncio.create_task(dispatch_current_goal(founder_id, resolved_company_id, _pre_session_id=pre_sid))
-    return {"ok": True, "session_id": pre_sid, "parent_session_id": goal.get("root_session_id", "")}
+    launch = launch_current_goal_dispatch(founder_id, resolved_company_id)
+    return {"ok": True, "session_id": launch["session_id"], "parent_session_id": goal.get("root_session_id", "")}
 
 
 class ApproveNextGoalBody(BaseModel):
@@ -380,7 +360,7 @@ async def approve_next_goal(
     from backend.missions.company_goal import (
         approve_current_goal, reject_current_goal, reconcile_operating_sessions,
     )
-    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
+    from backend.missions.goal_engine import launch_current_goal_dispatch, plan_next_goal
     from backend.core.session_store import has_active_run
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
@@ -403,27 +383,7 @@ async def approve_next_goal(
     reconcile_operating_sessions(body.founder_id, company_id)
     pre_sid = ""
     if not has_active_run(body.founder_id, company_id=company_id):
-        from backend.core.session_ids import new_session_id
-        from backend.core.session_store import register_session, get_session_meta
-        from backend.missions.company_goal import current_goal as _cg
-        import asyncio as _asyncio
-        _cg_entry = _cg(body.founder_id, company_id) or {}
-        root = goal.get("root_session_id") or goal.get("source_session_id") or ""
-        root_meta = get_session_meta(root) if root else {}
-        pre_sid = new_session_id()
-        try:
-            register_session(
-                session_id=pre_sid,
-                founder_id=body.founder_id,
-                goal=f"GOAL: {_cg_entry.get('title', 'Goal run')}",
-                workspace_id=str((root_meta or {}).get("workspace_id") or ""),
-                company_id=str((root_meta or {}).get("company_id") or company_id),
-                parent_session_id=root,
-                kind="user",
-            )
-        except Exception:
-            pass
-        _asyncio.create_task(dispatch_current_goal(body.founder_id, company_id, _pre_session_id=pre_sid))
+        pre_sid = launch_current_goal_dispatch(body.founder_id, company_id)["session_id"]
     return {"ok": True, "goal": goal, "session_id": pre_sid}
 
 
@@ -637,13 +597,30 @@ async def run_mission(
 ):
     """Trigger an immediate manual run of a mission in the background."""
     from backend.missions.runner import run_mission as mission_runner
+    from backend.control_plane.start_run import register_background_run
 
     mission = _mission_for_request(request, mission_id, min_role="operator")
 
     if mission.get("status") == "paused":
         raise HTTPException(status_code=409, detail="Mission is paused — resume it before running")
 
-    session_id = new_session_id()
-    background_tasks.add_task(mission_runner, mission_id=mission_id, session_id=session_id)
-    logger.info("Mission manual run triggered: %s session=%s", mission_id, session_id)
-    return {"ok": True, "session_id": session_id}
+    department = str(mission.get("department") or "")
+    instruction = str(mission.get("goal") or mission.get("name") or mission_id)
+    result = await register_background_run(
+        founder_id=str(mission.get("founder_id") or ""),
+        instruction=instruction,
+        request=request,
+        run_id=new_session_id(),
+        company_id=str(mission.get("company_id") or mission.get("founder_id") or ""),
+        stack_id="mission",
+        constraints={"agents": [department], "mission_id": mission_id, "mission_department": department},
+        kind="user",
+    )
+    background_tasks.add_task(
+        mission_runner,
+        mission_id=mission_id,
+        session_id=result.session_id,
+        skip_session_registration=True,
+    )
+    logger.info("Mission manual run triggered via control plane: %s session=%s", mission_id, result.session_id)
+    return {"ok": True, "session_id": result.session_id, "run_id": result.run_id, "status": result.status}

@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
+from datetime import timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,10 @@ _status: dict[str, Any] = {
     "last_tick_at": None,
     "last_missions_run": 0,
     "last_error": "",
+    "mode": "legacy",
+    "schedule_id": "",
 }
+_TEMPORAL_SCHEDULE_ID = "astra-missions-safety-net"
 
 
 def _now_iso() -> str:
@@ -59,6 +64,55 @@ def _budget_allows(mission: dict) -> bool:
     budget: dict = mission.get("budget") or {}
     max_runs: int = int(budget.get("max_runs_per_day") or 1)
     return _runs_today(mission) < max_runs
+
+
+def _temporal_scheduler_enabled() -> bool:
+    return os.getenv("ASTRA_TEMPORAL_MISSIONS_SCHEDULE", "1") != "0"
+
+
+async def _ensure_temporal_schedule(interval_seconds: int) -> dict[str, Any]:
+    from temporalio.client import (
+        Schedule,
+        ScheduleActionStartWorkflow,
+        ScheduleIntervalSpec,
+        ScheduleSpec,
+    )
+
+    from backend.control_plane.temporal.contracts import TASK_QUEUE
+    from backend.control_plane.temporal.dispatch import _get_client
+
+    client = await _get_client()
+    schedule = Schedule(
+        action=ScheduleActionStartWorkflow(
+            "AstraMissionSchedulerTick",
+            id="astra-missions-scheduler-tick",
+            task_queue=TASK_QUEUE,
+        ),
+        spec=ScheduleSpec(
+            intervals=[ScheduleIntervalSpec(every=timedelta(seconds=max(60, int(interval_seconds or 3600))))],
+        ),
+    )
+    try:
+        await client.create_schedule(_TEMPORAL_SCHEDULE_ID, schedule)
+    except Exception as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+    _status.update({
+        "running": True,
+        "interval_seconds": max(60, int(interval_seconds or 3600)),
+        "last_error": "",
+        "mode": "temporal",
+        "schedule_id": _TEMPORAL_SCHEDULE_ID,
+    })
+    return get_missions_scheduler_status()
+
+
+async def _delete_temporal_schedule() -> None:
+    from backend.control_plane.temporal.dispatch import _get_client
+
+    client = await _get_client()
+    handle = client.get_schedule_handle(_TEMPORAL_SCHEDULE_ID)
+    await handle.delete()
 
 
 async def _scheduler_tick() -> int:
@@ -166,16 +220,31 @@ def start_missions_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
         Current scheduler status dict.
     """
     global _task, _stop_event, _status
+    interval = max(60, int(interval_seconds or 3600))
+    if _temporal_scheduler_enabled():
+        try:
+            asyncio.create_task(_ensure_temporal_schedule(interval))
+            _status.update({
+                "running": True,
+                "interval_seconds": interval,
+                "last_error": "",
+                "mode": "temporal",
+                "schedule_id": _TEMPORAL_SCHEDULE_ID,
+            })
+            return get_missions_scheduler_status()
+        except Exception as exc:
+            logger.warning("missions_scheduler: temporal schedule bootstrap failed, falling back to legacy: %s", exc)
+            _status["last_error"] = str(exc)
     if _task and not _task.done():
         logger.debug("missions_scheduler: already running, ignoring start request")
         return get_missions_scheduler_status()
-
-    interval = max(60, int(interval_seconds or 3600))
     _stop_event = asyncio.Event()
     _status.update({
         "running": True,
         "interval_seconds": interval,
         "last_error": "",
+        "mode": "legacy",
+        "schedule_id": "",
     })
     _task = asyncio.create_task(_loop(interval))
     logger.info("missions_scheduler: started (interval=%ds)", interval)
@@ -190,6 +259,11 @@ async def stop_missions_scheduler() -> dict[str, Any]:
     """
     global _task, _stop_event, _status
     logger.info("missions_scheduler: stopping")
+    if _status.get("mode") == "temporal" and _status.get("schedule_id"):
+        try:
+            await _delete_temporal_schedule()
+        except Exception as exc:
+            logger.warning("missions_scheduler: temporal schedule delete failed: %s", exc)
     if _stop_event:
         _stop_event.set()
     if _task:
@@ -197,7 +271,7 @@ async def stop_missions_scheduler() -> dict[str, Any]:
             await asyncio.wait_for(_task, timeout=10)
         except Exception:
             _task.cancel()
-    _status["running"] = False
+    _status.update({"running": False, "schedule_id": ""})
     return get_missions_scheduler_status()
 
 
@@ -207,5 +281,8 @@ def get_missions_scheduler_status() -> dict[str, Any]:
     Returns:
         Dict with ``ok`` and ``scheduler`` keys.
     """
-    alive = bool(_task and not _task.done())
+    if _status.get("mode") == "temporal" and _status.get("schedule_id"):
+        alive = bool(_status.get("running"))
+    else:
+        alive = bool(_task and not _task.done())
     return {"ok": True, "scheduler": {**_status, "running": alive}}

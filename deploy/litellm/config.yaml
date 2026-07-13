@@ -1,0 +1,69 @@
+# Wave 5.1 LiteLLM proxy config (Astra -> LiteLLM -> Headroom -> OpenRouter).
+#
+# model_name values are the literal OpenRouter model strings Astra already
+# sends as `model=` in backend/core/agent.py (self.model, sourced from the
+# *_model_name / *_model settings in backend/config.py) -- keep this list in
+# sync with backend/control_plane/gateway.py::normalize_model_alias, which
+# must resolve to names declared here. All routes go through OpenRouter;
+# Headroom stays a separate, upstream compression hop and is not configured
+# here (backend points AGENT_MODEL_BASE_URL/OPENROUTER_BASE_URL at Headroom
+# already -- LiteLLM calls OpenRouter directly, same as the direct path does
+# today via backend/core/factory.py).
+model_list:
+  - model_name: deepseek/deepseek-v4-flash
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-flash
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: deepseek/deepseek-v4-pro
+    litellm_params:
+      model: openrouter/deepseek/deepseek-v4-pro
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: xiaomi/mimo-v2.5
+    litellm_params:
+      model: openrouter/xiaomi/mimo-v2.5
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: openai/gpt-oss-120b
+    litellm_params:
+      model: openrouter/openai/gpt-oss-120b
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: moonshotai/kimi-k2.5
+    litellm_params:
+      model: openrouter/moonshotai/kimi-k2.5
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: google/gemini-2.5-pro
+    litellm_params:
+      model: openrouter/google/gemini-2.5-pro
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: google/gemini-3.1-flash-lite
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-lite
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: perplexity/sonar
+    litellm_params:
+      model: openrouter/perplexity/sonar
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: inclusionai/ling-2.6-flash
+    litellm_params:
+      model: openrouter/inclusionai/ling-2.6-flash
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+general_settings:
+  database_url: os.environ/DATABASE_URL
+  master_key: os.environ/LITELLM_MASTER_KEY

@@ -1339,6 +1339,29 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
     )
     if not workflow.get("ok"):
         raise HTTPException(status_code=400, detail=workflow.get("error") or "approval decision failed")
+    durable_approval = None
+    resolved_request = workflow["requests"][0]
+    resolved_request_id = str(resolved_request.get("id") or resolved_request.get("approval_id") or body.request_id or body.approval_id or "")
+    resolved_digest = str(resolved_request.get("action_digest") or body.expected_action_digest or "")
+    try:
+        from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository
+
+        durable_repo = SupabaseApprovalRequestRepository()
+        durable_approval = await asyncio.to_thread(durable_repo.get, resolved_request_id)
+        if durable_approval is not None and durable_approval.run_id == body.session_id:
+            if resolved_digest and durable_approval.action_digest != resolved_digest:
+                raise HTTPException(status_code=409, detail="expected_action_digest does not match the pending durable approval request")
+            durable_approval = await asyncio.to_thread(
+                durable_repo.decide,
+                durable_approval.id,
+                decision,
+                decided_by=actor_id,
+                note=body.note,
+            )
+    except HTTPException:
+        raise
+    except Exception as durable_exc:
+        logger.warning("Durable approval mirror skipped for session=%s request=%s: %s", body.session_id, resolved_request_id, durable_exc)
     if body.founder_id:
         try:
             from backend.accounts import record_usage
@@ -1353,25 +1376,31 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
         "note": body.note,
         "workflow": workflow,
     }
-    resolved_request = workflow["requests"][0]
-    resolved_request_id = str(resolved_request.get("id") or resolved_request.get("approval_id") or body.request_id or body.approval_id or "")
-    resolved_digest = str(resolved_request.get("action_digest") or body.expected_action_digest or "")
     event["request_id"] = resolved_request_id
     event["approval_id"] = str(resolved_request.get("approval_id") or resolved_request_id)
     event["action_digest"] = resolved_digest
     approval_decision_push(body.session_id, resolved_request_id, resolved_digest, event)
     await publish(body.session_id, event)
-    return {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision, "requests": workflow["requests"]}
+    response = {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision, "requests": workflow["requests"]}
+    if durable_approval is not None:
+        response["durable_approval"] = durable_approval.model_dump(mode="json")
+    return response
 
 
 @router.post("/runs/{run_id}/approvals/{approval_id}/decision")
 async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDecisionRequest, request: Request):
     await _require_session_access(request, run_id, min_role="viewer")
-    from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository
+    from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository, SupabaseRunRepository
+    from backend.control_plane.temporal.dispatch import send_approval_decision
 
     approval = await asyncio.to_thread(SupabaseApprovalRequestRepository().get, approval_id)
     if approval is None or approval.run_id != run_id:
         raise HTTPException(status_code=404, detail="approval not found")
+    if approval.status != "pending":
+        raise HTTPException(status_code=409, detail=f"approval is already {approval.status}")
+    expected_action_digest = body.expected_action_digest or approval.action_digest
+    if expected_action_digest != approval.action_digest:
+        raise HTTPException(status_code=409, detail="expected_action_digest does not match the pending approval request")
     delegate = StackApprovalDecisionRequest(
         session_id=run_id,
         gate_key=body.gate_key or approval.gate_key,
@@ -1379,15 +1408,39 @@ async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDe
         founder_id=body.founder_id,
         request_id=approval.id,
         approval_id=approval.id,
-        expected_action_digest=body.expected_action_digest or approval.action_digest,
+        expected_action_digest=expected_action_digest,
         note=body.note,
     )
     result = await decide_stack_approval(delegate, request)
+    actor_id = actor_or_body(request)
+    decided = await asyncio.to_thread(
+        SupabaseApprovalRequestRepository().decide,
+        approval.id,
+        body.decision.lower().strip(),
+        decided_by=actor_id,
+        note=body.note,
+    )
+    run = await asyncio.to_thread(SupabaseRunRepository().get, run_id)
+    temporal_signaled = False
+    if (run and str(run.engine or "").lower() == "temporal") or (
+        run and str((run.metadata or {}).get("workflow_id") or "").startswith("astra-run/")
+    ):
+        temporal_signaled = await send_approval_decision(
+            run_id,
+            approval_id=approval.id,
+            action_digest=approval.action_digest,
+            decision=body.decision.lower().strip(),
+            policy_version=approval.policy_version,
+            decided_by=actor_id,
+            note=body.note,
+        )
     return {
         "ok": True,
         "run_id": run_id,
         "approval_id": approval_id,
         "decision": body.decision,
+        "approval": decided.model_dump(mode="json"),
+        "temporal_signaled": temporal_signaled,
         "result": result,
     }
 
@@ -1396,15 +1449,23 @@ async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDe
 async def get_run_trace(run_id: str, request: Request):
     await _require_session_access(request, run_id, min_role="viewer")
     from backend.core.session_store import get_session_meta
+    from backend.control_plane.supabase_repositories import SupabaseRunRepository
 
     meta = get_session_meta(run_id) or {}
+    run = await asyncio.to_thread(SupabaseRunRepository().get, run_id)
+    run_metadata = dict((run.metadata or {}) if run else {})
+    engine = str((run.engine if run else "") or meta.get("engine") or "")
+    workflow_id = str(run_metadata.get("workflow_id") or meta.get("workflow_id") or "")
+    task_queue = str(run_metadata.get("temporal_task_queue") or meta.get("temporal_task_queue") or "")
+    trace_id = str(run_metadata.get("trace_id") or meta.get("trace_id") or "")
+    span_id = str(run_metadata.get("span_id") or meta.get("span_id") or "")
     return {
         "run_id": run_id,
-        "engine": str(meta.get("engine") or ""),
-        "workflow_id": str(meta.get("workflow_id") or ""),
-        "task_queue": str(meta.get("temporal_task_queue") or ""),
-        "trace_id": str(meta.get("trace_id") or ""),
-        "otel": {"trace_id": str(meta.get("trace_id") or ""), "span_id": str(meta.get("span_id") or "")},
+        "engine": engine,
+        "workflow_id": workflow_id,
+        "task_queue": task_queue,
+        "trace_id": trace_id,
+        "otel": {"trace_id": trace_id, "span_id": span_id},
     }
 
 

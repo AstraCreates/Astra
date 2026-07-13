@@ -51,6 +51,9 @@ def test_call_llm_reserves_and_commits_budget_without_double_billing(tmp_path, m
     reservation existing must NOT also trigger the old direct deduct_credits()
     call, or every founder gets billed 2x per LLM call in production."""
     monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    from backend.config import settings
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_key", "")
     from backend.credits.store import get_balance
     from backend.control_plane.budget import get_default_budget_service
     import backend.control_plane.budget as budget_module
@@ -90,6 +93,9 @@ def test_call_llm_releases_reservation_on_total_failure(monkeypatch):
     response) must release its reservation rather than leaving it stuck
     'reserved' until TTL expiry."""
     monkeypatch.setattr("time.sleep", lambda *_a, **_k: None)
+    from backend.config import settings
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_key", "")
     from backend.control_plane.budget import get_default_budget_service
     import backend.control_plane.budget as budget_module
     budget_module._default_service = None
@@ -111,6 +117,9 @@ def test_call_llm_releases_reservation_on_total_failure(monkeypatch):
 def test_call_llm_skips_reservation_for_unlimited_credits(monkeypatch):
     """Must not attempt a reservation at all for unlimited-credit contexts --
     matches the existing deduct_credits() bypass exactly."""
+    from backend.config import settings
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_key", "")
     from backend.control_plane.budget import get_default_budget_service
     import backend.control_plane.budget as budget_module
     budget_module._default_service = None
@@ -141,6 +150,9 @@ def test_call_llm_reservation_ttl_outlasts_worst_case_call_duration(monkeypatch)
     founder gets genuinely unbilled real spend. TTL must scale with
     _call_timeout * _max_attempts, not the flat 300s default."""
     from datetime import datetime, timezone
+    from backend.config import settings
+    monkeypatch.setattr(settings, "supabase_url", "")
+    monkeypatch.setattr(settings, "supabase_key", "")
     from backend.control_plane.budget import get_default_budget_service, DEFAULT_TTL_SECONDS
     import backend.control_plane.budget as budget_module
     budget_module._default_service = None
@@ -250,6 +262,65 @@ async def test_agent_run_with_tool_call(mocker):
     mocker.patch("backend.core.events.publish", new=AsyncMock())
     result = await agent.run(_ctx())
     assert call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_routes_saferun_actions_through_durable_executor(mocker):
+    agent = Agent(name="ops", role="ops", tools={"dangerous_tool": lambda founder_id=None: {"ok": True, "founder_id": founder_id}})
+    ctx = _ctx(task_id="ops_step_1")
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+    mocker.patch("backend.core.events.approval_decision_wait", new=AsyncMock(return_value={
+        "decision": "approved",
+        "request_id": "approval_1",
+        "action_digest": "digest_1",
+    }))
+    mocker.patch("backend.approval_workflows.create_approval_request", return_value={
+        "id": "approval_1",
+        "approval_id": "approval_1",
+        "action_digest": "digest_1",
+        "revision": 1,
+        "expires_at": None,
+    })
+    mocker.patch("backend.safety.build_saferun_action", return_value={
+        "id": "sr_action_1",
+        "tool": "dangerous_tool",
+        "agent": "ops",
+        "risk_level": "high",
+        "approval_gate": "outbound_send",
+        "approval_required": True,
+        "reason": "Sends something real",
+    })
+
+    durable_approvals = []
+    executed_requests = []
+
+    class _ApprovalRepo:
+        def create(self, approval):
+            durable_approvals.append(approval)
+            return approval
+
+        def consume(self, request_id, *, expected_action_digest, expected_policy_version):
+            return MagicMock(id=request_id)
+
+    class _Bundle:
+        action_repo = MagicMock()
+        receipt_repo = MagicMock()
+        approval_repo = _ApprovalRepo()
+
+    async def _fake_execute_external_action(request, **kwargs):
+        executed_requests.append((request, kwargs))
+        return MagicMock(provider_result={"ok": True, "durable": True})
+
+    mocker.patch("backend.control_plane.action_executor.get_default_repo_bundle", return_value=_Bundle())
+    mocker.patch("backend.control_plane.action_executor.execute_external_action", new=AsyncMock(side_effect=_fake_execute_external_action))
+
+    result = await agent._execute_tool("dangerous_tool", {}, ctx)
+
+    assert result == {"ok": True, "durable": True}
+    assert len(durable_approvals) == 1
+    assert durable_approvals[0].id == "approval_1"
+    assert executed_requests[0][0].approval_id == "approval_1"
+    assert executed_requests[0][0].require_approval is True
 
 
 @pytest.mark.asyncio

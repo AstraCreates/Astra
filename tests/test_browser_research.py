@@ -389,6 +389,30 @@ def test_run_research_pipeline_reports_coverage_gaps(monkeypatch):
     assert "Evidence is thin" in result["next_step"]
 
 
+def test_to_research_result_writes_evidence_artifacts_when_run_context_present(monkeypatch):
+    written = []
+
+    def fake_write(run_id, step_id, evidence):
+        written.append((run_id, step_id, evidence["evidence_id"]))
+
+    monkeypatch.setattr(browser_research, "write_evidence_artifact", fake_write)
+
+    result = browser_research.to_research_result(
+        "query_1",
+        "What is the pricing?",
+        {
+            "total": 1,
+            "answer": "Pricing starts at $20.",
+            "sources": [{"title": "Pricing", "url": "https://example.com/pricing"}],
+        },
+        run_id="run_123",
+        step_id="step_456",
+    )
+
+    assert len(result["evidence"]) == 1
+    assert written == [("run_123", "step_456", result["evidence"][0]["evidence_id"])]
+
+
 def test_sonar_research_preserves_contract_with_recursive_synthesis(monkeypatch):
     calls = []
 

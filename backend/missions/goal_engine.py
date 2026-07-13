@@ -1037,6 +1037,26 @@ async def dispatch_current_goal(
             pass
 
 
+def launch_current_goal_dispatch(founder_id: str, company_id: str | None = None) -> dict[str, Any]:
+    """Thin background launcher for company-goal dispatch.
+
+    Reserves the visible session ID once, then schedules the real dispatch
+    coroutine. Routes should call this instead of open-coding session creation
+    and asyncio kickoff.
+    """
+    from backend.core.session_ids import new_session_id
+
+    session_id = new_session_id()
+    task = asyncio.create_task(dispatch_current_goal(founder_id, company_id, _pre_session_id=session_id))
+    try:
+        from backend.core import cancellation
+
+        cancellation.register_task(session_id, task)
+    except Exception:
+        pass
+    return {"ok": True, "session_id": session_id}
+
+
 # ── End of a run: finalize + auto-chain to the next goal ─────────────────────────
 
 async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> None:

@@ -359,7 +359,7 @@ def _bound_runtime_event(event: dict) -> dict:
     return {str(key): clean(str(key), value) for key, value in event.items()}
 
 
-async def publish(session_id: str, event: dict) -> None:
+async def publish(session_id: str, event: dict, *, persist_durable: bool = True) -> None:
     event = _bound_runtime_event(dict(event))
     if session_id in _completed and event.get("type") == "agent_start":
         logger.warning("Ignoring late agent_start for completed session %s", session_id)
@@ -377,21 +377,22 @@ async def publish(session_id: str, event: dict) -> None:
         await asyncio.to_thread(_redis_append, session_id, event_id, event)
         try:
             from backend.run_ledger import record_run_event
-            asyncio.create_task(asyncio.to_thread(record_run_event, session_id, event_id, event))
+            await asyncio.to_thread(record_run_event, session_id, event_id, event)
         except Exception:
             pass
         # Strip base64 before putting into SSE queue to prevent browser crashes
         sse_event = _strip_base64(event)
-        try:
-            # Durable control-plane event log (Wave 1). Dual-write, best-effort,
-            # fire-and-forget -- silently no-ops if this session has no matching
-            # astra_runs row (pre-Wave-1 session, or durable_create_run failed).
-            # Stripped payload (not raw event) to avoid bloating Supabase storage
-            # with base64 image blobs the SSE path already excludes.
-            from backend.control_plane.supabase_repositories import durable_append_event
-            asyncio.create_task(durable_append_event(session_id, str(event.get("type") or ""), sse_event))
-        except Exception:
-            pass
+        if persist_durable:
+            try:
+                # Durable control-plane event log (Wave 1). Dual-write, best-effort,
+                # silently no-ops if this session has no matching astra_runs row
+                # (pre-Wave-1 session, or durable_create_run failed). Stripped
+                # payload (not raw event) avoids bloating Supabase storage with
+                # base64 image blobs the SSE path already excludes.
+                from backend.control_plane.supabase_repositories import durable_append_event
+                await durable_append_event(session_id, str(event.get("type") or ""), sse_event)
+            except Exception:
+                pass
         await _get_queue(session_id).put((event_id, sse_event))
         if event.get("type") in ("goal_done", "goal_error"):
             _completed.add(session_id)
@@ -402,7 +403,7 @@ async def publish(session_id: str, event: dict) -> None:
         parent_sid = _parent_map.get(session_id)
         if parent_sid:
             forwarded = dict(sse_event, _forwarded_from=session_id)
-            await publish(parent_sid, forwarded)
+            await publish(parent_sid, forwarded, persist_durable=persist_durable)
     # Event-driven goal ticking: when an agent finishes, mark the company goal's
     # tasks it owns (no timer). Cheap + best-effort; offloaded so it never blocks.
     _etype = event.get("type")

@@ -136,6 +136,22 @@ class BudgetReservationService:
                 "budget reservation %s overspend: actual_usd=%.6f exceeds estimated_max_usd=%.6f",
                 reservation_id, actual_usd, reservation.estimated_max_usd,
             )
+            try:
+                from backend.control_plane.anomalies import record_anomaly
+
+                record_anomaly(
+                    "budget_overshoot",
+                    run_id=reservation.run_id,
+                    step_id=str(reservation.step_id or ""),
+                    payload={
+                        "reservation_id": reservation_id,
+                        "estimated_max_usd": reservation.estimated_max_usd,
+                        "actual_usd": actual_usd,
+                        "overspend_usd": overspend_usd,
+                    },
+                )
+            except Exception:
+                pass
 
         billed_credits = 0
         unreconciled_credits = 0

@@ -117,6 +117,7 @@ def register_session(
     chapter_id: str | None = None,
     parent_session_id: str = "",
     kind: str = "",
+    visible: bool = True,
 ) -> None:
     resolved_company_id = company_id or workspace_id or founder_id
     meta = {
@@ -138,28 +139,30 @@ def register_session(
         "parent_session_id": parent_session_id or "",
         "kind": kind or "",
         "credits_used": 0,
+        "visible": bool(visible),
     }
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
-    with _index_lock:
-        index = _load_index()
-        index[session_id] = {
-            k: meta[k]
-            for k in (
-                "session_id",
-                "founder_id",
-                "company_id",
-                "workspace_id",
-                "goal",
-                "stack_id",
-                "status",
-                "created_at",
-                "completed_at",
-                "parent_session_id",
-                "kind",
-            )
-        }
-        _save_index(index)
+    if visible:
+        with _index_lock:
+            index = _load_index()
+            index[session_id] = {
+                k: meta[k]
+                for k in (
+                    "session_id",
+                    "founder_id",
+                    "company_id",
+                    "workspace_id",
+                    "goal",
+                    "stack_id",
+                    "status",
+                    "created_at",
+                    "completed_at",
+                    "parent_session_id",
+                    "kind",
+                )
+            }
+            _save_index(index)
 
 
 def update_session_status(session_id: str, status: str, artifact_count: int | None = None) -> None:
@@ -225,6 +228,8 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
 def _notify_run_done(session_id: str, success: bool) -> None:
     try:
         meta = get_session_meta(session_id) or {}
+        if not bool(meta.get("visible", True)) or str(meta.get("kind") or "") == "shadow":
+            return
         founder_id = meta.get("founder_id", "")
         if not founder_id:
             return

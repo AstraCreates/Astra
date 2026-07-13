@@ -286,6 +286,11 @@ def _state_metrics() -> dict[str, Any]:
     except Exception:
         alerts = {}
     try:
+        from backend.control_plane.anomalies import anomaly_metrics
+        anomalies = anomaly_metrics()
+    except Exception:
+        anomalies = {}
+    try:
         from backend.runtime.metrics import snapshot as runtime_agent_metrics
         agent_runtime = runtime_agent_metrics()
     except Exception:
@@ -308,6 +313,7 @@ def _state_metrics() -> dict[str, Any]:
         **ledger,
         **connector_sync,
         **alerts,
+        **anomalies,
     }
 
 
@@ -426,6 +432,24 @@ def prometheus_metrics() -> str:
         "# HELP astra_alerts_critical Open critical production alerts.",
         "# TYPE astra_alerts_critical gauge",
         f"astra_alerts_critical {alerts.get('alerts_critical', 0)}",
+        "# HELP astra_control_plane_anomalies_total Durable control-plane anomaly events.",
+        "# TYPE astra_control_plane_anomalies_total gauge",
+        f"astra_control_plane_anomalies_total {state.get('control_plane_anomalies_total', 0)}",
+        "# HELP astra_receipt_collision_alerts Receipt-collision anomaly count.",
+        "# TYPE astra_receipt_collision_alerts gauge",
+        f"astra_receipt_collision_alerts {state.get('receipt_collision_alerts', 0)}",
+        "# HELP astra_approval_mismatch_alerts Approval mismatch anomaly count.",
+        "# TYPE astra_approval_mismatch_alerts gauge",
+        f"astra_approval_mismatch_alerts {state.get('approval_mismatch_alerts', 0)}",
+        "# HELP astra_tenant_leak_probe_alerts Tenant leak probe anomaly count.",
+        "# TYPE astra_tenant_leak_probe_alerts gauge",
+        f"astra_tenant_leak_probe_alerts {state.get('tenant_leak_probe_alerts', 0)}",
+        "# HELP astra_budget_overshoot_alerts Budget overshoot anomaly count.",
+        "# TYPE astra_budget_overshoot_alerts gauge",
+        f"astra_budget_overshoot_alerts {state.get('budget_overshoot_alerts', 0)}",
+        "# HELP astra_event_sequence_gap_alerts Event-sequence-gap anomaly count.",
+        "# TYPE astra_event_sequence_gap_alerts gauge",
+        f"astra_event_sequence_gap_alerts {state.get('event_sequence_gap_alerts', 0)}",
         "# HELP astra_process_rss_mb Backend RSS memory in MB.",
         "# TYPE astra_process_rss_mb gauge",
         f"astra_process_rss_mb {runtime.get('process_rss_mb', 0)}",

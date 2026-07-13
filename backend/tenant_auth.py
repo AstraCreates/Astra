@@ -280,6 +280,20 @@ def require_company_access(request: Request, founder_id: str, company_id: str, m
                 detail="Company not found.",
             )
         if str(workspace.get("founder_id") or "") != founder_id:
+            try:
+                from backend.control_plane.anomalies import record_anomaly
+
+                record_anomaly(
+                    "tenant_leak_probe",
+                    payload={
+                        "claimed_founder_id": founder_id,
+                        "actual_founder_id": str(workspace.get("founder_id") or ""),
+                        "company_id": company_id,
+                        "user_id": user_id,
+                    },
+                )
+            except Exception:
+                pass
             raise HTTPException(status_code=403, detail="Company belongs to another workspace.")
     except HTTPException:
         raise

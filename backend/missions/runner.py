@@ -195,7 +195,12 @@ def _estimate_cost(result: Any) -> float:
     return float(result.get("cost_usd") or result.get("cost") or 0.0)
 
 
-async def run_mission(mission_id: str, session_id: str | None = None) -> dict[str, Any]:
+async def run_mission(
+    mission_id: str,
+    session_id: str | None = None,
+    *,
+    skip_session_registration: bool = False,
+) -> dict[str, Any]:
     """Execute a single mission run.
 
     Args:
@@ -280,18 +285,19 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         return {"success": False, "session_id": session_id, "summary": msg, "cost_usd": 0.0}
 
     # ── 5. Register session in the session store ───────────────────────────────
-    try:
-        from backend.core.session_store import register_session
-        register_session(
-            session_id=session_id,
-            founder_id=founder_id,
-            goal=context_goal,
-            agents=[agent_name],
-            company_id=company_id,
-        )
-    except Exception as exc:
-        # Non-fatal — continue even if session registration fails
-        logger.warning("run_mission: session registration failed: %s", exc)
+    if not skip_session_registration:
+        try:
+            from backend.core.session_store import register_session
+            register_session(
+                session_id=session_id,
+                founder_id=founder_id,
+                goal=context_goal,
+                agents=[agent_name],
+                company_id=company_id,
+            )
+        except Exception as exc:
+            # Non-fatal — continue even if session registration fails
+            logger.warning("run_mission: session registration failed: %s", exc)
 
     # ── 6. Run the agent ───────────────────────────────────────────────────────
     result: Any = None
@@ -301,6 +307,9 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
 
     try:
         from backend.core.agent import AgentContext
+        from backend.core.events import publish
+
+        await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": mission_id})
 
         # Load any prior vault notes for additional context
         vault_context_text = ""
@@ -330,6 +339,12 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         result = await agent.run(ctx)
         if not (isinstance(result, dict) and result.get("status") in ("budget_exhausted", "max_iterations_reached")):
             success = True
+            await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": mission_id, "result": result})
+            await publish(session_id, {"type": "goal_done", "results": {agent_name: result}, "session_id": session_id})
+        else:
+            status_text = str(result.get("status"))
+            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": mission_id, "error": status_text})
+            await publish(session_id, {"type": "goal_error", "error": status_text, "session_id": session_id})
 
         # Auto-log to Obsidian (best-effort)
         try:
@@ -342,6 +357,12 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         logger.info("run_mission: mission %s cancelled", mission_id)
         summary = "Cancelled"
         result = {"error": "cancelled"}
+        try:
+            from backend.core.events import publish
+            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": mission_id, "error": "cancelled"})
+            await publish(session_id, {"type": "goal_error", "error": "cancelled", "killed": True, "session_id": session_id})
+        except Exception:
+            pass
         raise
     except Exception as exc:
         logger.error(
@@ -350,6 +371,12 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         )
         summary = f"Agent error: {exc}"
         result = {"error": str(exc)}
+        try:
+            from backend.core.events import publish
+            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": mission_id, "error": str(exc)})
+            await publish(session_id, {"type": "goal_error", "error": str(exc), "session_id": session_id})
+        except Exception:
+            pass
 
     # ── 7. Extract summary and cost ───────────────────────────────────────────
     if success:

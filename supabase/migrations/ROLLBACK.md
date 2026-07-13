@@ -22,6 +22,14 @@ drop table if exists astra_action_receipts;
 -- 0014_astra_budget_reservation_ledgers.sql
 drop table if exists astra_budget_reservation_ledgers;
 
+-- 0015_astra_outbox_dead_letter.sql
+alter table if exists astra_outbox
+  drop column if exists dead_lettered_at,
+  drop column if exists last_error;
+
+-- 0016_astra_create_run_with_event.sql
+drop function if exists astra_create_run_with_event(jsonb, text, jsonb);
+
 -- 0008_astra_budget_reservations.sql
 drop table if exists astra_budget_reservations;
 

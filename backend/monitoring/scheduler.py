@@ -21,6 +21,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,10 @@ _status: dict[str, Any] = {
     "last_checks": 0,
     "last_heals": 0,
     "last_error": "",
+    "mode": "legacy",
+    "schedule_id": "",
 }
+_TEMPORAL_SCHEDULE_ID = "astra-monitoring-hourly"
 
 
 def _now_iso() -> str:
@@ -50,6 +54,58 @@ def _autoheal_cap() -> int:
 
 def _autoheal_enabled() -> bool:
     return os.getenv("ASTRA_AUTOHEAL", "1") != "0"
+
+
+def _temporal_scheduler_enabled() -> bool:
+    return os.getenv("ASTRA_TEMPORAL_MONITORING_SCHEDULE", "1") != "0"
+
+
+async def _ensure_temporal_schedule(interval_seconds: int) -> dict[str, Any]:
+    from temporalio.client import (
+        Schedule,
+        ScheduleActionStartWorkflow,
+        ScheduleIntervalSpec,
+        ScheduleSpec,
+    )
+
+    from backend.control_plane.temporal.contracts import TASK_QUEUE
+    from backend.control_plane.temporal.dispatch import _get_client
+
+    client = await _get_client()
+    schedule = Schedule(
+        action=ScheduleActionStartWorkflow(
+            "AstraMonitoringTick",
+            id="astra-monitoring-tick",
+            task_queue=TASK_QUEUE,
+        ),
+        spec=ScheduleSpec(
+            intervals=[ScheduleIntervalSpec(every=timedelta(seconds=max(60, int(interval_seconds or 3600))))],
+        ),
+    )
+    try:
+        await client.create_schedule(_TEMPORAL_SCHEDULE_ID, schedule)
+    except Exception as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+    handle = client.get_schedule_handle(_TEMPORAL_SCHEDULE_ID)
+    desc = await handle.describe()
+    _status.update({
+        "running": True,
+        "interval_seconds": max(60, int(interval_seconds or 3600)),
+        "last_error": "",
+        "mode": "temporal",
+        "schedule_id": _TEMPORAL_SCHEDULE_ID,
+        "schedule_note": getattr(getattr(desc, "schedule", None), "state", None).note if getattr(getattr(desc, "schedule", None), "state", None) else "",
+    })
+    return get_monitoring_scheduler_status()
+
+
+async def _delete_temporal_schedule() -> None:
+    from backend.control_plane.temporal.dispatch import _get_client
+
+    client = await _get_client()
+    handle = client.get_schedule_handle(_TEMPORAL_SCHEDULE_ID)
+    await handle.delete()
 
 
 def _claim_autoheal_lease(founder_id: str, company_id: str, artifact_key: str) -> tuple[str, str] | None:
@@ -133,7 +189,7 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
                 company_id=company_id,
                 kind="scheduled",
                 validate_prior=False,
-                schedule_task=False,
+                schedule_task=True,
             )
             await asyncio.to_thread(
                 notify_founder, founder_id,
@@ -144,7 +200,10 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
         except Exception as exc:
             logger.warning("monitoring: auto-heal run failed for %s: %s", artifact_key, exc)
         finally:
-            await asyncio.to_thread(_release_autoheal_lease, lease)
+            try:
+                await asyncio.to_thread(_release_autoheal_lease, lease)
+            except RuntimeError:
+                _release_autoheal_lease(lease)
 
     asyncio.create_task(_run_heal())
     return True
@@ -228,11 +287,25 @@ async def _loop(interval_seconds: int) -> None:
 def start_monitoring_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
     """Start the singleton monitoring scheduler. Safe to call repeatedly."""
     global _task, _stop_event, _status
+    interval = max(60, int(interval_seconds or 3600))
+    if _temporal_scheduler_enabled():
+        try:
+            asyncio.create_task(_ensure_temporal_schedule(interval))
+            _status.update({
+                "running": True,
+                "interval_seconds": interval,
+                "last_error": "",
+                "mode": "temporal",
+                "schedule_id": _TEMPORAL_SCHEDULE_ID,
+            })
+            return get_monitoring_scheduler_status()
+        except Exception as exc:
+            logger.warning("monitoring_scheduler: temporal schedule bootstrap failed, falling back to legacy: %s", exc)
+            _status["last_error"] = str(exc)
     if _task and not _task.done():
         return get_monitoring_scheduler_status()
-    interval = max(60, int(interval_seconds or 3600))
     _stop_event = asyncio.Event()
-    _status.update({"running": True, "interval_seconds": interval, "last_error": ""})
+    _status.update({"running": True, "interval_seconds": interval, "last_error": "", "mode": "legacy", "schedule_id": ""})
     _task = asyncio.create_task(_loop(interval))
     logger.info("monitoring_scheduler: started (interval=%ds)", interval)
     return get_monitoring_scheduler_status()
@@ -240,6 +313,11 @@ def start_monitoring_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
 
 async def stop_monitoring_scheduler() -> dict[str, Any]:
     global _task, _stop_event, _status
+    if _status.get("mode") == "temporal" and _status.get("schedule_id"):
+        try:
+            await _delete_temporal_schedule()
+        except Exception as exc:
+            logger.warning("monitoring_scheduler: temporal schedule delete failed: %s", exc)
     if _stop_event:
         _stop_event.set()
     if _task:
@@ -247,10 +325,13 @@ async def stop_monitoring_scheduler() -> dict[str, Any]:
             await asyncio.wait_for(_task, timeout=10)
         except Exception:
             _task.cancel()
-    _status["running"] = False
+    _status.update({"running": False, "schedule_id": ""})
     return get_monitoring_scheduler_status()
 
 
 def get_monitoring_scheduler_status() -> dict[str, Any]:
-    alive = bool(_task and not _task.done())
+    if _status.get("mode") == "temporal" and _status.get("schedule_id"):
+        alive = bool(_status.get("running"))
+    else:
+        alive = bool(_task and not _task.done())
     return {"ok": True, "scheduler": {**_status, "running": alive}}

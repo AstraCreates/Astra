@@ -1,23 +1,49 @@
 import logging
+import re
 from typing import Optional
+from urllib.parse import urlparse
 
 from backend.config import settings
+from backend.tools.research_evidence import write_evidence_artifact
+from backend.tools.research_schema import (
+    Evidence,
+    ResearchResult,
+    deduplicate_evidence,
+    new_claim_id,
+    new_evidence_id,
+    new_query_id,
+    now_iso,
+    research_result_to_dict,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def deep_research(query: str, focus: str = "") -> dict:
-    """Multi-agent deep research. Returns synthesized report with citations."""
+def deep_research(
+    query: str,
+    focus: str = "",
+    cancellation_fence=None,
+    run_id: Optional[str] = None,
+    step_id: Optional[str] = None,
+) -> dict:
+    """Multi-agent deep research. Returns synthesized report with citations.
+
+    run_id/step_id are optional and purely additive (no existing caller
+    passes them today) — when present, per-evidence Artifact rows are
+    written best-effort via research_evidence.write_evidence_artifact.
+    """
     import asyncio
     full_query = f"{query}. Focus specifically on: {focus}" if focus else query
+    if cancellation_fence is not None and getattr(cancellation_fence, "is_set", lambda: False)():
+        return {"query": full_query, "report": "", "sources": [], "error": "cancelled"}
     try:
-        result = asyncio.run(_run_open_deep_research(full_query))
+        result = asyncio.run(_run_open_deep_research(full_query, cancellation_fence=cancellation_fence, run_id=run_id, step_id=step_id))
         return result
     except RuntimeError:
         # Already inside an event loop (FastAPI context) — use thread
         import concurrent.futures
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = pool.submit(asyncio.run, _run_open_deep_research(full_query))
+        future = pool.submit(asyncio.run, _run_open_deep_research(full_query, cancellation_fence=cancellation_fence, run_id=run_id, step_id=step_id))
         try:
             return future.result(timeout=300)
         except concurrent.futures.TimeoutError:
@@ -32,7 +58,10 @@ _OPENROUTER_MODELS = [settings.or_highoutput_model]
 _GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
 
 
-async def _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage, model_spec: str, config_extra: dict, query: str) -> dict | None:
+async def _try_odr_model(
+    deep_researcher, SearchAPI, HumanMessage, AIMessage, model_spec: str, config_extra: dict, query: str,
+    run_id: Optional[str] = None, step_id: Optional[str] = None,
+) -> dict | None:
     """Run open_deep_research with a single model. Returns result dict or None on failure."""
     config = {
         "configurable": {
@@ -61,17 +90,42 @@ async def _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage, mo
             if url not in seen_urls:
                 seen_urls.add(url)
                 sources.append({"title": "", "url": url})
+    return _build_odr_result(query, f"open_deep_research:{model_spec}", report_text, sources, run_id=run_id, step_id=step_id)
+
+
+def _build_odr_result(
+    query: str, model_label: str, report_text: str, sources: list,
+    run_id: Optional[str] = None, step_id: Optional[str] = None,
+) -> dict:
+    """Shared tail for every open_deep_research / custom-fallback code path:
+    attaches the legacy blob fields existing callers already read (report,
+    sources, source_count, model, formatted) AND the new canonical
+    ResearchResult under "structured" (see research_schema.py)."""
+    query_id = new_query_id(query)
+    structured = _extract_claims_from_report(query_id, query, report_text, sources, run_id=run_id, step_id=step_id)
     return {
-        "query": query, "report": report_text,
-        "sources": sources[:30], "source_count": len(sources),
-        "model": f"open_deep_research:{model_spec}",
+        "query": query,
+        "report": report_text,
+        "sources": sources[:30],
+        "source_count": len(sources),
+        "model": model_label,
         "formatted": _format_deep_report(query, report_text, sources),
+        "structured": research_result_to_dict(structured),
     }
 
 
-async def _run_open_deep_research(query: str) -> dict:
+def _is_cancelled(cancellation_fence) -> bool:
+    return cancellation_fence is not None and getattr(cancellation_fence, "is_set", lambda: False)()
+
+
+async def _run_open_deep_research(
+    query: str, cancellation_fence=None, run_id: Optional[str] = None, step_id: Optional[str] = None,
+) -> dict:
     """Try gpt-oss-120b first, then Gemini models, then custom synthesis."""
     from backend.config import settings
+
+    if _is_cancelled(cancellation_fence):
+        return {"query": query, "report": "", "sources": [], "error": "cancelled"}
 
     try:
         from open_deep_research.deep_researcher import deep_researcher
@@ -79,97 +133,70 @@ async def _run_open_deep_research(query: str) -> dict:
         from langchain_core.messages import HumanMessage, AIMessage
     except ImportError as e:
         logger.error("open_deep_research not installed: %s", e)
-        return await _custom_deep_research(query)
+        return await _custom_deep_research(query, cancellation_fence=cancellation_fence, run_id=run_id, step_id=step_id)
 
     last_err = None
 
     # --- Pass 1: OpenRouter high-output model ---
     provider_config = {key: value for key, value in {"openai_api_key": settings.planner_model_api_key, "openai_base_url": settings.planner_model_base_url}.items() if value}
-    try:
-        for model_name in _OPENROUTER_MODELS:
-            try:
-                res = await _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage,
-                                           f"openai:{model_name}", provider_config, query)
-                if res:
-                    logger.info("deep_research succeeded with OpenRouter %s", model_name)
-                    return res
-            except Exception as e:
-                last_err = e
-                logger.warning("OpenRouter %s failed: %s", model_name, e)
-    finally:
-        pass
+    for model_name in _OPENROUTER_MODELS:
+        if _is_cancelled(cancellation_fence):
+            return {"query": query, "report": "", "sources": [], "error": "cancelled"}
+        try:
+            res = await _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage,
+                                       f"openai:{model_name}", provider_config, query,
+                                       run_id=run_id, step_id=step_id)
+            if res:
+                logger.info("deep_research succeeded with OpenRouter %s", model_name)
+                return res
+        except Exception as e:
+            last_err = e
+            logger.warning("OpenRouter %s failed: %s", model_name, e)
 
     # --- Pass 2: Gemini models ---
-    try:
-        for model_name in _GEMINI_MODELS:
-            research_model = f"google_genai:{model_name}"
-            config = {
-                "configurable": {
-                    "search_api": SearchAPI.NONE,
-                    "research_model": research_model,
-                    "summarization_model": research_model,
-                    "compression_model": research_model,
-                    "final_report_model": research_model,
-                    "allow_clarification": False,
-                    "max_concurrent_research_units": 3,
-                    **({"google_api_key": settings.gemini_api_key} if settings.gemini_api_key else {}),
-                }
-            }
-            try:
-                result = await deep_researcher.ainvoke(
-                    {"messages": [HumanMessage(content=query)]},
-                    config=config,
-                )
-                # Success — extract report
-                messages = result.get("messages", [])
-                report_text = ""
-                for msg in reversed(messages):
-                    if isinstance(msg, AIMessage) and msg.content:
-                        report_text = msg.content if isinstance(msg.content, str) else str(msg.content)
-                        break
-                sources = []
-                seen_urls: set = set()
-                import re as _re
-                for msg in messages:
-                    content = msg.content if isinstance(msg.content, str) else ""
-                    for url in _re.findall(r'https?://[^\s\)\"\']+', content):
-                        if url not in seen_urls:
-                            seen_urls.add(url)
-                            sources.append({"title": "", "url": url})
-                logger.info("open_deep_research (%s): %d chars, %d sources", model_name, len(report_text), len(sources))
-                return {
-                    "query": query,
-                    "report": report_text,
-                    "sources": sources[:30],
-                    "source_count": len(sources),
-                    "model": f"open_deep_research:{model_name}",
-                    "formatted": _format_deep_report(query, report_text, sources),
-                }
-            except Exception as e:
-                last_err = e
-                err_str = str(e).lower()
-                if "quota" in err_str or "rate" in err_str or "429" in err_str or "exhausted" in err_str:
-                    logger.warning("Gemini %s quota/rate error, trying next: %s", model_name, e)
-                    continue
-                logger.error("open_deep_research (%s) failed: %s", model_name, e)
-                break
-    finally:
-        pass
+    for model_name in _GEMINI_MODELS:
+        if _is_cancelled(cancellation_fence):
+            return {"query": query, "report": "", "sources": [], "error": "cancelled"}
+        research_model = f"google_genai:{model_name}"
+        config_extra = {"google_api_key": settings.gemini_api_key} if settings.gemini_api_key else {}
+        try:
+            res = await _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage,
+                                       research_model, config_extra, query,
+                                       run_id=run_id, step_id=step_id)
+            if res:
+                logger.info("open_deep_research succeeded with Gemini %s", model_name)
+                return res
+        except Exception as e:
+            last_err = e
+            err_str = str(e).lower()
+            if "quota" in err_str or "rate" in err_str or "429" in err_str or "exhausted" in err_str:
+                logger.warning("Gemini %s quota/rate error, trying next: %s", model_name, e)
+                continue
+            logger.error("open_deep_research (%s) failed: %s", model_name, e)
+            break
+
+    if _is_cancelled(cancellation_fence):
+        return {"query": query, "report": "", "sources": [], "error": "cancelled"}
 
     logger.warning("All models failed (%s), falling back to custom synthesis", last_err)
-    result = await _custom_deep_research(query)
+    result = await _custom_deep_research(query, cancellation_fence=cancellation_fence, run_id=run_id, step_id=step_id)
     if last_err:
         result["model_error"] = str(last_err)
     return result
 
 
-async def _custom_deep_research(query: str) -> dict:
+async def _custom_deep_research(
+    query: str, cancellation_fence=None, run_id: Optional[str] = None, step_id: Optional[str] = None,
+) -> dict:
     """
     Parallel multi-query search + LLM synthesis. Used when open_deep_research unavailable.
     Generates sub-queries, searches in parallel, reads pages, synthesizes with OpenRouter.
     """
     import asyncio
     from backend.config import settings
+
+    if _is_cancelled(cancellation_fence):
+        return {"query": query, "report": "", "sources": [], "error": "cancelled"}
 
     # Generate sub-queries covering different angles
     angles = [
@@ -188,7 +215,24 @@ async def _custom_deep_research(query: str) -> dict:
         snippets = [f"[{r['title']}] {r['snippet']}" for r in results if r.get("snippet")]
         return f"### {q}\n" + "\n".join(snippets[:4])
 
-    sections = await asyncio.gather(*[_search_angle(a) for a in angles])
+    # Launch angle searches one at a time (not asyncio.gather up front) so a
+    # cancellation mid-loop stops us from kicking off further angles and lets
+    # us return whatever partial evidence we already gathered instead of
+    # crashing or blocking on the full batch.
+    tasks = []
+    for angle in angles:
+        if _is_cancelled(cancellation_fence):
+            break
+        tasks.append(asyncio.create_task(_search_angle(angle)))
+    sections = await asyncio.gather(*tasks) if tasks else []
+
+    if _is_cancelled(cancellation_fence):
+        partial = "\n\n".join(s for s in sections if s.strip())
+        return {
+            "query": query, "report": partial[:2000], "sources": [],
+            "model": "custom:cancelled_partial", "error": "cancelled",
+        }
+
     combined = "\n\n".join(s for s in sections if s.strip())
 
     if not combined.strip():
@@ -227,14 +271,10 @@ async def _custom_deep_research(query: str) -> dict:
                 seen.add(url)
                 sources.append({"title": "", "url": url})
 
-    return {
-        "query": query,
-        "report": report,
-        "sources": sources[:20],
-        "source_count": len(sources),
-        "model": f"custom:multi_search+{settings.planner_model_name}",
-        "formatted": _format_deep_report(query, report, sources),
-    }
+    return _build_odr_result(
+        query, f"custom:multi_search+{settings.planner_model_name}", report, sources,
+        run_id=run_id, step_id=step_id,
+    )
 
 
 def _fallback_research(query: str) -> dict:
@@ -248,6 +288,125 @@ def _fallback_research(query: str) -> dict:
         return result
     except Exception as e:
         return {"query": query, "report": "", "sources": [], "error": f"Fallback also failed: {e}"}
+
+
+_CLAIM_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9])')
+_MIN_CLAIM_CHARS = 40
+
+
+def _split_report_into_claims(report_text: str) -> list[str]:
+    """Cheap heuristic splitter — NOT true claim extraction. Splits the
+    report into paragraphs, strips markdown heading/bullet markers, then
+    splits each paragraph into sentence-ish chunks and keeps only
+    substantive-looking ones (>_MIN_CLAIM_CHARS). Real atomic-claim
+    extraction would need an LLM pass; see the TODO in
+    _extract_claims_from_report for why we don't fake that precision here.
+    """
+    if not report_text or not report_text.strip():
+        return []
+    paragraphs = [p.strip() for p in re.split(r'\n\s*\n', report_text) if p.strip()]
+    claims: list[str] = []
+    for para in paragraphs:
+        para = re.sub(r'^#{1,6}\s*', '', para)
+        para = re.sub(r'^[-*]\s+', '', para)
+        for sentence in _CLAIM_SENTENCE_SPLIT_RE.split(para):
+            sentence = sentence.strip()
+            if len(sentence) > _MIN_CLAIM_CHARS:
+                claims.append(sentence)
+    return claims
+
+
+def _extract_claims_from_report(
+    query_id: str, question: str, report_text: str, sources: list,
+    run_id: Optional[str] = None, step_id: Optional[str] = None,
+) -> ResearchResult:
+    """Convert an open_deep_research (or custom-fallback) report + flat
+    source list into the canonical ResearchResult shape.
+
+    HONEST LIMITATIONS (do not read past this as more precise than it is):
+      - Evidence excerpts are empty strings. open_deep_research's report is a
+        synthesized narrative; it does not give us a per-source quote/snippet
+        to attach as `excerpt`. TODO: if ODR starts exposing per-source
+        excerpts/published dates, wire them in here instead of "" / None.
+      - Claim -> evidence attribution is report-level, not sentence-level.
+        The report text isn't attributed per-sentence to a specific source,
+        so we cannot say *which* source backs *which* claim — only that the
+        report as a whole drew on all of `sources`. Every claim therefore
+        inherits every evidence id. "100% of material claims have evidence
+        ids" is true here by construction (inherit-all), not because each
+        claim was individually verified against its specific source. Real
+        claim-level attribution needs either ODR itself to expose it, or a
+        separate LLM extraction pass that reads each claim against each
+        source — that's future work, not faked here.
+      - coverage_gaps is always [] — ODR doesn't expose unanswered
+        sub-questions either. TODO: derive this once ODR (or an extraction
+        pass) reports gaps.
+    """
+    retrieved_at = now_iso()
+    evidence: list[Evidence] = []
+    for src in sources or []:
+        url = str((src or {}).get("url") or "").strip()
+        if not url:
+            continue
+        title = str((src or {}).get("title") or "")
+        try:
+            domain = urlparse(url).netloc.lower()
+        except Exception:
+            domain = ""
+        evidence.append({
+            "evidence_id": new_evidence_id(url, ""),
+            "source_url": url,
+            "title": title,
+            "domain": domain,
+            "published_at": None,  # ODR gives no per-source date today
+            "retrieved_at": retrieved_at,
+            "excerpt": "",  # ODR gives no per-claim/per-source excerpt today — see docstring
+        })
+    evidence = deduplicate_evidence(evidence)
+
+    for ev in evidence:
+        try:
+            write_evidence_artifact(run_id, step_id, ev)
+        except Exception:
+            # write_evidence_artifact already swallows its own errors; this
+            # is an extra belt-and-suspenders guard so a bug there can never
+            # take down research itself.
+            logger.debug("write_evidence_artifact raised unexpectedly", exc_info=True)
+
+    all_evidence_ids = [e["evidence_id"] for e in evidence]
+
+    claims: list = []
+    for sentence in _split_report_into_claims(report_text):
+        claim_id = new_claim_id(query_id, sentence)
+        if all_evidence_ids:
+            claims.append({
+                "claim_id": claim_id,
+                "text": sentence,
+                "evidence_ids": list(all_evidence_ids),
+                "confidence": 0.5,  # heuristic sentence split + inherited (not per-claim) attribution
+                "contradicted": False,
+                "contradiction_note": "",
+            })
+        else:
+            # Guard against silently dropping claims that have zero matched
+            # evidence — label them rather than drop them.
+            claims.append({
+                "claim_id": claim_id,
+                "text": sentence,
+                "evidence_ids": [],
+                "confidence": 0.0,
+                "contradicted": False,
+                "contradiction_note": "unsupported: no evidence available",
+            })
+
+    return {
+        "query_id": query_id,
+        "question": question,
+        "claims": claims,
+        "evidence": evidence,
+        "coverage_gaps": [],
+        "escalation_decision": "escalated",
+    }
 
 
 def _format_deep_report(query: str, report: str, sources: list) -> str:

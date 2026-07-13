@@ -223,6 +223,21 @@ class Settings(BaseSettings):
     astra_event_stream_v2_rollout_percent: int = 0
     astra_model_gateway_v2: bool = False
     astra_model_gateway_v2_rollout_percent: int = 0
+    # Wave 5.1: LiteLLM proxy sits between Astra and Headroom/OpenRouter, gated per-run
+    # by model_gateway_v2 (see backend/control_plane/gateway.py). Service name matches
+    # the litellm docker-compose entry; not reachable outside the compose network.
+    litellm_gateway_base_url: str = "http://litellm:4000"
+    litellm_master_key: str = ""
+    # Optional JSON object mapping org/founder IDs to LiteLLM virtual keys.
+    # This lets production route different orgs through distinct gateway keys
+    # without changing the code path that calls get_gateway_client().
+    litellm_org_keys_json: str = ""
+    # Production safety valve (PLAN.md): once true, a model_gateway_v2 run that can't
+    # reach the gateway fails loud instead of silently falling back to the direct
+    # OpenRouter path -- direct calls bypass LiteLLM's spend tracking entirely, which
+    # is exactly the blind spot the gateway exists to close. Stays False in dev so a
+    # laptop without a running litellm container doesn't break agent calls.
+    astra_direct_provider_disabled: bool = False
     astra_research_engine_v2: bool = False
     astra_research_engine_v2_rollout_percent: int = 0
     astra_brain_v2: bool = False
@@ -230,6 +245,11 @@ class Settings(BaseSettings):
     # Simple on/off, no percent rollout -- Langfuse hooks are implemented but
     # stay disabled until a separate resource benchmark passes.
     astra_langfuse_enabled: bool = False
+    # Wave 5.2: OTLP/HTTP collector endpoint (e.g. http://otel-collector:4318/v1/traces).
+    # Empty = tracing runs in console-only mode, no network export -- see
+    # backend/observability/tracing.py::init_tracing. OTel is mandatory (unlike
+    # Langfuse above); this just controls where spans go, not whether they exist.
+    otel_exporter_endpoint: str = ""
     astra_fallback_model: str = "moonshotai/kimi-k2.5"
     # Self-host stub: when True, agent calls route to local inference (SELF_HOST_BASE_URL /
     # SELF_HOST_MODEL). Set ASTRA_SELF_HOST=true + SELF_HOST_BASE_URL=http://localhost:8080/v1

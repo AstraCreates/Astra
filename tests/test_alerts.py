@@ -24,6 +24,11 @@ def _degraded_status() -> dict:
             "company_brains": 0,
             "runs_error": 1,
             "connector_sources_error": 1,
+            "receipt_collision_alerts": 1,
+            "approval_mismatch_alerts": 1,
+            "tenant_leak_probe_alerts": 1,
+            "budget_overshoot_alerts": 1,
+            "event_sequence_gap_alerts": 1,
         },
     }
 
@@ -43,6 +48,11 @@ def test_alert_check_records_and_deduplicates_platform_alerts(tmp_path, monkeypa
     assert all(alert["count"] == 2 for alert in ledger["alerts"])
     assert metrics["alerts_open"] == first["alert_count"]
     assert metrics["alerts_critical"] >= 2
+    keys = {alert["key"] for alert in ledger["alerts"]}
+    assert "receipt_collision_detected" in keys
+    assert "approval_mismatch_detected" in keys
+    assert "tenant_leak_probe_detected" in keys
+    assert "event_sequence_gap_detected" in keys
 
 
 def test_alert_delivery_posts_to_configured_webhook(tmp_path, monkeypatch):

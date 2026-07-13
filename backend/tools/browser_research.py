@@ -13,6 +13,18 @@ from contextlib import contextmanager
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from backend.tools.research_schema import (
+    Claim,
+    Evidence,
+    ResearchResult,
+    deduplicate_evidence,
+    new_claim_id,
+    new_evidence_id,
+    new_query_id,
+    now_iso,
+    research_result_to_dict,
+)
+from backend.tools.research_evidence import write_evidence_artifact
 from backend.tools.url_safety import validate_url
 
 logger = logging.getLogger(__name__)
@@ -84,6 +96,26 @@ _RESEARCH_QUERY_STOPWORDS = {
 
 _crw_failures = 0
 _crw_disabled_until = 0.0
+
+
+def _coerce_cancel_event(cancel_event=None, cancellation_fence=None):
+    return cancel_event if cancel_event is not None else cancellation_fence
+
+
+def _cancelled(cancel_event) -> bool:
+    return bool(cancel_event is not None and getattr(cancel_event, "is_set", lambda: False)())
+
+
+def _call_with_optional_cancellation(func, *args, cancellation_fence=None, **kwargs):
+    """Preserve legacy tool call shapes unless cancellation is active.
+
+    Research tools are monkeypatched by tests and some integrations as simple
+    two-argument callables. Passing a new ``None`` fence changes that contract
+    for no behavioral gain. Thread the fence only when there is one to observe.
+    """
+    if cancellation_fence is None:
+        return func(*args, **kwargs)
+    return func(*args, cancellation_fence=cancellation_fence, **kwargs)
 
 
 def _shutdown_executor(executor: ThreadPoolExecutor, futures: dict) -> None:
@@ -625,8 +657,10 @@ def _compact_research_evidence(content: str, query: str, max_chars: int) -> str:
     return compacted[:max_chars].rsplit(" ", 1)[0].strip()
 
 
-def fetch_and_read(url: str = "") -> dict:
+def fetch_and_read(url: str = "", cancellation_fence=None) -> dict:
     """Fetch a URL, return clean text. Blocked/paywalled domains auto-skipped."""
+    if _cancelled(cancellation_fence):
+        return {"url": url, "error": "cancelled", "content": ""}
     if not url:
         return {"error": "url is required — pass the full URL to fetch, e.g. https://example.com"}
     if _is_blocked(url):
@@ -679,15 +713,17 @@ def fetch_and_read(url: str = "") -> dict:
         return _remember({"url": url, "skipped": str(e)[:80], "content": ""})
 
 
-def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> dict:
+def search_and_fetch(query: str = "", max_results: int = 16, url: str = "", cancellation_fence=None) -> dict:
     """Search web then fetch full page content from each result.
 
     Models sometimes call this with a `url` kwarg (confusing it with
     fetch_and_read) when they already have a specific page in mind — route
     that straight to fetch_and_read instead of silently dropping the arg and
     falling back to an unrelated auto-generated query."""
+    if _cancelled(cancellation_fence):
+        return {"query": query or url, "results": [], "error": "cancelled"}
     if url and not query:
-        page = fetch_and_read(url)
+        page = _call_with_optional_cancellation(fetch_and_read, url, cancellation_fence=cancellation_fence)
         return {"query": url, "results": [page] if page else [], "routed_to": "fetch_and_read"}
     if isinstance(query, (list, tuple)):
         queries = _dedupe_search_queries(list(query), limit=12)
@@ -696,7 +732,9 @@ def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> d
         if len(queries) == 1:
             query = queries[0]
         else:
-            return batch_search(queries, max_results_each=max_results)
+            return _call_with_optional_cancellation(
+                batch_search, queries, max_results_each=max_results, cancellation_fence=cancellation_fence
+            )
     if not query:
         return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
     search_limit = max(max_results + _RESEARCH_MAX_URL_CANDIDATES_BUFFER, int(max_results * _RESEARCH_SEARCH_MULTIPLIER))
@@ -737,8 +775,15 @@ def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> d
     fetch_urls = fetch_urls[:max_results + _RESEARCH_MAX_URL_CANDIDATES_BUFFER]
 
     with ThreadPoolExecutor(max_workers=min(len(fetch_urls) or 1, 8)) as ex:
-        futures = {ex.submit(fetch_and_read, url): url for url in fetch_urls}
+        futures = {
+            ex.submit(_call_with_optional_cancellation, fetch_and_read, url, cancellation_fence=cancellation_fence): url
+            for url in fetch_urls
+        }
         for fut in as_completed(futures, timeout=25):
+            if _cancelled(cancellation_fence):
+                for pending in futures:
+                    pending.cancel()
+                break
             url = futures[fut]
             try:
                 page = fut.result()
@@ -1169,8 +1214,9 @@ def _legacy_sonar_research(queries: list[str]) -> dict:
     }
 
 
-def deep_research(queries=None, max_rounds: int | None = None, recursive_depth: int | None = None, cancel_event=None) -> dict:
+def deep_research(queries=None, max_rounds: int | None = None, recursive_depth: int | None = None, cancel_event=None, cancellation_fence=None) -> dict:
     """Run recursive crw (self-hosted search+scrape) + ling web research, preserving the existing output contract."""
+    cancel_event = _coerce_cancel_event(cancel_event, cancellation_fence)
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
     if isinstance(queries, str):
@@ -1228,15 +1274,23 @@ def deep_research(queries=None, max_rounds: int | None = None, recursive_depth: 
                 break
             round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
 
+        if cancel_event is not None and cancel_event.is_set():
+            return {
+                "queries_run": 0,
+                "results_by_query": {},
+                "combined_formatted": "",
+                "sources": [],
+                "error": "cancelled",
+            }
         return _finalize_recursive_research(queries, aggregated_results, learnings)
 
 
-def sonar_research(queries=None) -> dict:
+def sonar_research(queries=None, cancellation_fence=None) -> dict:
     """Backward-compatible alias for deep_research."""
-    return deep_research(queries)
+    return _call_with_optional_cancellation(deep_research, queries, cancellation_fence=cancellation_fence)
 
 
-def batch_search(queries=None, max_results_each: int = 8) -> dict:
+def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=None) -> dict:
     """Run search queries in parallel and return combined results."""
     if not queries:
         return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
@@ -1247,13 +1301,26 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
 
     with _research_tool_slot():
         with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
-            futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
+            futures = {
+                ex.submit(
+                    _call_with_optional_cancellation,
+                    search_and_fetch,
+                    q,
+                    max_results_each,
+                    cancellation_fence=cancellation_fence,
+                ): q
+                for q in queries
+            }
             # Process-wide search gate serializes calls (~1s apart) and each query
             # retries with backoff, so a parallel batch can take well over a minute.
             # Catch the overall timeout and return whatever finished — partial
             # results beat an all-or-nothing "N futures unfinished" failure.
             try:
                 for fut in as_completed(futures, timeout=110):
+                    if _cancelled(cancellation_fence):
+                        for pending in futures:
+                            pending.cancel()
+                        break
                     q = futures[fut]
                     try:
                         results_by_query[q] = fut.result()
@@ -1343,7 +1410,7 @@ def _research_coverage(focus: str, queries: list[str], search: dict) -> dict:
     }
 
 
-def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 8) -> dict:
+def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 8, cancellation_fence=None) -> dict:
     """Plan and run a complete source-diverse research pass.
 
     Agents should use this when they need reliable first-pass evidence quickly:
@@ -1362,19 +1429,58 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
         }
     from backend.config import settings
     with _research_tool_slot():
-        search = _native_research_pass(plan["resource_topic"], plan["focus"], queries) if settings.native_research_enabled else batch_search(queries, max_results_each=max_results_each)
+        if _cancelled(cancellation_fence):
+            search = {"queries_run": 0, "results_by_query": {}, "sources": [], "combined_formatted": "", "error": "cancelled"}
+        else:
+            search = (
+                _call_with_optional_cancellation(
+                    _native_research_pass,
+                    plan["resource_topic"],
+                    plan["focus"],
+                    queries,
+                    cancellation_fence=cancellation_fence,
+                )
+                if settings.native_research_enabled
+                else _call_with_optional_cancellation(
+                    batch_search,
+                    queries,
+                    max_results_each=max_results_each,
+                    cancellation_fence=cancellation_fence,
+                )
+            )
     coverage = _research_coverage(plan["focus"], queries, search)
+    # Wave 5.3: one canonical ResearchResult per query, built from the exact
+    # same results_by_query/sources/coverage this function already returns --
+    # to_research_result() is a pure mapping, so this can never change the
+    # legacy fields above, only add "structured" alongside them.
+    results_by_query = search.get("results_by_query", {})
+    pipeline_sources = search.get("sources", [])
+    structured = {
+        query: research_result_to_dict(
+            to_research_result(
+                new_query_id(query),
+                query,
+                results_by_query.get(query, {}),
+                sources=pipeline_sources,
+                coverage_ready=coverage["ready"],
+                run_id=None,
+                step_id=None,
+            )
+        )
+        for query in queries
+    }
     return {
         "topic": plan["topic"],
         "focus": plan["focus"],
         "queries": queries,
         "queries_run": search.get("queries_run", 0),
-        "results_by_query": search.get("results_by_query", {}),
-        "sources": search.get("sources", []),
+        "results_by_query": results_by_query,
+        "sources": pipeline_sources,
         "source_count": coverage["source_count"],
         "source_domains": coverage["source_domains"],
         "coverage": coverage,
         "combined_formatted": search.get("combined_formatted", ""),
+        "structured": structured,
         "next_step": (
             "Synthesize findings with concrete numbers, named companies, dates, caveats, and URLs."
             if coverage["ready"]
@@ -1383,8 +1489,10 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
     }
 
 
-def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
+def _native_research_pass(topic: str, focus: str, queries: list[str], cancellation_fence=None) -> dict:
     """Run one provider-native grounded pass instead of recursive local search."""
+    if _cancelled(cancellation_fence):
+        return {"queries_run": 0, "results_by_query": {}, "sources": [], "combined_formatted": "", "error": "cancelled"}
     from backend.config import settings
     from backend.core.key_rotator import get_openrouter_key
     from backend.core.llm_cache import openrouter_extra_body
@@ -1448,4 +1556,165 @@ def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
         "results_by_query": results_by_query,
         "sources": sources,
         "combined_formatted": "\n\n".join(combined)[:_RESEARCH_COMBINED_QUERY_CHAR_CAP],
+    }
+
+
+def to_research_result(
+    query_id: str,
+    question: str,
+    native_result: dict,
+    sources: Optional[list] = None,
+    coverage_ready: Optional[bool] = None,
+    run_id: Optional[str] = None,
+    step_id: Optional[str] = None,
+) -> ResearchResult:
+    """Adapter (Wave 5.3 — Research Engine V2): map this module's EXISTING
+    native-search per-query result shapes into the canonical ResearchResult
+    schema (research_schema.py). Pure mapping — does not touch native
+    search/synthesis logic at all.
+
+    native_result is whatever `results_by_query[question]` already looks
+    like, from any of this module's three pipelines:
+      - _native_research_pass (run_research_pipeline w/ native_research_enabled):
+        {"answer","citations","claims","sources","total","formatted"} — carries
+        its own per-query "sources" list.
+      - _finalize_recursive_research (this module's own deep_research()):
+        {"answer","citations","total","claims"} — evidence_ids in "claims"
+        reference ids ("src_1", ...) from the PIPELINE-level source list, not
+        a per-query one. Pass that list via `sources` (deep_research()'s
+        top-level "sources") so those ids resolve to real url/title.
+      - batch_search / run_research_pipeline's non-native path:
+        {"total","formatted","sources"} — no LLM-synthesized "claims"/"answer".
+
+    sources: optional pipeline-level source list (falls back to
+    native_result.get("sources") when omitted, which is enough for the
+    native-pass shape above but not the recursive-pipeline shape).
+
+    coverage_ready: pass run_research_pipeline's `coverage["ready"]` (the
+    existing readiness signal from _research_coverage) to translate directly
+    into escalation_decision. `_research_coverage` is pipeline-wide (source
+    count, domain diversity, query coverage across ALL queries), so it can't
+    be recomputed from a single query's native_result; when the caller
+    doesn't have it, this falls back to a per-query heuristic (did this
+    query return any citations at all) with the exact same
+    sufficient/escalate_to_deep vocabulary.
+    """
+    native_result = native_result or {}
+    source_pool = list(sources) if sources is not None else list(native_result.get("sources") or [])
+
+    retrieved_at = now_iso()
+    raw_evidence: list[Evidence] = []
+    url_to_id_hints: dict[str, list[str]] = {}
+    for src in source_pool:
+        if not isinstance(src, dict):
+            continue
+        url = _normalize_url(src.get("url", ""))
+        if not url or not url.startswith("http"):
+            continue
+        title = str(src.get("title") or "")
+        raw_evidence.append({
+            "evidence_id": new_evidence_id(url, ""),
+            "source_url": url,
+            "title": title,
+            "domain": _domain(url),
+            "published_at": None,  # native search doesn't surface publish dates today
+            "retrieved_at": retrieved_at,
+            # search_and_fetch's per-query "sources" list only ever carries
+            # title/url (see its construction) -- no snippet/content survives
+            # to this point, so excerpt is honestly empty rather than
+            # fabricated. TODO: thread snippet/content through if a future
+            # refactor keeps it attached to the source dict.
+            "excerpt": "",
+        })
+        if src.get("id"):
+            url_to_id_hints.setdefault(url, []).append(str(src["id"]))
+
+    evidence = deduplicate_evidence(raw_evidence)
+    for ev in evidence:
+        try:
+            write_evidence_artifact(run_id, step_id, ev)
+        except Exception:
+            logger.debug("write_evidence_artifact raised unexpectedly", exc_info=True)
+
+    # Map every ref a claim's evidence_ids might use (a source "id" like
+    # "src_1", or a raw citation URL) to the evidence_id actually kept after
+    # dedup. Note: if two distinct literal URLs normalize to the same dedupe
+    # key (e.g. tracking-param variants), only the survivor's hints resolve
+    # -- the same "keep first occurrence" rule deduplicate_evidence applies.
+    evidence_id_by_ref: dict[str, str] = {}
+    for ev in evidence:
+        url = ev["source_url"]
+        evidence_id_by_ref[url] = ev["evidence_id"]
+        for source_id in url_to_id_hints.get(url, []):
+            evidence_id_by_ref[source_id] = ev["evidence_id"]
+
+    claims: list[Claim] = []
+    for raw_claim in native_result.get("claims") or []:
+        if not isinstance(raw_claim, dict):
+            continue
+        text = str(raw_claim.get("claim") or "").strip()
+        if not text:
+            continue
+        mapped_ids: list[str] = []
+        for ref in raw_claim.get("evidence_ids") or []:
+            eid = evidence_id_by_ref.get(str(ref))
+            if eid and eid not in mapped_ids:
+                mapped_ids.append(eid)
+        claim_id = new_claim_id(query_id, text)
+        if mapped_ids:
+            claims.append({
+                "claim_id": claim_id,
+                "text": text,
+                "evidence_ids": mapped_ids,
+                "confidence": 1.0,
+                "contradicted": False,
+                "contradiction_note": "",
+            })
+        else:
+            # Guard against silently dropping a claim with zero matched
+            # evidence -- label it rather than drop it.
+            claims.append({
+                "claim_id": claim_id,
+                "text": text,
+                "evidence_ids": [],
+                "confidence": 0.0,
+                "contradicted": False,
+                "contradiction_note": "unsupported: no evidence available",
+            })
+
+    if not claims:
+        # batch_search / non-native pipeline: no LLM-synthesized claims at
+        # all, just raw search results. Fall back to the synthesized
+        # "answer" (if any) as a single claim rather than reporting zero
+        # claims when evidence clearly exists.
+        answer = str(native_result.get("answer") or "").strip()
+        if answer:
+            all_ids = [e["evidence_id"] for e in evidence]
+            claims.append({
+                "claim_id": new_claim_id(query_id, answer),
+                "text": answer,
+                "evidence_ids": all_ids,
+                "confidence": 0.5 if all_ids else 0.0,
+                "contradicted": False,
+                "contradiction_note": "" if all_ids else "unsupported: no evidence available",
+            })
+
+    total = int(native_result.get("total") or 0)
+    coverage_gaps: list[str] = [] if (total > 0 or evidence) else [question]
+
+    if coverage_ready is not None:
+        escalation_decision = "sufficient" if coverage_ready else "escalate_to_deep"
+    else:
+        # Per-query fallback mirroring _research_coverage's cheapest signal
+        # (did this query return anything at all) when the caller doesn't
+        # have the pipeline-wide coverage object.
+        escalation_decision = "sufficient" if total > 0 else "escalate_to_deep"
+
+    return {
+        "query_id": query_id,
+        "question": question,
+        "claims": claims,
+        "evidence": evidence,
+        "coverage_gaps": coverage_gaps,
+        "escalation_decision": escalation_decision,
     }

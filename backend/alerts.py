@@ -88,6 +88,17 @@ def evaluate_platform_alerts(status: dict[str, Any] | None = None) -> list[dict[
         alerts.append(_alert("run_errors_present", "warning", "Durable run ledger contains failed runs.", {"runs_error": state.get("runs_error")}))
     if state.get("connector_sources_error", 0) > 0:
         alerts.append(_alert("connector_sync_errors_present", "warning", "Connector sync ledger contains failed syncs.", {"connector_sources_error": state.get("connector_sources_error")}))
+    anomaly_map = [
+        ("receipt_collision_alerts", "receipt_collision_detected", "critical", "External action receipt collision detected."),
+        ("approval_mismatch_alerts", "approval_mismatch_detected", "critical", "Approval mismatch detected during durable action execution."),
+        ("tenant_leak_probe_alerts", "tenant_leak_probe_detected", "critical", "Cross-company tenant leak probe was detected and blocked."),
+        ("budget_overshoot_alerts", "budget_overshoot_detected", "warning", "Budget overshoot was detected during reconciliation."),
+        ("event_sequence_gap_alerts", "event_sequence_gap_detected", "critical", "Run event sequence gap detected."),
+    ]
+    for metric_key, alert_key, severity, message in anomaly_map:
+        count = int(state.get(metric_key, 0) or 0)
+        if count > 0:
+            alerts.append(_alert(alert_key, severity, message, {metric_key: count}))
     return alerts
 
 
