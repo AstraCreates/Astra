@@ -382,12 +382,12 @@ export default function DashboardView() {
           <div style={{ display: "flex", gap: 18, alignItems: "stretch", flex: 1, minHeight: 0 }}>
 
             {/* Active Goal — exact from reference */}
-            <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
+            <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Active goal</div>
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
                 if (!active) return (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "32px 10px", gap: 12 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", flex: 1, gap: 12 }}>
                     <div style={{ position: "relative", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <div style={{ width: 40, height: 40, border: "1.5px solid rgba(125,143,255,0.45)", background: "rgba(125,143,255,0.06)", transform: "rotate(45deg)", borderRadius: 6, position: "absolute" }} />
                       <div style={{ width: 16, height: 16, background: "rgb(125,143,255)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
@@ -590,15 +590,16 @@ export default function DashboardView() {
             </div>
           )}
 
-          {/* Copilot bar — oversized mascot to left of pill, facing right */}
+          {/* Copilot bar — full-width pill, oversized mascot floats over left edge */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
-            <div style={{ position: "relative", paddingLeft: 90 }}>
-              {/* Mascot: oversized, outside pill to the left, floats up/down */}
-              <div style={{ position: "absolute", left: -10, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2 }}>
-                <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated", transform: "scaleX(-1)" }} />
+            <div style={{ position: "relative" }}>
+              {/* Mascot: over pill, anchored to left, floats up/down */}
+              <div style={{ position: "absolute", left: 0, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
+                <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+              {/* Pill spans full width, left padding clears astronaut */}
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 96px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
