@@ -335,7 +335,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-50%)} 50%{transform:translateY(calc(-50% - 8px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-50%)} 50%{transform:translateY(calc(-50% - 10px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
@@ -590,25 +590,30 @@ export default function DashboardView() {
             </div>
           )}
 
-          {/* Copilot bar — exact pill from reference + astronaut mascot */}
+          {/* Copilot bar — oversized mascot to left of pill, facing right */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 72px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px", overflow: "visible" }}>
-              <img src="/astra-mascot.png" alt="" style={{ position: "absolute", left: 8, top: "50%", width: 60, height: 60, objectFit: "contain", imageRendering: "pixelated", animation: "mascot-float 3s ease-in-out infinite" }} />
-              <input
-                value={copilotInput}
-                onChange={e => setCopilotInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendCopilot(); } }}
-                placeholder={copilotSessionId ? "Ask Astra to start a run, draft copy, or find leads…" : "Start a run to enable copilot"}
-                disabled={copilotBusy || !copilotSessionId}
-                style={{ flex: "1 1 0%", background: "transparent", border: "none", outline: "none", color: "rgb(237,241,251)", fontSize: 13.5, fontFamily: "'Hanken Grotesk', inherit" }}
-              />
-              <button onClick={sendCopilot} disabled={copilotBusy || !copilotInput.trim() || !copilotSessionId}
-                style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || !copilotSessionId) ? 0.5 : 1 }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
+            <div style={{ position: "relative", paddingLeft: 90 }}>
+              {/* Mascot: oversized, outside pill to the left, floats up/down */}
+              <div style={{ position: "absolute", left: -10, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2 }}>
+                <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated", transform: "scaleX(-1)" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+                <input
+                  value={copilotInput}
+                  onChange={e => setCopilotInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendCopilot(); } }}
+                  placeholder={copilotSessionId ? "Ask Astra to start a run, draft copy, or find leads…" : "Start a run to enable copilot"}
+                  disabled={copilotBusy || !copilotSessionId}
+                  style={{ flex: "1 1 0%", background: "transparent", border: "none", outline: "none", color: "rgb(237,241,251)", fontSize: 13.5, fontFamily: "'Hanken Grotesk', inherit" }}
+                />
+                <button onClick={sendCopilot} disabled={copilotBusy || !copilotInput.trim() || !copilotSessionId}
+                  style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || !copilotSessionId) ? 0.5 : 1 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
