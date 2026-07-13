@@ -375,7 +375,7 @@ export default function DashboardView() {
                 const circumference = 157;
                 const progress = phasesTotal > 0 ? phasesDone / phasesTotal : 0;
                 const ringColor = isStalled ? "#FFFFA6" : "#7D8FFF";
-                const creditsStr = active.credits_used ? `${active.credits_used} credits used this week` : "Credits loading…";
+                const creditsStr = phasesDone > 0 ? `${phasesDone} of ${phasesTotal} tasks done` : "";
                 return (
                   <>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
