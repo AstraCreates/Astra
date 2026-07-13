@@ -32,6 +32,7 @@ class PhaseRunWorkflow:
         self._cancelled = False
         self._waiting_gate: Optional[str] = None
         self._latest_gate_request: Optional[dict] = None
+        self._current_gate_approval: Optional[dict] = None
 
     @workflow.signal
     async def cancel(self) -> None:
@@ -51,6 +52,10 @@ class PhaseRunWorkflow:
     @workflow.query(name="waiting_gate")
     def waiting_gate(self) -> Optional[str]:
         return self._waiting_gate
+
+    @workflow.query(name="waiting_approval")
+    def waiting_approval(self) -> Optional[dict]:
+        return dict(self._current_gate_approval or {}) if self._current_gate_approval else None
 
     @staticmethod
     def _task_queue() -> str:
@@ -154,6 +159,10 @@ class PhaseRunWorkflow:
                     decision="cancelled",
                     lane_results=lane_results,
                 )
+            try:
+                self._current_gate_approval = await gate_handle.query("waiting_approval")
+            except Exception:
+                pass
             if self._latest_gate_request:
                 await gate_handle.signal(
                     "approval_decision",
@@ -164,6 +173,7 @@ class PhaseRunWorkflow:
         gate_result = await gate_handle
         self._waiting_gate = None
         self._latest_gate_request = None
+        self._current_gate_approval = None
         if isinstance(gate_result, dict):
             gate_result_dict = gate_result
         else:

@@ -18,6 +18,10 @@ ReservationStatus = Literal["reserved", "committed", "released", "expired"]
 CollisionStatus = Literal["none", "detected", "resolved"]
 BrainJobType = Literal["upsert", "tombstone", "rebuild"]
 BrainJobStatus = Literal["pending", "running", "succeeded", "failed", "dead_letter"]
+RolloutStage = Literal["internal_fixture", "internal_live", "pct_1", "pct_5", "pct_25", "pct_50", "pct_100"]
+RolloutCampaignStatus = Literal["draft", "active", "halted", "rolled_back", "completed"]
+RolloutEvidenceKind = Literal["fixture", "chaos", "live_run", "halt_probe", "rollback_drill", "archive_snapshot"]
+LegacyRetirementStatus = Literal["pending", "ready", "blocked", "completed"]
 
 
 class Run(BaseModel):
@@ -189,6 +193,50 @@ class BrainProjectionJob(BaseModel):
     record_id: str
     job_type: BrainJobType
     status: BrainJobStatus = "pending"
+    attempts: int = 0
     error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    last_attempted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class RolloutCampaign(BaseModel):
+    id: str
+    feature: str
+    stage: RolloutStage = "internal_fixture"
+    status: RolloutCampaignStatus = "draft"
+    started_at: Optional[datetime] = None
+    last_stage_changed_at: Optional[datetime] = None
+    required_sample_size: int = 0
+    observed_sample_size: int = 0
+    required_observation_hours: int = 24
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class RolloutEvidence(BaseModel):
+    id: str
+    campaign_id: str
+    run_id: Optional[str] = None
+    kind: RolloutEvidenceKind
+    stage: RolloutStage
+    passed: bool = False
+    summary: str = ""
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+
+
+class LegacyRetirementCheck(BaseModel):
+    id: str
+    feature: str
+    status: LegacyRetirementStatus = "pending"
+    temporal_run_count: int = 0
+    clean_days: int = 0
+    restart_chaos_passed: bool = False
+    parity_discrepancies_open: int = 0
+    rollback_drill_passed: bool = False
+    archival_snapshots_exported: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

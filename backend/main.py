@@ -136,6 +136,7 @@ async def startup_background_jobs():
         asyncio.create_task(_pii_purge_loop()),
         asyncio.create_task(_budget_reservation_reaper_loop()),
         asyncio.create_task(_control_plane_outbox_loop()),
+        asyncio.create_task(_control_plane_rollout_loop()),
     ]
 
 
@@ -193,6 +194,21 @@ async def _control_plane_outbox_loop() -> None:
     from backend.control_plane.event_stream import outbox_publisher_loop
 
     await outbox_publisher_loop()
+
+
+async def _control_plane_rollout_loop() -> None:
+    """Periodically evaluate active rollout campaigns from durable run state."""
+    await asyncio.sleep(20)
+    while True:
+        try:
+            from backend.control_plane.wave7_automation import run_all_rollout_automation_ticks
+
+            run_all_rollout_automation_ticks()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Control-plane rollout automation failed: %s", exc)
+        await asyncio.sleep(300)
 
 
 @app.on_event("shutdown")

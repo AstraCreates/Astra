@@ -300,12 +300,18 @@ def _state_metrics() -> dict[str, Any]:
         runtime_rollbacks = circuit_breaker_status()
     except Exception:
         runtime_rollbacks = {}
+    try:
+        from backend.control_plane.wave7_rollout import rollout_status_snapshot
+        control_plane_rollout = rollout_status_snapshot()
+    except Exception:
+        control_plane_rollout = {}
     return {
         "sessions_active": active,
         "sessions_completed": len(_safe_completed()),
         "events_buffered": events,
         "agent_runtime": agent_runtime,
         "runtime_rollbacks": runtime_rollbacks,
+        "control_plane_rollout": control_plane_rollout,
         "workflow_snapshots": _dir_count(".astra/workflows", "*.json"),
         "approval_ledgers": _dir_count(".astra/approvals", "*.json"),
         "company_brains": _dir_count(".astra/company_brain", "*.json"),

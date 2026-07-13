@@ -482,6 +482,7 @@ async def test_phase_gate_workflow_accepts_exact_matching_approval_signal(monkey
                     break
                 await asyncio.sleep(0.02)
             assert waiting["approval_id"] == "approval_phase_1"
+            assert waiting["action_digest"] == "digest_phase_1"
 
             await handle.signal("approval_decision", ApprovalDecisionInput(
                 approval_id="wrong",

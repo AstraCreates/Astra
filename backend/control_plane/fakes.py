@@ -15,8 +15,13 @@ from backend.control_plane.models import (
     ActionReceipt,
     ApprovalRequest,
     Artifact,
+    BrainAcl,
+    BrainRecord,
     BudgetReservation,
     BudgetReservationLedger,
+    LegacyRetirementCheck,
+    RolloutCampaign,
+    RolloutEvidence,
     Run,
     RunEvent,
     RunStep,
@@ -417,3 +422,256 @@ class FakeShadowComparisonRepository:
 
     def list_for_run(self, run_id: str) -> list[ShadowComparison]:
         return list(self._by_run.get(run_id, []))
+
+
+class FakeBrainRecordRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_id: dict[str, BrainRecord] = {}
+
+    def create(self, record: BrainRecord) -> BrainRecord:
+        with self._lock:
+            self._by_id[record.id] = record
+        return record
+
+    def get(self, record_id: str) -> Optional[BrainRecord]:
+        return self._by_id.get(record_id)
+
+    def list_by_company(self, company_id: str, *, include_tombstoned: bool = False) -> list[BrainRecord]:
+        records = [r for r in self._by_id.values() if r.company_id == company_id]
+        if not include_tombstoned:
+            records = [r for r in records if r.tombstoned_at is None]
+        return records
+
+    def list_by_external_id(self, company_id: str, source: str, external_id: str) -> list[BrainRecord]:
+        return [
+            r for r in self._by_id.values()
+            if r.company_id == company_id and r.source == source and r.external_id == external_id
+        ]
+
+    def list_by_ids(self, record_ids: list[str]) -> list[BrainRecord]:
+        return [self._by_id[record_id] for record_id in record_ids if record_id in self._by_id]
+
+    def search_content(self, company_id: str, query: str, limit: int = 10) -> list[BrainRecord]:
+        import re
+
+        terms = set(re.findall(r"\b\w{3,}\b", query.lower()))
+        if not terms:
+            return []
+        scored: list[tuple[int, BrainRecord]] = []
+        for record in self.list_by_company(company_id, include_tombstoned=False):
+            content = record.provenance.get("content") if isinstance(record.provenance, dict) else {}
+            title = str((content or {}).get("title") or "").lower()
+            body = str((content or {}).get("body") or "").lower()
+            score = sum(title.count(term) * 2 + body.count(term) for term in terms)
+            if score > 0:
+                scored.append((score, record))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [record for _, record in scored[:limit]]
+
+    def mark_superseded(self, old_record_id: str, new_record_id: str) -> None:
+        with self._lock:
+            old = self._by_id.get(old_record_id)
+            if old is not None:
+                provenance = old.provenance.copy() if old.provenance else {}
+                provenance["superseded_by"] = new_record_id
+                self._by_id[old_record_id] = old.model_copy(update={"provenance": provenance, "is_canonical": False})
+
+    def mark_tombstone(self, record_id: str) -> None:
+        with self._lock:
+            record = self._by_id.get(record_id)
+            if record is not None:
+                self._by_id[record_id] = record.model_copy(update={"tombstoned_at": _now(), "is_canonical": False})
+
+
+class FakeBrainRecordRepositoryForRetrieval:
+    """Expanded FakeBrainRecordRepository with retrieval-specific methods."""
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_id: dict[str, dict] = {}  # Store as dicts for retrieval
+
+    def get(self, record_id: str) -> Optional[dict]:
+        return self._by_id.get(record_id)
+
+    def list_by_ids(self, record_ids: list[str]) -> list[dict]:
+        return [self._by_id[rid] for rid in record_ids if rid in self._by_id]
+
+    def search_content(self, company_id: str, query: str, limit: int = 10) -> list[dict]:
+        """Simple full-text search on content field."""
+        import re
+        query_lower = query.lower()
+        terms = set(re.findall(r"\b\w{3,}\b", query_lower))
+
+        results = []
+        for record in self._by_id.values():
+            if record.get("company_id") != company_id:
+                continue
+            if record.get("tombstoned_at"):
+                continue
+
+            content_lower = (record.get("content", "") or "").lower()
+            title_lower = (record.get("title", "") or "").lower()
+
+            # Score by term matches
+            score = sum(
+                title_lower.count(t) * 2 + content_lower.count(t)
+                for t in terms
+            )
+            if score > 0:
+                results.append((score, record))
+
+        results.sort(key=lambda x: x[0], reverse=True)
+        return [r[1] for r in results[:limit]]
+
+    def insert(self, record_id: str, record: dict) -> None:
+        """Insert or update a record."""
+        with self._lock:
+            self._by_id[record_id] = record
+
+
+class FakeBrainAclRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_id: dict[str, BrainAcl] = {}
+        self._by_record: dict[str, list[BrainAcl]] = {}
+
+    def create(self, acl: BrainAcl) -> BrainAcl:
+        with self._lock:
+            self._by_id[acl.id] = acl
+            self._by_record.setdefault(acl.record_id, []).append(acl)
+        return acl
+
+    def list_for_record(self, record_id: str) -> list[BrainAcl]:
+        return list(self._by_record.get(record_id, []))
+
+    def has_access(self, record_id: str, caller_role: str, caller_user_id: Optional[str] = None) -> bool:
+        """Check if the caller has access to this record.
+
+        If ACLs are defined, caller must match at least one.
+        If no ACLs are defined, deny by default (fail secure).
+        """
+        acls = self.list_for_record(record_id)
+        if not acls:
+            # No ACLs defined = deny access (fail secure)
+            return False
+
+        # Check if caller_role or caller_user_id appears in ACLs
+        for acl in acls:
+            if acl.principal_type == "company":
+                return True
+            if acl.principal_type == "role" and acl.principal_id == caller_role:
+                return True
+            if acl.principal_type == "user" and acl.principal_id == caller_user_id:
+                return True
+        return False
+
+    def delete_for_record(self, record_id: str) -> None:
+        with self._lock:
+            acls = self._by_record.pop(record_id, [])
+            for acl in acls:
+                self._by_id.pop(acl.id, None)
+
+
+class FakeGraphitiClient:
+    """Fake Graphiti vector search client."""
+    def __init__(self) -> None:
+        self._indexed_records: dict[str, list[str]] = {}  # company_id -> list of record_ids
+        self._episodes: dict[str, dict[str, dict]] = {}
+
+    def search(self, query: str, top_k: int = 10, company_id: Optional[str] = None) -> dict:
+        """Fake vector search that returns indexed record IDs."""
+        if not company_id or company_id not in self._indexed_records:
+            # Return empty results if no indexed records for this company
+            return {"record_ids": []}
+
+        # For testing, just return first top_k from indexed records
+        record_ids = self._indexed_records.get(company_id, [])[:top_k]
+        return {"record_ids": record_ids}
+
+    def index_records(self, company_id: str, record_ids: list[str]) -> None:
+        """Index records for a company (for testing)."""
+        self._indexed_records[company_id] = record_ids
+
+    def upsert_episode(self, company_id: str, episode_id: str, text: str, metadata: dict) -> None:
+        self._episodes.setdefault(company_id, {})[episode_id] = {"text": text, "metadata": metadata}
+        indexed = self._indexed_records.setdefault(company_id, [])
+        if episode_id not in indexed:
+            indexed.append(episode_id)
+
+    def clear_namespace(self, company_id: str) -> None:
+        self._indexed_records.pop(company_id, None)
+        self._episodes.pop(company_id, None)
+
+    def delete_episode(self, company_id: str, episode_id: str) -> None:
+        self._episodes.get(company_id, {}).pop(episode_id, None)
+        indexed = self._indexed_records.get(company_id, [])
+        if episode_id in indexed:
+            indexed.remove(episode_id)
+
+    def get_episode(self, company_id: str, episode_id: str) -> Optional[dict]:
+        return self._episodes.get(company_id, {}).get(episode_id)
+
+    def mark_superseded(self, company_id: str, old_episode_id: str, new_episode_id: str) -> None:
+        episode = self._episodes.get(company_id, {}).get(old_episode_id)
+        if not episode:
+            return
+        metadata = dict(episode.get("metadata") or {})
+        metadata["superseded_by"] = new_episode_id
+        metadata["status"] = "superseded"
+        episode["metadata"] = metadata
+
+
+class FakeRolloutCampaignRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_id: dict[str, RolloutCampaign] = {}
+
+    def create(self, campaign: RolloutCampaign) -> RolloutCampaign:
+        with self._lock:
+            self._by_id[campaign.id] = campaign
+        return campaign
+
+    def get_active(self, feature: str) -> Optional[RolloutCampaign]:
+        campaigns = [
+            campaign for campaign in self._by_id.values()
+            if campaign.feature == feature and campaign.status == "active"
+        ]
+        campaigns.sort(key=lambda item: item.created_at or _now(), reverse=True)
+        return campaigns[0] if campaigns else None
+
+    def update(self, campaign_id: str, patch: dict[str, object]) -> Optional[RolloutCampaign]:
+        with self._lock:
+            campaign = self._by_id.get(campaign_id)
+            if campaign is None:
+                return None
+            updated = campaign.model_copy(update=dict(patch or {}))
+            self._by_id[campaign_id] = updated
+            return updated
+
+
+class FakeRolloutEvidenceRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_campaign: dict[str, list[RolloutEvidence]] = {}
+
+    def create(self, evidence: RolloutEvidence) -> RolloutEvidence:
+        with self._lock:
+            self._by_campaign.setdefault(evidence.campaign_id, []).append(evidence)
+        return evidence
+
+    def list_for_campaign(self, campaign_id: str) -> list[RolloutEvidence]:
+        return list(self._by_campaign.get(campaign_id, []))
+
+
+class FakeLegacyRetirementCheckRepository:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._by_feature: dict[str, LegacyRetirementCheck] = {}
+
+    def upsert(self, check: LegacyRetirementCheck) -> LegacyRetirementCheck:
+        with self._lock:
+            self._by_feature[check.feature] = check
+        return check
+
+    def get(self, feature: str) -> Optional[LegacyRetirementCheck]:
+        return self._by_feature.get(feature)

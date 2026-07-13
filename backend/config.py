@@ -242,6 +242,18 @@ class Settings(BaseSettings):
     astra_research_engine_v2_rollout_percent: int = 0
     astra_brain_v2: bool = False
     astra_brain_v2_rollout_percent: int = 0
+    astra_brain_graph_driver: str = "falkordblite"
+    astra_brain_graph_path: str = ".astra/graphiti/company_brain.db"
+    astra_brain_graph_host: str = "localhost"
+    astra_brain_graph_port: int = 6379
+    astra_brain_graph_username: str = ""
+    astra_brain_graph_password: str = ""
+    astra_brain_graph_database: str = "astra_company_brain"
+    astra_brain_graph_api_key: str = ""
+    astra_brain_graph_base_url: str = ""
+    astra_brain_graph_model: str = "openai/gpt-4.1-mini"
+    astra_brain_graph_small_model: str = "openai/gpt-4.1-mini"
+    astra_brain_graph_embedding_model: str = "text-embedding-3-small"
     # Simple on/off, no percent rollout -- Langfuse hooks are implemented but
     # stay disabled until a separate resource benchmark passes.
     astra_langfuse_enabled: bool = False

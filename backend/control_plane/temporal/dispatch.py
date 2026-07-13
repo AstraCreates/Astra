@@ -172,6 +172,29 @@ async def send_approval_decision(
     workflow_id = shadow_workflow_id_for_run(run_id) if shadow else workflow_id_for_run(run_id)
     try:
         handle = client.get_workflow_handle(workflow_id)
+        try:
+            waiting_approval = await handle.query("waiting_approval")
+        except Exception:
+            waiting_approval = None
+        if isinstance(waiting_approval, dict) and waiting_approval:
+            active_approval_id = str(waiting_approval.get("approval_id") or "").strip()
+            active_action_digest = str(waiting_approval.get("action_digest") or "").strip()
+            if active_approval_id and active_approval_id != approval_id:
+                logger.warning(
+                    "refusing approval decision for workflow %s: waiting approval_id=%s, got=%s",
+                    workflow_id,
+                    active_approval_id,
+                    approval_id,
+                )
+                return False
+            if active_action_digest and active_action_digest != action_digest:
+                logger.warning(
+                    "refusing approval decision for workflow %s: waiting action_digest=%s, got=%s",
+                    workflow_id,
+                    active_action_digest,
+                    action_digest,
+                )
+                return False
         await handle.signal(
             "approval_decision",
             ApprovalDecisionInput(

@@ -35,12 +35,14 @@ def _bucket(org_id: str, run_id: str, feature: str) -> int:
 def _feature_enabled(org_id: str, run_id: str, feature: str) -> bool:
     from backend.config import settings
     from backend.runtime.circuit_breaker import is_disabled
+    from backend.control_plane.wave7_rollout import get_rollout_percentage
 
     if is_disabled(feature):
         return False
     if not bool(getattr(settings, f"astra_{feature}", False)):
         return False
-    percentage = max(0, min(100, int(getattr(settings, f"astra_{feature}_rollout_percent", 0))))
+    configured_percent = max(0, min(100, int(getattr(settings, f"astra_{feature}_rollout_percent", 0))))
+    percentage = get_rollout_percentage(feature, default_percent=configured_percent)
     return percentage >= 100 or _bucket(org_id, run_id, feature) < percentage
 
 

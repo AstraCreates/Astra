@@ -82,6 +82,10 @@ def record_anomaly(
         events.append(event)
         ledger["events"] = events[-_MAX_EVENTS:]
         _save(ledger)
+    try:
+        _mirror_rollout_evidence(event)
+    except Exception:
+        pass
     return event
 
 
@@ -115,3 +119,45 @@ def anomaly_metrics() -> dict[str, int]:
         "budget_overshoot_alerts": counts["budget_overshoot"],
         "event_sequence_gap_alerts": counts["event_sequence_gap"],
     }
+
+
+def _mirror_rollout_evidence(event: dict[str, Any]) -> None:
+    from backend.control_plane.wave7_rollout import evaluate_rollout_campaign, record_rollout_evidence, rollout_status_snapshot
+
+    campaigns = (rollout_status_snapshot().get("campaigns") or {})
+    campaign = campaigns.get("control_plane_v2") or next(iter(campaigns.values()), None)
+    if not isinstance(campaign, dict):
+        return
+    campaign_id = str(campaign.get("id") or "").strip()
+    stage = str(campaign.get("stage") or "").strip()
+    if not campaign_id or not stage:
+        return
+
+    key = str(event.get("key") or "")
+    metric_flags = {
+        "approval_mismatch": {"approval_digest_mismatch": True},
+        "receipt_collision": {"duplicate_external_effect_receipt": True},
+        "budget_overshoot": {"budget_overshoot_unexplained": True},
+        "tenant_leak_probe": {"tenant_leak_probe_failed": True},
+        "event_sequence_gap": {"event_sequence_gap": True},
+    }
+    metrics = dict(metric_flags.get(key) or {})
+    if not metrics:
+        return
+    metrics["anomaly_key"] = key
+    metrics["anomaly_payload"] = dict(event.get("payload") or {})
+
+    record_rollout_evidence(
+        campaign_id=campaign_id,
+        kind="halt_probe",
+        stage=stage,  # type: ignore[arg-type]
+        passed=False,
+        summary=f"Auto-recorded anomaly {key}",
+        metrics=metrics,
+        run_id=str(event.get("run_id") or "") or None,
+    )
+    evaluate_rollout_campaign(
+        feature=str(campaign.get("feature") or "control_plane_v2"),
+        baseline_completion_rate=0.95,
+        baseline_p95_latency_ms=1000.0,
+    )

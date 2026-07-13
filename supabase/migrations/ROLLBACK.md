@@ -4,6 +4,20 @@ Run in reverse order (0013 → 0001). Preserves `supabase/schema.sql`'s legacy
 tables untouched — nothing here overlaps with them.
 
 ```sql
+-- 0020_astra_legacy_retirement_checks.sql
+drop table if exists astra_legacy_retirement_checks;
+
+-- 0019_astra_rollout_evidence.sql
+drop table if exists astra_rollout_evidence;
+
+-- 0018_astra_rollout_campaigns.sql
+drop table if exists astra_rollout_campaigns;
+
+-- 0017_astra_brain_projection_job_attempts.sql
+alter table if exists astra_brain_projection_jobs
+  drop column if exists last_attempted_at,
+  drop column if exists attempts;
+
 -- 0013_astra_brain_projection_jobs.sql
 drop table if exists astra_brain_projection_jobs;
 

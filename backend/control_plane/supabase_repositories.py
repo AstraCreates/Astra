@@ -15,8 +15,13 @@ from backend.control_plane.models import (
     ActionReceipt,
     ApprovalRequest,
     Artifact,
+    BrainAcl,
+    BrainRecord,
     BudgetReservation,
     BudgetReservationLedger,
+    LegacyRetirementCheck,
+    RolloutCampaign,
+    RolloutEvidence,
     Run,
     RunEvent,
     RunStep,
@@ -68,6 +73,26 @@ def _row_to_shadow_comparison(row: dict[str, Any]) -> ShadowComparison:
 
 def _row_to_action_receipt(row: dict[str, Any]) -> ActionReceipt:
     return ActionReceipt.model_validate(row)
+
+
+def _row_to_brain_record(row: dict[str, Any]) -> BrainRecord:
+    return BrainRecord.model_validate(row)
+
+
+def _row_to_brain_acl(row: dict[str, Any]) -> BrainAcl:
+    return BrainAcl.model_validate(row)
+
+
+def _row_to_rollout_campaign(row: dict[str, Any]) -> RolloutCampaign:
+    return RolloutCampaign.model_validate(row)
+
+
+def _row_to_rollout_evidence(row: dict[str, Any]) -> RolloutEvidence:
+    return RolloutEvidence.model_validate(row)
+
+
+def _row_to_legacy_retirement_check(row: dict[str, Any]) -> LegacyRetirementCheck:
+    return LegacyRetirementCheck.model_validate(row)
 
 
 class SupabaseRunRepository:
@@ -589,3 +614,205 @@ async def durable_append_event(run_id: str, event_type: str, payload: dict[str, 
         await asyncio.to_thread(SupabaseRunEventRepository().append, run_id, event_type, payload)
     except Exception as exc:
         logger.debug("durable_append_event failed for run_id=%s type=%s: %s", run_id, event_type, exc)
+
+
+class SupabaseBrainRecordRepository:
+    def create(self, record: BrainRecord) -> BrainRecord:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_brain_records").upsert(_dump(record), on_conflict="id").execute()
+        return record
+
+    def get(self, record_id: str) -> Optional[BrainRecord]:
+        from backend.db.client import get_supabase
+
+        rows = get_supabase().table("astra_brain_records").select("*").eq("id", record_id).limit(1).execute().data
+        return _row_to_brain_record(rows[0]) if rows else None
+
+    def list_by_company(self, company_id: str, *, include_tombstoned: bool = False) -> list[BrainRecord]:
+        from backend.db.client import get_supabase
+
+        query = get_supabase().table("astra_brain_records").select("*").eq("company_id", company_id)
+        if not include_tombstoned:
+            query = query.is_("tombstoned_at", "null")
+        rows = query.order("created_at").execute().data
+        return [_row_to_brain_record(row) for row in rows]
+
+    def list_by_external_id(self, company_id: str, source: str, external_id: str) -> list[BrainRecord]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_brain_records")
+            .select("*")
+            .eq("company_id", company_id)
+            .eq("source", source)
+            .eq("external_id", external_id)
+            .order("version")
+            .execute()
+            .data
+        )
+        return [_row_to_brain_record(row) for row in rows]
+
+    def list_by_ids(self, record_ids: list[str]) -> list[BrainRecord]:
+        from backend.db.client import get_supabase
+
+        normalized_ids = [str(record_id).strip() for record_id in record_ids if str(record_id).strip()]
+        if not normalized_ids:
+            return []
+        rows = (
+            get_supabase().table("astra_brain_records")
+            .select("*")
+            .in_("id", normalized_ids)
+            .execute()
+            .data
+        )
+        records = [_row_to_brain_record(row) for row in rows]
+        by_id = {record.id: record for record in records}
+        return [by_id[record_id] for record_id in normalized_ids if record_id in by_id]
+
+    def search_content(self, company_id: str, query: str, limit: int = 10) -> list[BrainRecord]:
+        import re
+
+        terms = [term.lower() for term in re.findall(r"\b\w{3,}\b", query) if len(term) > 2]
+        if not terms:
+            return []
+        scored: list[tuple[int, BrainRecord]] = []
+        for record in self.list_by_company(company_id, include_tombstoned=False):
+            content = record.provenance.get("content") if isinstance(record.provenance, dict) else {}
+            title = str((content or {}).get("title") or "").lower()
+            body = str((content or {}).get("body") or "").lower()
+            score = sum(title.count(term) * 2 + body.count(term) for term in terms)
+            if score > 0:
+                scored.append((score, record))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [record for _, record in scored[: max(1, limit)]]
+
+    def mark_superseded(self, old_record_id: str, new_record_id: str) -> None:
+        from backend.db.client import get_supabase
+
+        old = self.get(old_record_id)
+        if old is not None:
+            provenance = (old.provenance or {}).copy()
+            provenance["superseded_by"] = new_record_id
+            get_supabase().table("astra_brain_records").update({
+                "provenance": provenance,
+                "is_canonical": False,
+            }).eq("id", old_record_id).execute()
+
+    def mark_tombstone(self, record_id: str) -> None:
+        from backend.db.client import get_supabase
+        from datetime import datetime, timezone
+
+        get_supabase().table("astra_brain_records").update({
+            "tombstoned_at": datetime.now(timezone.utc).isoformat(),
+            "is_canonical": False,
+        }).eq("id", record_id).execute()
+
+
+class SupabaseBrainAclRepository:
+    def create(self, acl: BrainAcl) -> BrainAcl:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_brain_acl").upsert(_dump(acl), on_conflict="id").execute()
+        return acl
+
+    def list_for_record(self, record_id: str) -> list[BrainAcl]:
+        from backend.db.client import get_supabase
+
+        rows = get_supabase().table("astra_brain_acl").select("*").eq("record_id", record_id).order("created_at").execute().data
+        return [_row_to_brain_acl(row) for row in rows]
+
+    def has_access(self, record_id: str, caller_role: str, caller_user_id: Optional[str] = None) -> bool:
+        acls = self.list_for_record(record_id)
+        if not acls:
+            return False
+        for acl in acls:
+            if acl.principal_type == "company":
+                return True
+            if acl.principal_type == "role" and acl.principal_id == caller_role:
+                return True
+            if acl.principal_type == "user" and caller_user_id and acl.principal_id == caller_user_id:
+                return True
+        return False
+
+    def delete_for_record(self, record_id: str) -> None:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_brain_acl").delete().eq("record_id", record_id).execute()
+
+
+class SupabaseRolloutCampaignRepository:
+    def create(self, campaign: RolloutCampaign) -> RolloutCampaign:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_rollout_campaigns").upsert(_dump(campaign), on_conflict="id").execute()
+        return campaign
+
+    def get_active(self, feature: str) -> Optional[RolloutCampaign]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_rollout_campaigns")
+            .select("*")
+            .eq("feature", feature)
+            .eq("status", "active")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_rollout_campaign(rows[0]) if rows else None
+
+    def update(self, campaign_id: str, patch: dict[str, object]) -> Optional[RolloutCampaign]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_rollout_campaigns")
+            .update(dict(patch or {}))
+            .eq("id", campaign_id)
+            .execute()
+            .data
+        )
+        return _row_to_rollout_campaign(rows[0]) if rows else None
+
+
+class SupabaseRolloutEvidenceRepository:
+    def create(self, evidence: RolloutEvidence) -> RolloutEvidence:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_rollout_evidence").upsert(_dump(evidence), on_conflict="id").execute()
+        return evidence
+
+    def list_for_campaign(self, campaign_id: str) -> list[RolloutEvidence]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_rollout_evidence")
+            .select("*")
+            .eq("campaign_id", campaign_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        return [_row_to_rollout_evidence(row) for row in rows]
+
+
+class SupabaseLegacyRetirementCheckRepository:
+    def upsert(self, check: LegacyRetirementCheck) -> LegacyRetirementCheck:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_legacy_retirement_checks").upsert(_dump(check), on_conflict="feature").execute()
+        return check
+
+    def get(self, feature: str) -> Optional[LegacyRetirementCheck]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_legacy_retirement_checks")
+            .select("*")
+            .eq("feature", feature)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_legacy_retirement_check(rows[0]) if rows else None

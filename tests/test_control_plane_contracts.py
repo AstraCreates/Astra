@@ -326,6 +326,41 @@ def test_execute_external_action_fails_closed_for_missing_approval_or_cancellati
         pass
 
 
+def test_execute_external_action_does_not_consume_approval_after_cancellation():
+    action_repo = FakeActionRepository()
+    receipt_repo = FakeActionReceiptRepository()
+    approval_repo = FakeApprovalRequestRepository()
+    approval_repo.create(ApprovalRequest(id="ap_cancel", run_id="run_cancel", gate_key="phase_gate", action_digest="digest_cancel", status="approved"))
+
+    async def _effect(_args, _idempotency_key):
+        return {"ok": True}
+
+    try:
+        __import__("asyncio").run(execute_external_action(
+            ExternalActionRequest(
+                run_id="run_cancel",
+                step_id="step_1",
+                tool="deploy",
+                args={},
+                require_approval=True,
+                approval_id="ap_cancel",
+                approval_action_digest="digest_cancel",
+            ),
+            action_repo=action_repo,
+            receipt_repo=receipt_repo,
+            approval_repo=approval_repo,
+            execute_effect=_effect,
+            is_cancelled=lambda _run_id: True,
+        ))
+        assert False, "expected CancellationFenceError"
+    except CancellationFenceError:
+        pass
+
+    approval = approval_repo.get("ap_cancel")
+    assert approval is not None
+    assert approval.status == "approved"
+
+
 def test_execute_external_action_marks_receipt_collision():
     action_repo = FakeActionRepository()
     receipt_repo = FakeActionReceiptRepository()

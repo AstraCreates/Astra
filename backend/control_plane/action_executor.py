@@ -185,6 +185,10 @@ async def execute_external_action(
                 status="approved" if request.require_approval else "pending",
             ))
 
+        if is_cancelled(request.run_id):
+            action_repo.update_status(action.id, "blocked")
+            raise CancellationFenceError(f"run {request.run_id!r} was cancelled before external effect execution")
+
         if request.require_approval:
             if not request.approval_id or not request.approval_action_digest:
                 raise ApprovalRequiredError("approval_id and approval_action_digest are required when approval is required")
@@ -197,10 +201,6 @@ async def execute_external_action(
             )
             action_repo.update_status(action.id, "approved")
             action = action.model_copy(update={"status": "approved", "approval_id": consumed.id})
-
-        if is_cancelled(request.run_id):
-            action_repo.update_status(action.id, "blocked")
-            raise CancellationFenceError(f"run {request.run_id!r} was cancelled before external effect execution")
 
         action_repo.update_status(action.id, "executing")
         try:

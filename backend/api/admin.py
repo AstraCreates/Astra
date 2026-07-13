@@ -12,6 +12,7 @@ from typing import Any
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
+from pydantic import BaseModel, Field
 
 from backend.core.events import _sessions, _completed, _event_log, _event_counters, _steer
 from backend.tenant_auth import require_platform_admin
@@ -87,8 +88,55 @@ async def index():
             "/admin/production-verification/reports",
             "/admin/alerts",
             "/admin/smoke",
+            "/admin/control-plane/rollout",
         ]
     }
+
+
+class RolloutCampaignStartRequest(BaseModel):
+    feature: str
+    stage: str = "internal_fixture"
+    required_sample_size: int | None = None
+    observation_hours: int = 24
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RolloutEvidenceRequest(BaseModel):
+    campaign_id: str
+    kind: str
+    stage: str
+    passed: bool = False
+    summary: str = ""
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    run_id: str | None = None
+
+
+class RolloutEvaluationRequest(BaseModel):
+    feature: str
+    baseline_completion_rate: float = 0.95
+    baseline_p95_latency_ms: float = 1000.0
+
+
+class RolloutAutomationRequest(BaseModel):
+    feature: str
+    baseline_completion_rate: float = 0.95
+    baseline_p95_latency_ms: float = 1000.0
+
+
+class RolloutRollbackRequest(BaseModel):
+    feature: str
+    reason: str = ""
+
+
+class LegacyRetirementRequest(BaseModel):
+    feature: str
+    temporal_run_count: int
+    clean_days: int
+    restart_chaos_passed: bool
+    parity_discrepancies_open: int
+    rollback_drill_passed: bool
+    archival_snapshots_exported: bool
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # ──────────────────────────────────────────────
@@ -108,6 +156,129 @@ async def platform():
     _request_counts["/admin/platform"] += 1
     from backend.platform_status import platform_status
     return platform_status()
+
+
+@router.get("/control-plane/rollout")
+async def control_plane_rollout():
+    _request_counts["/admin/control-plane/rollout"] += 1
+    from backend.control_plane.wave7_rollout import rollout_status_snapshot
+
+    return rollout_status_snapshot()
+
+
+@router.post("/control-plane/rollout/campaigns")
+async def start_control_plane_rollout_campaign(body: RolloutCampaignStartRequest):
+    _request_counts["/admin/control-plane/rollout/campaigns"] += 1
+    from backend.control_plane.wave7_rollout import start_rollout_campaign
+
+    return start_rollout_campaign(
+        feature=body.feature,
+        stage=body.stage,  # type: ignore[arg-type]
+        required_sample_size=body.required_sample_size,
+        observation_hours=body.observation_hours,
+        metadata=body.metadata,
+    )
+
+
+@router.post("/control-plane/rollout/evidence")
+async def record_control_plane_rollout_evidence(body: RolloutEvidenceRequest):
+    _request_counts["/admin/control-plane/rollout/evidence"] += 1
+    from backend.control_plane.wave7_rollout import record_rollout_evidence
+
+    return record_rollout_evidence(
+        campaign_id=body.campaign_id,
+        kind=body.kind,
+        stage=body.stage,  # type: ignore[arg-type]
+        passed=body.passed,
+        summary=body.summary,
+        metrics=body.metrics,
+        run_id=body.run_id,
+    )
+
+
+@router.post("/control-plane/rollout/evaluate")
+async def evaluate_control_plane_rollout(body: RolloutEvaluationRequest):
+    _request_counts["/admin/control-plane/rollout/evaluate"] += 1
+    from backend.control_plane.wave7_rollout import evaluate_rollout_campaign
+
+    return evaluate_rollout_campaign(
+        feature=body.feature,
+        baseline_completion_rate=body.baseline_completion_rate,
+        baseline_p95_latency_ms=body.baseline_p95_latency_ms,
+    )
+
+
+@router.post("/control-plane/rollout/tick")
+async def run_control_plane_rollout_tick(body: RolloutAutomationRequest):
+    _request_counts["/admin/control-plane/rollout/tick"] += 1
+    from backend.control_plane.wave7_automation import run_rollout_automation_tick
+
+    return run_rollout_automation_tick(
+        feature=body.feature,
+        baseline_completion_rate=body.baseline_completion_rate,
+        baseline_p95_latency_ms=body.baseline_p95_latency_ms,
+    )
+
+
+@router.post("/control-plane/rollout/drills")
+async def run_control_plane_rollout_drills(body: RolloutAutomationRequest):
+    _request_counts["/admin/control-plane/rollout/drills"] += 1
+    from backend.control_plane.wave7_automation import run_canary_halt_drills
+
+    return run_canary_halt_drills(
+        feature=body.feature,
+        baseline_completion_rate=body.baseline_completion_rate,
+        baseline_p95_latency_ms=body.baseline_p95_latency_ms,
+    )
+
+
+@router.post("/control-plane/rollout/rollback")
+async def rollback_control_plane_rollout(body: RolloutRollbackRequest):
+    _request_counts["/admin/control-plane/rollout/rollback"] += 1
+    from backend.control_plane.wave7_rollout import mark_rollout_rolled_back
+
+    return mark_rollout_rolled_back(feature=body.feature, reason=body.reason)
+
+
+@router.post("/control-plane/legacy-retirement")
+async def evaluate_control_plane_legacy_retirement(body: LegacyRetirementRequest):
+    _request_counts["/admin/control-plane/legacy-retirement"] += 1
+    from backend.control_plane.wave7_rollout import evaluate_legacy_retirement
+
+    return evaluate_legacy_retirement(
+        feature=body.feature,
+        temporal_run_count=body.temporal_run_count,
+        clean_days=body.clean_days,
+        restart_chaos_passed=body.restart_chaos_passed,
+        parity_discrepancies_open=body.parity_discrepancies_open,
+        rollback_drill_passed=body.rollback_drill_passed,
+        archival_snapshots_exported=body.archival_snapshots_exported,
+        metadata=body.metadata,
+    )
+
+
+@router.get("/control-plane/legacy-retirement/manifest")
+async def control_plane_legacy_retirement_manifest():
+    _request_counts["/admin/control-plane/legacy-retirement/manifest"] += 1
+    from backend.control_plane.wave7_archival import build_legacy_retirement_manifest
+
+    return build_legacy_retirement_manifest()
+
+
+@router.post("/control-plane/archive-snapshot")
+async def control_plane_archive_snapshot(output_path: str = ""):
+    _request_counts["/admin/control-plane/archive-snapshot"] += 1
+    from backend.control_plane.wave7_archival import export_wave7_archival_snapshot
+
+    return export_wave7_archival_snapshot(output_path=output_path or None)
+
+
+@router.get("/control-plane/readiness")
+async def control_plane_wave7_readiness():
+    _request_counts["/admin/control-plane/readiness"] += 1
+    from backend.control_plane.wave7_readiness import build_wave7_readiness_report
+
+    return build_wave7_readiness_report()
 
 
 @router.get("/objective")

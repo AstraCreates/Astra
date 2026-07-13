@@ -230,6 +230,10 @@ class AstraRunWorkflow:
                             waiting_gate = await child_handle.query("waiting_gate")
                         except Exception:
                             waiting_gate = None
+                        try:
+                            waiting_gate_approval = await child_handle.query("waiting_approval")
+                        except Exception:
+                            waiting_gate_approval = None
 
                         workflow_status = "awaiting_approval" if waiting_gate else ("cancelling" if self._cancelled else "running")
                         waiting_approval = None
@@ -238,6 +242,12 @@ class AstraRunWorkflow:
                                 "gate_key": f"phase_gate_{waiting_gate}",
                                 "phase_name": waiting_gate,
                             }
+                            if isinstance(waiting_gate_approval, dict):
+                                waiting_approval.update({
+                                    "approval_id": waiting_gate_approval.get("approval_id"),
+                                    "action_digest": waiting_gate_approval.get("action_digest"),
+                                    "policy_version": waiting_gate_approval.get("policy_version"),
+                                })
                         await self._observe(
                             run_id,
                             workflow_status=workflow_status,

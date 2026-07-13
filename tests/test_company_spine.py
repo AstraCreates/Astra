@@ -236,6 +236,9 @@ async def test_company_api_enforces_tenant_ownership(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_company_scoped_brain_api_does_not_cross_company_boundaries():
+    settings.astra_require_auth = True
+    settings.astra_trust_auth_headers = True
+
     founder_id = "founder_company_brain_api"
     first = workspace_store.create_workspace(founder_id, "First", "First goal")
     second = workspace_store.create_workspace(founder_id, "Second", "Second goal")
@@ -250,9 +253,11 @@ async def test_company_scoped_brain_api_does_not_cross_company_boundaries():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         first_response = await client.get(
             f"/brain/{founder_id}?company_id={first['company_id']}",
+            headers={"x-astra-user-id": founder_id},
         )
         second_response = await client.get(
             f"/brain/{founder_id}?company_id={second['company_id']}",
+            headers={"x-astra-user-id": founder_id},
         )
 
     assert first_response.status_code == 200
@@ -281,11 +286,11 @@ async def test_direct_mission_routes_enforce_company_owner(monkeypatch):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         denied = await client.get(
-            f"/api/missions/{mission['id']}",
+            f"/missions/{mission['id']}",
             headers={"x-astra-user-id": "different_founder"},
         )
         allowed = await client.get(
-            f"/api/missions/{mission['id']}",
+            f"/missions/{mission['id']}",
             headers={"x-astra-user-id": founder_id},
         )
 
