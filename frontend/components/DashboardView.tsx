@@ -299,7 +299,10 @@ export default function DashboardView() {
 
   return (
     <>
-      <style>{`@keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }`}</style>
+      <style>{`
+        @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+      `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
@@ -338,18 +341,8 @@ export default function DashboardView() {
         {/* ── Body — exact padding from reference ── */}
         <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
 
-          {/* TODAY + tabs */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
-            <div style={{ display: "flex", gap: 3, padding: 3, background: "rgb(12,15,26)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8 }}>
-              {(["populated", "first-run"] as const).map((mode) => (
-                <button key={mode} onClick={() => setViewMode(mode)}
-                  style={{ padding: "6px 12px", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, transition: "0.15s", background: viewMode === mode ? "rgb(237,241,251)" : "transparent", color: viewMode === mode ? "rgb(5,7,14)" : "rgba(237,241,251,0.4)" }}>
-                  {mode === "populated" ? "Populated" : "First run"}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* TODAY */}
+          <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
 
           {/* Two-column layout */}
           <div style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
@@ -360,7 +353,12 @@ export default function DashboardView() {
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
                 if (!active) return (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "32px 10px", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "32px 10px", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {[0,1,2].map(i => (
+                        <div key={i} style={{ width: 18, height: 18, border: "1.5px solid rgba(125,143,255,0.4)", background: "rgba(125,143,255,0.08)", transform: "rotate(45deg)", borderRadius: 3 }} />
+                      ))}
+                    </div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>No active goals</div>
                     <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start a run and Astra will get to work.</div>
                   </div>
@@ -433,6 +431,11 @@ export default function DashboardView() {
                 </div>
               ) : !regularSessions.length ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "28px 16px", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                    {[0,1,2].map(i => (
+                      <div key={i} style={{ width: 18, height: 18, border: "1.5px solid rgba(125,143,255,0.4)", background: "rgba(125,143,255,0.08)", transform: "rotate(45deg)", borderRadius: 3 }} />
+                    ))}
+                  </div>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>No runs yet</div>
                   <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start your first run and Astra will get to work.</div>
                   <button onClick={() => router.push("/dashboard?new=1")}
@@ -558,8 +561,8 @@ export default function DashboardView() {
           {/* Copilot bar — exact pill from reference + astronaut mascot */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
-              <img src="/astra-mascot.png" alt="" style={{ width: 28, height: 28, objectFit: "contain", flex: "0 0 auto", imageRendering: "pixelated", borderRadius: 4 }} />
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 72px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px", overflow: "visible" }}>
+              <img src="/astra-mascot.png" alt="" style={{ position: "absolute", left: 8, bottom: 0, width: 60, height: 60, objectFit: "contain", imageRendering: "pixelated", animation: "mascot-float 3s ease-in-out infinite" }} />
               <input
                 value={copilotInput}
                 onChange={e => setCopilotInput(e.target.value)}
