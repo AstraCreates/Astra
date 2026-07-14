@@ -296,8 +296,8 @@ services:
     depends_on:
       temporal-postgres:
         condition: service_healthy
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: 2g
+    memswap_limit: 2g
     pids_limit: 256
     healthcheck:
       # Same /dev/tcp connect-check as crw/lightpanda -- the litellm image has
