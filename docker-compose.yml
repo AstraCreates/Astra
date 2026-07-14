@@ -324,15 +324,43 @@ services:
       context: .
       dockerfile: Dockerfile.temporal-worker
     restart: unless-stopped
+    # ExecuteOrchestratorActivity runs the full legacy orchestrator (get_orchestrator())
+    # in-process inside this worker -- it needs the same Supabase/model-routing config
+    # as the backend service, not just Temporal's own address/namespace. Without
+    # env_file, every Supabase-touching activity (publish_event, update_run_status,
+    # observe_run) silently no-ops with "supabase_url is required" and any real
+    # orchestrator run fails outright once it needs a provider call.
+    env_file: .env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_NAMESPACE=astra
+      - REDIS_URL=redis://redis:6379
+      - OBSIDIAN_VAULT=/data/astra_docs
+      - ASTRA_WORKSPACE=/data/astra-workspaces
+      - AGENT_MODEL_BASE_URL=http://headroom:8787/v1
+      - OPENROUTER_BASE_URL=http://headroom:8787/v1
+      - TOOLUSE_MODEL_BASE_URL=http://headroom:8787/v1
+      - PLANNER_MODEL_BASE_URL=http://headroom:8787/v1
+      - CHAT_MODEL_BASE_URL=http://headroom:8787/v1
+      - LIGHT_MODEL_BASE_URL=http://headroom:8787/v1
+      - CRW_BASE_URL=http://crw:3000
+      - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
     depends_on:
       temporal:
         condition: service_healthy
-    mem_limit: 512m
-    memswap_limit: 512m
-    pids_limit: 128
+      redis:
+        condition: service_healthy
+      headroom:
+        condition: service_healthy
+    # Was 512m -- too small now that this container runs the same
+    # get_orchestrator() code path backend does (backend needs 4g for it).
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 256
+    volumes:
+      - astra_docs_data:/data/astra_docs
+      - astra_workspaces_data:/data/astra-workspaces
+      - brain_data:/app/.astra
 
   nginx:
     image: nginx:alpine
