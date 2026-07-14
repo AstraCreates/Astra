@@ -202,6 +202,14 @@ async def execute_external_action(
             action_repo.update_status(action.id, "approved")
             action = action.model_copy(update={"status": "approved", "approval_id": consumed.id})
 
+        # Recheck immediately before the effect, not just before approval consumption --
+        # approval_repo.consume() above is a real round trip and can take enough wall
+        # time for a cancel signal to land in between. Spec requires the recheck happen
+        # right before the side effect itself, not merely somewhere earlier in the call.
+        if is_cancelled(request.run_id):
+            action_repo.update_status(action.id, "blocked")
+            raise CancellationFenceError(f"run {request.run_id!r} was cancelled before external effect execution")
+
         action_repo.update_status(action.id, "executing")
         try:
             provider_result = await execute_effect(dict(request.args or {}), idempotency_key)

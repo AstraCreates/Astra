@@ -361,6 +361,53 @@ def test_execute_external_action_does_not_consume_approval_after_cancellation():
     assert approval.status == "approved"
 
 
+def test_execute_external_action_rechecks_cancellation_after_approval_consumption():
+    # approval_repo.consume() is a real round trip and can take enough wall
+    # time for a cancel signal to land in between the pre-approval check and
+    # the actual side effect -- the recheck must happen again right before
+    # execute_effect, not only once earlier in the call.
+    action_repo = FakeActionRepository()
+    receipt_repo = FakeActionReceiptRepository()
+    approval_repo = FakeApprovalRequestRepository()
+    approval_repo.create(ApprovalRequest(id="ap_midflight", run_id="run_midflight", gate_key="phase_gate", action_digest="digest_midflight", status="approved"))
+
+    effect_called = {"count": 0}
+
+    async def _effect(_args, _idempotency_key):
+        effect_called["count"] += 1
+        return {"ok": True}
+
+    calls = {"count": 0}
+
+    def _is_cancelled(_run_id):
+        calls["count"] += 1
+        return calls["count"] > 1
+
+    try:
+        __import__("asyncio").run(execute_external_action(
+            ExternalActionRequest(
+                run_id="run_midflight",
+                step_id="step_1",
+                tool="deploy",
+                args={},
+                require_approval=True,
+                approval_id="ap_midflight",
+                approval_action_digest="digest_midflight",
+            ),
+            action_repo=action_repo,
+            receipt_repo=receipt_repo,
+            approval_repo=approval_repo,
+            execute_effect=_effect,
+            is_cancelled=_is_cancelled,
+        ))
+        assert False, "expected CancellationFenceError"
+    except CancellationFenceError:
+        pass
+
+    assert effect_called["count"] == 0
+    assert calls["count"] == 2
+
+
 def test_execute_external_action_marks_receipt_collision():
     action_repo = FakeActionRepository()
     receipt_repo = FakeActionReceiptRepository()
