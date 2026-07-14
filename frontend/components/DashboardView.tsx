@@ -335,13 +335,13 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-52%)} 50%{transform:translateY(calc(-52% - 5px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-44%)} 50%{transform:translateY(calc(-44% - 5px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
         {/* ── Hero — exact from reference HTML ── */}
-        <div style={{ position: "relative", height: 280, flexShrink: 0, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
+        <div style={{ position: "relative", height: 240, flexShrink: 0, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
           <img src="/hero-lineart.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(5,7,14,0.82) 0%, rgba(5,7,14,0.44) 42%, transparent 72%)" }} />
           <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
