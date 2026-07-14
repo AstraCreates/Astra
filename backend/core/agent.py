@@ -979,11 +979,14 @@ class Agent:
                 }
             _t0 = _time.monotonic()
             resp = None
+            _gateway_response_headers = None
             for _attempt in range(_max_attempts):
                 try:
                     if _gateway_active:
                         try:
-                            resp = _gateway_client.chat.completions.create(**_gateway_kwargs)
+                            _gw_raw = _gateway_client.chat.completions.with_raw_response.create(**_gateway_kwargs)
+                            _gateway_response_headers = _gw_raw.headers
+                            resp = _gw_raw.parse()
                         except (_openai.APIConnectionError, _openai.APITimeoutError) as _gw_e:
                             from backend.control_plane.gateway import handle_gateway_connection_error
 
@@ -1138,7 +1141,7 @@ class Agent:
                                 # response_cost -- more accurate than our static rate table
                                 # (backend/core/usage.py's _cost_usd), so prefer it when present.
                                 from backend.control_plane.gateway import reconcile_gateway_usage
-                                _, _, _gw_cost, _ = reconcile_gateway_usage(resp)
+                                _, _, _gw_cost, _ = reconcile_gateway_usage(resp, headers=_gateway_response_headers)
                                 if _gw_cost > 0:
                                     _actual_usd = _gw_cost
                             get_default_budget_service().commit(

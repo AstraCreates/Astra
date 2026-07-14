@@ -163,21 +163,22 @@ def handle_gateway_connection_error(exc: Exception, *, direct_provider_disabled:
         raise GatewayUnavailableError(f"litellm gateway unavailable: {exc}") from exc
 
 
-def reconcile_gateway_usage(response: Any) -> tuple[int, int, float, int]:
+def reconcile_gateway_usage(response: Any, headers: Any = None) -> tuple[int, int, float, int]:
     """Extract (prompt_tokens, completion_tokens, actual_cost_usd,
     cached_tokens) from a LiteLLM proxy chat-completion response. Defensive
     by design -- this feeds a budget commit() call, so a malformed/unexpected
     response object must never raise, only degrade to zeros.
 
-    cost_usd comes straight from LiteLLM's own response_cost, which LiteLLM
-    computes server-side already accounting for cache-discounted pricing per
-    the proxy's model_list -- callers should prefer this over recomputing
-    cost locally via backend.core.usage._cost_usd's static rate table when
-    it's available and non-zero. cached_tokens is returned separately (not
-    baked into cost_usd) so callers that DO want the local rate-table
-    calculation (e.g. to cross-check the gateway's number) can still get an
-    accurate cache-discounted result from _cost_usd(model, prompt_tokens,
-    completion_tokens, cached_tokens)."""
+    cost_usd comes from LiteLLM's `x-litellm-response-cost` response header
+    (pass it via `headers`, e.g. `client...with_raw_response.create(...).headers`)
+    -- LiteLLM only attaches `_hidden_params` to responses returned by its
+    in-process `litellm.completion()` call; the real gateway path here goes
+    over HTTP via `openai.OpenAI()`, whose parsed response never has that
+    attribute, so `_hidden_params` is checked only as a same-process fallback.
+    cached_tokens is returned separately (not baked into cost_usd) so callers
+    that DO want the local rate-table calculation (e.g. to cross-check the
+    gateway's number) can still get an accurate cache-discounted result from
+    _cost_usd(model, prompt_tokens, completion_tokens, cached_tokens)."""
     prompt_tokens = 0
     completion_tokens = 0
     cached_tokens = 0
@@ -193,8 +194,12 @@ def reconcile_gateway_usage(response: Any) -> tuple[int, int, float, int]:
         completion_tokens = 0
         cached_tokens = 0
     try:
-        hidden_params = getattr(response, "_hidden_params", None) or {}
-        raw_cost = hidden_params.get("response_cost") if isinstance(hidden_params, dict) else None
+        raw_cost = None
+        if headers is not None:
+            raw_cost = headers.get("x-litellm-response-cost")
+        if raw_cost is None:
+            hidden_params = getattr(response, "_hidden_params", None) or {}
+            raw_cost = hidden_params.get("response_cost") if isinstance(hidden_params, dict) else None
         cost_usd = float(raw_cost) if raw_cost is not None else 0.0
     except Exception:
         cost_usd = 0.0

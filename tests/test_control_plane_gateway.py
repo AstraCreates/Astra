@@ -85,6 +85,38 @@ def test_reconcile_gateway_usage_missing_hidden_params_returns_zero_cost():
     assert cached == 0
 
 
+def test_reconcile_gateway_usage_extracts_cost_from_header():
+    # The real gateway path calls the LiteLLM proxy over HTTP via openai.OpenAI(),
+    # whose parsed response never carries `_hidden_params` -- only litellm's
+    # in-process `litellm.completion()` does. LiteLLM instead reports real
+    # provider cost via the `x-litellm-response-cost` response header.
+    resp = _Response(usage=_Usage(prompt_tokens=10, completion_tokens=3))
+    headers = {"x-litellm-response-cost": "2.224e-06"}
+    prompt, completion, cost, cached = reconcile_gateway_usage(resp, headers=headers)
+    assert prompt == 10
+    assert completion == 3
+    assert cost == pytest.approx(2.224e-06)
+
+
+def test_reconcile_gateway_usage_header_takes_precedence_over_hidden_params():
+    resp = _Response(
+        usage=_Usage(prompt_tokens=10, completion_tokens=5),
+        hidden_params={"response_cost": 0.5},
+    )
+    headers = {"x-litellm-response-cost": "0.001"}
+    _, _, cost, _ = reconcile_gateway_usage(resp, headers=headers)
+    assert cost == pytest.approx(0.001)
+
+
+def test_reconcile_gateway_usage_missing_header_falls_back_to_hidden_params():
+    resp = _Response(
+        usage=_Usage(prompt_tokens=10, completion_tokens=5),
+        hidden_params={"response_cost": 0.00873},
+    )
+    prompt, completion, cost, cached = reconcile_gateway_usage(resp, headers={})
+    assert cost == pytest.approx(0.00873)
+
+
 def test_reconcile_gateway_usage_missing_usage_returns_zeros():
     resp = _Response(hidden_params={"response_cost": 0.01})
     prompt, completion, cost, cached = reconcile_gateway_usage(resp)
