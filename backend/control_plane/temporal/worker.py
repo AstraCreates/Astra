@@ -51,30 +51,27 @@ async def run_worker() -> None:
     logger.info("connecting to Temporal at %s (namespace=%s)", address, NAMESPACE)
     client = await Client.connect(address, namespace=NAMESPACE)
 
-    worker = Worker(
-        client,
-        task_queue=TASK_QUEUE,
-        workflows=[AstraRunWorkflow, PhaseGateWorkflow, LaneAttemptWorkflow, PhaseRunWorkflow, MultiPhaseRunWorkflow, MonitoringTickWorkflow, MissionSchedulerTickWorkflow, CompanyBrainTickWorkflow, CustomAgentsTickWorkflow, DeepResearchWorkflow],
-        activities=[
-            CreatePhaseApprovalActivity.create,
-            ExecuteCompanyBrainTickActivity.execute,
-            ExecuteCustomAgentsTickActivity.execute,
-            ExecuteDeepResearchActivity.execute,
-            ExecuteLaneAttemptActivity.execute,
-            ExecuteMissionSchedulerTickActivity.execute,
-            ExecuteMonitoringTickActivity.execute,
-            ExecuteOrchestratorActivity.execute,
-            ExecuteVerificationActivity.execute,
-            ExpireApprovalActivity.expire,
-            LoadRunPlanActivity.load,
-            ObserveRunActivity.record,
-            PublishEventActivity.publish,
-            UpdateRunStatusActivity.update,
-        ],
-    )
+    workflows = [AstraRunWorkflow, PhaseGateWorkflow, LaneAttemptWorkflow, PhaseRunWorkflow, MultiPhaseRunWorkflow, MonitoringTickWorkflow, MissionSchedulerTickWorkflow, CompanyBrainTickWorkflow, CustomAgentsTickWorkflow, DeepResearchWorkflow]
+    activities = [
+        CreatePhaseApprovalActivity.create,
+        ExecuteCompanyBrainTickActivity.execute,
+        ExecuteCustomAgentsTickActivity.execute,
+        ExecuteDeepResearchActivity.execute,
+        ExecuteLaneAttemptActivity.execute,
+        ExecuteMissionSchedulerTickActivity.execute,
+        ExecuteMonitoringTickActivity.execute,
+        ExecuteOrchestratorActivity.execute,
+        ExecuteVerificationActivity.execute,
+        ExpireApprovalActivity.expire,
+        LoadRunPlanActivity.load,
+        ObserveRunActivity.record,
+        PublishEventActivity.publish,
+        UpdateRunStatusActivity.update,
+    ]
+    worker = Worker(client, task_queue=TASK_QUEUE, workflows=workflows, activities=activities)
     logger.info(
-        "worker registered on task queue %s with AstraRunWorkflow + 3 activities, running",
-        TASK_QUEUE,
+        "worker registered on task queue %s with %d workflows + %d activities, running",
+        TASK_QUEUE, len(workflows), len(activities),
     )
     await worker.run()
 
