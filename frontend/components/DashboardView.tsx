@@ -597,7 +597,7 @@ export default function DashboardView() {
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width; padding clears visible astronaut body */}
-              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 66px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
