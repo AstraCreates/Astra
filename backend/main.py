@@ -119,6 +119,18 @@ async def startup_background_jobs():
         _settings.tooluse_model_name,
         _settings.chat_model_name,
     )
+    # Reconcile sessions left "running"/"queued" by a prior process crash/restart --
+    # nothing else ever revisits these, so without this sweep they show as
+    # perpetually in-flight forever (has_active_run() only ignores them for its
+    # one caller, it doesn't fix the stored status).
+    try:
+        from backend.core.session_store import reconcile_orphaned_sessions
+        reconciled = reconcile_orphaned_sessions()
+        if reconciled:
+            logger.info("startup session reconciliation: marked %d orphaned session(s) as error: %s", len(reconciled), reconciled)
+    except Exception as exc:
+        logger.warning("startup session reconciliation failed: %s", exc)
+
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler

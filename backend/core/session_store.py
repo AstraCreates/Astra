@@ -165,7 +165,9 @@ def register_session(
             _save_index(index)
 
 
-def update_session_status(session_id: str, status: str, artifact_count: int | None = None) -> None:
+def update_session_status(
+    session_id: str, status: str, artifact_count: int | None = None, *, error: str | None = None,
+) -> None:
     with _session_lock(session_id):
         p = meta_path(session_id)
         try:
@@ -177,6 +179,8 @@ def update_session_status(session_id: str, status: str, artifact_count: int | No
             meta["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if artifact_count is not None:
             meta["artifact_count"] = artifact_count
+        if error is not None:
+            meta["error"] = error
         p.write_text(json.dumps(meta, indent=2))
     # Update the shared index under its own lock.
     with _index_lock:
@@ -217,7 +221,7 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
             update_session_status(session_id, "done")
             _notify_run_done(session_id, success=True)
         elif etype == "goal_error":
-            update_session_status(session_id, "error")
+            update_session_status(session_id, "error", error=str(event.get("error") or "") or None)
             _notify_run_done(session_id, success=False)
         elif etype == "stack_artifact":
             _increment_artifacts(session_id)
@@ -385,6 +389,42 @@ def has_active_run(
         if (now - epoch) < stale_seconds:
             return True
     return False
+
+
+def reconcile_orphaned_sessions(stale_seconds: int | None = None) -> list[str]:
+    """Startup sweep: a session left "running"/"queued" when the backend process
+    died or restarted has no in-memory task to ever flip its status again --
+    nothing currently revisits it (has_active_run() only ignores stale entries
+    for its one caller, it doesn't fix them). Mark anything past the staleness
+    window as "error" with an explanatory reason so it stops showing as
+    perpetually in-flight. Returns the list of reconciled session IDs."""
+    if stale_seconds is None:
+        stale_seconds = int(os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
+    now = time.time()
+    reconciled: list[str] = []
+    for s in list_sessions(limit=10_000):
+        status = s.get("status")
+        if status not in ("running", "queued"):
+            continue
+        session_id = s.get("session_id") or s.get("id")
+        if not session_id:
+            continue
+        ts = s.get("created_at") or ""
+        try:
+            epoch = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+        except Exception:
+            continue  # unknown age -- leave alone rather than guess
+        if (now - epoch) < stale_seconds:
+            continue
+        update_session_status(
+            session_id, "error",
+            error=(
+                f"Orphaned: session was still {status!r} after a backend restart "
+                "with no active process found (reconciled by startup sweep)."
+            ),
+        )
+        reconciled.append(session_id)
+    return reconciled
 
 
 def delete_session(session_id: str) -> bool:
