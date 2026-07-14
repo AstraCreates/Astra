@@ -35,6 +35,21 @@ def _dump(model: Any) -> dict[str, Any]:
     return model.model_dump(mode="json", exclude_none=True)
 
 
+def _json_safe_patch(patch: dict[str, Any]) -> dict[str, Any]:
+    """Coerce a raw update-patch dict's values to JSON-serializable forms.
+
+    Callers building patches by hand (e.g. wave7_rollout.py's evaluate_rollout_campaign,
+    which sets patch["completed_at"] = datetime.now(timezone.utc) directly) pass real
+    datetime objects, not the ISO strings a pydantic model_dump(mode="json") would give
+    -- postgrest's httpx json encoder has no datetime support and raises TypeError."""
+    import datetime as _dt
+
+    safe: dict[str, Any] = {}
+    for key, value in (patch or {}).items():
+        safe[key] = value.isoformat() if isinstance(value, (_dt.datetime, _dt.date)) else value
+    return safe
+
+
 def _row_to_run(row: dict[str, Any]) -> Run:
     return Run.model_validate(row)
 
@@ -114,14 +129,14 @@ class SupabaseRunRepository:
         patch: dict[str, Any] = {"status": status}
         if error is not None:
             patch["error"] = error
-        get_supabase().table("astra_runs").update(patch).eq("id", run_id).execute()
+        get_supabase().table("astra_runs").update(_json_safe_patch(patch)).eq("id", run_id).execute()
 
     def update_fields(self, run_id: str, patch: dict[str, Any]) -> None:
         from backend.db.client import get_supabase
 
         if not patch:
             return
-        get_supabase().table("astra_runs").update(patch).eq("id", run_id).execute()
+        get_supabase().table("astra_runs").update(_json_safe_patch(patch)).eq("id", run_id).execute()
 
 
 class SupabaseRunStepRepository:
@@ -178,14 +193,14 @@ class SupabaseRunStepRepository:
         patch: dict[str, Any] = {"status": status}
         if error is not None:
             patch["error"] = error
-        get_supabase().table("astra_run_steps").update(patch).eq("id", step_id).execute()
+        get_supabase().table("astra_run_steps").update(_json_safe_patch(patch)).eq("id", step_id).execute()
 
     def update_fields(self, step_id: str, patch: dict[str, Any]) -> None:
         from backend.db.client import get_supabase
 
         if not patch:
             return
-        get_supabase().table("astra_run_steps").update(patch).eq("id", step_id).execute()
+        get_supabase().table("astra_run_steps").update(_json_safe_patch(patch)).eq("id", step_id).execute()
 
 
 class SupabaseActionRepository:
@@ -265,7 +280,7 @@ class SupabaseApprovalRequestRepository:
             "decision_note": note,
             "decided_at": datetime.now(timezone.utc).isoformat(),
         }
-        get_supabase().table("astra_approval_requests").update(patch).eq("id", request_id).execute()
+        get_supabase().table("astra_approval_requests").update(_json_safe_patch(patch)).eq("id", request_id).execute()
         updated = self.get(request_id)
         if updated is None:
             raise KeyError(f"unknown request_id {request_id!r}")
@@ -328,7 +343,7 @@ class SupabaseApprovalRequestRepository:
             "status": "consumed",
             "consumed_at": datetime.now(timezone.utc).isoformat(),
         }
-        get_supabase().table("astra_approval_requests").update(patch).eq("id", request_id).execute()
+        get_supabase().table("astra_approval_requests").update(_json_safe_patch(patch)).eq("id", request_id).execute()
         updated = self.get(request_id)
         if updated is None:
             raise KeyError(f"unknown request_id {request_id!r}")
@@ -768,7 +783,7 @@ class SupabaseRolloutCampaignRepository:
 
         rows = (
             get_supabase().table("astra_rollout_campaigns")
-            .update(dict(patch or {}))
+            .update(_json_safe_patch(dict(patch or {})))
             .eq("id", campaign_id)
             .execute()
             .data

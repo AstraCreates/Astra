@@ -9,9 +9,11 @@ from backend.control_plane.supabase_repositories import (
     SupabaseApprovalRequestRepository,
     SupabaseArtifactRepository,
     SupabaseBudgetReservationRepository,
+    SupabaseRolloutCampaignRepository,
     SupabaseRunEventRepository,
     SupabaseRunRepository,
     SupabaseRunStepRepository,
+    _json_safe_patch,
     durable_append_event,
     durable_create_run,
     durable_create_run_with_event,
@@ -121,6 +123,42 @@ def test_run_step_repository_create_attempt_increments_attempt_number(mock_supab
     step = SupabaseRunStepRepository().create_attempt(RunStep(id="s3", run_id="run_1", step_key="build", kind="agent"))
     assert step.attempt_number == 3
     mock_supabase.table.return_value.upsert.assert_called()
+
+
+def test_json_safe_patch_converts_datetime_to_isoformat_string():
+    now = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
+    safe = _json_safe_patch({"status": "succeeded", "completed_at": now, "heartbeat_at": now})
+    assert safe["status"] == "succeeded"
+    assert safe["completed_at"] == now.isoformat()
+    assert safe["heartbeat_at"] == now.isoformat()
+
+
+def test_json_safe_patch_leaves_non_datetime_values_untouched():
+    assert _json_safe_patch({"status": "failed", "error": "boom", "n": 3}) == {
+        "status": "failed", "error": "boom", "n": 3,
+    }
+
+
+def test_run_step_repository_update_fields_serializes_raw_datetime(mock_supabase):
+    # Regression test: execution.py's lane-attempt heartbeat/completion path calls
+    # update_fields(step.id, {"heartbeat_at": datetime.now(timezone.utc), ...}) directly
+    # with a real datetime object -- postgrest's httpx JSON encoder has no datetime
+    # support and raised TypeError on every real heartbeat/completion write in prod
+    # before _json_safe_patch was wired in (never caught by MagicMock-based tests).
+    now = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
+    SupabaseRunStepRepository().update_fields("s1", {"status": "succeeded", "completed_at": now})
+    update_call = mock_supabase.table.return_value.update
+    update_call.assert_called_once_with({"status": "succeeded", "completed_at": now.isoformat()})
+
+
+def test_rollout_campaign_repository_update_serializes_raw_datetime(mock_supabase):
+    # Regression test: wave7_rollout.py's evaluate_rollout_campaign sets
+    # patch["completed_at"] / patch["last_stage_changed_at"] to a raw datetime.
+    mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value.data = []
+    now = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc)
+    SupabaseRolloutCampaignRepository().update("c1", {"status": "completed", "completed_at": now})
+    update_call = mock_supabase.table.return_value.update
+    update_call.assert_called_once_with({"status": "completed", "completed_at": now.isoformat()})
 
 
 def test_action_repository_get_by_idempotency_key_reads_matching_row(mock_supabase):
