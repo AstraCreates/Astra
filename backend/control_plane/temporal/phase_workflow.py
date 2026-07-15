@@ -109,10 +109,24 @@ class PhaseRunWorkflow:
                     ),
                 ))
 
-            for step_key, handle in lane_handles:
+            for lane_index, (step_key, handle) in enumerate(lane_handles):
                 if self._cancelled:
-                    handle.cancel()
-                    continue
+                    remaining_handles = [h for _, h in lane_handles[lane_index:]]
+                    for remaining_handle in remaining_handles:
+                        remaining_handle.cancel()
+                    for remaining_handle in remaining_handles:
+                        try:
+                            await remaining_handle
+                        except asyncio.CancelledError:
+                            pass
+                    return PhaseRunResult(
+                        run_id=input.run_id,
+                        phase_name=input.phase_name,
+                        next_phase=input.next_phase,
+                        status="cancelled",
+                        decision="cancelled",
+                        lane_results=lane_results,
+                    )
                 result = await handle
                 if isinstance(result, dict):
                     lane_results.append(result)
@@ -151,6 +165,10 @@ class PhaseRunWorkflow:
         while not gate_handle.done():
             if self._cancelled:
                 gate_handle.cancel()
+                try:
+                    await gate_handle
+                except asyncio.CancelledError:
+                    pass
                 return PhaseRunResult(
                     run_id=input.run_id,
                     phase_name=input.phase_name,

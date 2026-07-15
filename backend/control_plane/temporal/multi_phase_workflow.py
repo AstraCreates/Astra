@@ -84,6 +84,10 @@ class MultiPhaseRunWorkflow:
                 while not handle.done():
                     if self._cancelled:
                         handle.cancel()
+                        try:
+                            await handle
+                        except asyncio.CancelledError:
+                            pass
                         return MultiPhaseRunResult(
                             run_id=input.run_id,
                             status="cancelled",
