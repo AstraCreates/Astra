@@ -1,4 +1,6 @@
 from backend.approval_workflows import (
+    _load,
+    _save,
     create_approval_request,
     decide_approval_request,
     expire_approval_requests,
@@ -227,3 +229,137 @@ def test_rejected_refresh_creates_revision_and_rejects_stale_digest(tmp_path, mo
     assert stale["ok"] is False
     assert "does not match" in stale["error"]
     assert approved["ok"] is True
+
+
+def test_repeated_create_with_identical_args_is_idempotent(tmp_path, monkeypatch):
+    """PLAN.md: retrying with the same arguments must not fabricate a duplicate
+    approval request -- the caller gets back the same pending record."""
+    monkeypatch.chdir(tmp_path)
+
+    first = create_approval_request(
+        "session_idempotent",
+        "outbound_send",
+        action_id="email_1",
+        title="Send outbound email",
+        reason="Notify customer",
+        required_role="admin",
+    )
+    second = create_approval_request(
+        "session_idempotent",
+        "outbound_send",
+        action_id="email_1",
+        title="Send outbound email",
+        reason="Notify customer",
+        required_role="admin",
+    )
+
+    workflow = get_approval_workflow("session_idempotent")
+
+    assert second["id"] == first["id"]
+    assert second["action_digest"] == first["action_digest"]
+    assert second["revision"] == first["revision"] == 1
+    assert len(workflow["requests"]) == 1
+
+
+def test_modified_arguments_create_a_new_request_and_do_not_mutate_the_old_one(tmp_path, monkeypatch):
+    """PLAN.md: 'Modified arguments create another approval request.' A pending
+    approval must not be silently rewritten in place with a different digest --
+    the founder must be asked to approve the actually-different action."""
+    monkeypatch.chdir(tmp_path)
+
+    original = create_approval_request(
+        "session_modified_args",
+        "paid_spend",
+        action_id="ad_budget_1",
+        title="Spend $500 on ads",
+        reason="Q3 campaign",
+        required_role="owner",
+        metadata={"amount_usd": 500},
+    )
+    revised = create_approval_request(
+        "session_modified_args",
+        "paid_spend",
+        action_id="ad_budget_1",
+        title="Spend $5000 on ads",
+        reason="Q3 campaign",
+        required_role="owner",
+        metadata={"amount_usd": 5000},
+    )
+
+    workflow = get_approval_workflow("session_modified_args")
+    by_id = {item["id"]: item for item in workflow["requests"]}
+
+    # A genuinely new request was created (new id, new digest) -- not an in-place
+    # overwrite of the original pending request.
+    assert revised["id"] != original["id"]
+    assert revised["action_digest"] != original["action_digest"]
+    assert revised["status"] == "pending"
+    assert len(workflow["requests"]) == 2
+
+    # The old request's stored record is untouched: same digest, same amount,
+    # still pending (still exists, still describes the ORIGINAL action).
+    stale = by_id[original["id"]]
+    assert stale["action_digest"] == original["action_digest"]
+    assert stale["amount_usd"] == 500
+    assert stale["status"] == "pending"
+
+    # Deciding using the stale digest must fail -- the founder can only approve
+    # the actually-current action.
+    stale_decision = decide_approval_request(
+        "session_modified_args", "paid_spend", "approved",
+        request_id=revised["id"], actor_id="owner_1", actor_role="owner",
+        expected_action_digest=original["action_digest"],
+    )
+    assert stale_decision["ok"] is False
+
+    fresh_decision = decide_approval_request(
+        "session_modified_args", "paid_spend", "approved",
+        request_id=revised["id"], actor_id="owner_1", actor_role="owner",
+        expected_action_digest=revised["action_digest"],
+    )
+    assert fresh_decision["ok"] is True
+
+
+def test_consumed_request_is_never_overwritten_by_changed_arguments(tmp_path, monkeypatch):
+    """A request that has already been used to authorize a real action (status
+    'consumed') must be preserved verbatim in the audit trail -- a later create
+    call with different arguments for the same gate must open a new request
+    rather than corrupting the consumed record."""
+    monkeypatch.chdir(tmp_path)
+
+    original = create_approval_request(
+        "session_consumed",
+        "production_publish",
+        action_id="publish_1",
+        title="Publish v1",
+        required_role="owner",
+    )
+
+    # Simulate the request having been consumed to authorize an executed action
+    # (the file-based ledger doesn't expose a public "consume" mutator; mirror
+    # what backend.control_plane's consume() does to its own copy of the status).
+    data = _load("session_consumed")
+    for item in data["requests"]:
+        if item["id"] == original["id"]:
+            item["status"] = "consumed"
+    _save("session_consumed", data)
+
+    revised = create_approval_request(
+        "session_consumed",
+        "production_publish",
+        action_id="publish_1",
+        title="Publish v2",
+        required_role="owner",
+    )
+
+    workflow = get_approval_workflow("session_consumed")
+    by_id = {item["id"]: item for item in workflow["requests"]}
+
+    assert revised["id"] != original["id"]
+    assert revised["action_digest"] != original["action_digest"]
+    assert revised["status"] == "pending"
+
+    consumed_record = by_id[original["id"]]
+    assert consumed_record["status"] == "consumed"
+    assert consumed_record["action_digest"] == original["action_digest"]
+    assert consumed_record["title"] == "Publish v1"
