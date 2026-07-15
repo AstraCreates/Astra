@@ -26,6 +26,29 @@ logger = logging.getLogger(__name__)
 _global_lock = threading.Lock()
 _ws_locks: dict[str, threading.Lock] = {}
 
+# Per (founder_id, normalized name) lock guarding the find-or-create sequence
+# in find_or_create_workspace(). Without this, two concurrent requests for the
+# same founder + workspace_name can both observe "no existing workspace" (via
+# find_workspace_by_name) before either has created one, producing two
+# workspaces with the identical name and different IDs. Keyed by name (not a
+# single global lock) so concurrent requests for different names/founders
+# don't serialize against each other. Follows the same double-checked,
+# guarded-dict pattern as _session_lock in backend/core/session_store.py.
+_name_locks_guard = threading.Lock()
+_name_locks: dict[str, threading.Lock] = {}
+
+
+def _name_lock(founder_id: str, company_name: str) -> threading.Lock:
+    key = f"{founder_id}::{(company_name or '').strip().lower()}"
+    lock = _name_locks.get(key)
+    if lock is None:
+        with _name_locks_guard:
+            lock = _name_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                _name_locks[key] = lock
+    return lock
+
 
 # ── Paths ───────────────────────────────────────────────────────────────────
 
@@ -155,6 +178,34 @@ def find_workspace_by_name(founder_id: str, company_name: str) -> Optional[dict]
         if candidate == needle:
             return ws
     return None
+
+
+def find_or_create_workspace(
+    founder_id: str,
+    company_name: str,
+    *,
+    create_name: str = "",
+    goal: str = "",
+    stack_id: str = "idea_to_revenue",
+) -> dict:
+    """Atomically find-or-create a workspace for (founder_id, company_name).
+
+    Serializes the find_workspace_by_name() -> create_workspace() sequence
+    behind a per (founder_id, normalized name) lock so two concurrent calls
+    for the same founder + name cannot both see "doesn't exist yet" and both
+    create a workspace. Calls for different names/founders use different
+    locks and proceed without blocking each other.
+    """
+    with _name_lock(founder_id, company_name):
+        existing = find_workspace_by_name(founder_id, company_name)
+        if existing:
+            return existing
+        return create_workspace(
+            founder_id=founder_id,
+            name=create_name or company_name,
+            goal=goal,
+            stack_id=stack_id,
+        )
 
 
 def update_workspace_meta(workspace_id: str, **fields) -> Optional[dict]:

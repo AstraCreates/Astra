@@ -36,6 +36,10 @@ def _org_lock(org_id: str) -> threading.Lock:
     return lock
 
 
+class RunLimitExceeded(Exception):
+    """Raised by check_and_consume_run() when no monthly runs remain."""
+
+
 PLANS: dict[str, dict[str, Any]] = {
     "beta": {
         "name": "Beta",
@@ -356,6 +360,36 @@ def record_usage(org_id: str, *, actor_id: str = "system", runs: int = 0, connec
         usage["connector_syncs"] = int(usage.get("connector_syncs") or 0) + max(0, connector_syncs)
         usage["approval_decisions"] = int(usage.get("approval_decisions") or 0) + max(0, approval_decisions)
         _audit(data, actor_id, "usage.recorded", {"runs": runs, "connector_syncs": connector_syncs, "approval_decisions": approval_decisions})
+        _save(data)
+        return with_entitlements(data)
+
+
+def check_and_consume_run(founder_id: str, org_id: str | None = None, *, actor_id: str = "system") -> dict[str, Any]:
+    """Atomically check the remaining monthly run entitlement and, if one is
+    available, record its usage — both under a single _org_lock acquisition.
+
+    This replaces the previous call pattern of get_or_create_org() followed
+    by a separate remaining_runs check and then record_usage(): each of those
+    three steps acquired and released _org_lock independently, so two
+    concurrent callers could both load the org, both observe
+    remaining_runs > 0, and both go on to record usage — letting a founder
+    with exactly 1 remaining run start 2 runs at once. Raises
+    RunLimitExceeded (instead of returning) when no runs remain, so callers
+    can't accidentally treat a not-entitled org as consumed.
+    """
+    resolved_org = org_id or founder_id
+    with _org_lock(resolved_org):
+        data = _load(resolved_org, founder_id)
+        entitled = with_entitlements(data)
+        if entitled.get("entitlements", {}).get("remaining_runs", 0) <= 0:
+            _save(data)
+            raise RunLimitExceeded("Monthly run limit reached for this workspace.")
+        usage = data.setdefault("usage", {})
+        period = time.strftime("%Y-%m", time.gmtime())
+        if usage.get("period") != period:
+            data["usage"] = usage = {"period": period, "runs": 0, "connector_syncs": 0, "approval_decisions": 0}
+        usage["runs"] = int(usage.get("runs") or 0) + 1
+        _audit(data, actor_id, "usage.recorded", {"runs": 1, "connector_syncs": 0, "approval_decisions": 0})
         _save(data)
         return with_entitlements(data)
 
