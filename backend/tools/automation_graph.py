@@ -47,9 +47,11 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import json
 import logging
 import re
+from typing import Any, Awaitable, Callable
 
 from backend.core import automation_store
 
@@ -360,7 +362,52 @@ def _execute_current_time_node() -> dict:
     return {"summary": automation_store.now()}
 
 
-async def _execute_slack_node(node: dict, rendered_config: dict) -> dict:
+# ── Durable idempotency for automation-node external side effects ──────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." Neither Slack
+# incoming webhooks nor SendGrid's send endpoint have a native idempotency
+# mechanism, so Astra's own durable action/receipt layer (run_automation_flow's
+# own `run_id` + the node's id as step_id) is the only protection available.
+# This module is already fully async, so no thread/asyncio.run bridging is
+# needed (unlike the sync stripe_tools.py/gmail_api.py/resend_tools.py).
+async def _execute_with_idempotency(
+    *, run_id: str, step_id: str, tool: str, args: dict[str, Any],
+    effect: Callable[[], Awaitable[dict]],
+) -> dict:
+    if not run_id:
+        return await effect()
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        canonicalize_tool_args,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::{tool}::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, _idempotency_key: str) -> dict:
+        return await effect()
+
+    result = await execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or tool,
+            action_id=action_id,
+            tool=tool,
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    )
+    return dict(result.provider_result or {})
+
+
+async def _execute_slack_node(node: dict, rendered_config: dict, run_id: str = "", node_id: str = "") -> dict:
     """Posts to a Slack incoming webhook — no OAuth needed, the founder just
     pastes the webhook URL Slack gives them, same as n8n/Zapier's Slack block."""
     from backend.tools.url_safety import validate_url
@@ -369,7 +416,8 @@ async def _execute_slack_node(node: dict, rendered_config: dict) -> dict:
     cfg = rendered_config
     webhook_url = cfg.get("webhook_url", "")
     message = cfg.get("message", "")
-    try:
+
+    async def _post() -> dict:
         validate_url(webhook_url)
         resp = await asyncio.to_thread(
             requests.post, webhook_url, json={"text": message}, timeout=15.0, allow_redirects=False,
@@ -377,11 +425,17 @@ async def _execute_slack_node(node: dict, rendered_config: dict) -> dict:
         if resp.status_code >= 400:
             return {"error": f"Slack webhook returned {resp.status_code}: {resp.text[:200]}"}
         return {"summary": f"Posted to Slack: {message[:100]}"}
+
+    try:
+        return await _execute_with_idempotency(
+            run_id=run_id, step_id=node_id, tool="slack_webhook_post",
+            args={"webhook_url": webhook_url, "message": message}, effect=_post,
+        )
     except Exception as e:
         return {"error": str(e)}
 
 
-async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str) -> dict:
+async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str, run_id: str = "", node_id: str = "") -> dict:
     """Sends email via the founder's own connected SendGrid key (set on the
     Integrations page) — never a shared/hardcoded credential."""
     from backend.provisioning.credentials_store import load_credentials
@@ -401,7 +455,8 @@ async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str
         "subject": subject,
         "content": [{"type": "text/plain", "value": body}],
     }
-    try:
+
+    async def _post() -> dict:
         resp = await asyncio.to_thread(
             requests.post, "https://api.sendgrid.com/v3/mail/send",
             headers={"Authorization": f"Bearer {api_key}"}, json=payload, timeout=15.0,
@@ -409,11 +464,17 @@ async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str
         if resp.status_code >= 300:
             return {"error": f"SendGrid returned {resp.status_code}: {resp.text[:200]}"}
         return {"summary": f"Emailed {to}: {subject}"}
+
+    try:
+        return await _execute_with_idempotency(
+            run_id=run_id, step_id=node_id, tool="sendgrid_send_email",
+            args={"to": to, "subject": subject, "body": body, "from": cfg.get("from") or to}, effect=_post,
+        )
     except Exception as e:
         return {"error": str(e)}
 
 
-async def _execute_gmail_node(rendered_config: dict, founder_id: str) -> dict:
+async def _execute_gmail_node(rendered_config: dict, founder_id: str, run_id: str = "", node_id: str = "") -> dict:
     from backend.tools.gmail_api import gmail_send_email
 
     cfg = rendered_config
@@ -422,7 +483,7 @@ async def _execute_gmail_node(rendered_config: dict, founder_id: str) -> dict:
     body = str(cfg.get("body") or "").strip()
     if not to or not subject:
         return {"error": "Gmail node requires both 'to' and 'subject'."}
-    return await asyncio.to_thread(gmail_send_email, founder_id, to, subject, body)
+    return await asyncio.to_thread(gmail_send_email, founder_id, to, subject, body, run_id=run_id, step_id=node_id)
 
 
 async def _execute_slack_bot_node(rendered_config: dict, founder_id: str) -> dict:
@@ -625,13 +686,13 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str, trigge
                     result = _execute_condition_node(node, upstream_text)
                 elif node_type == "slack":
                     rendered_cfg = _render_any(cfg, merged_outputs)
-                    result = await _execute_slack_node(node, rendered_cfg)
+                    result = await _execute_slack_node(node, rendered_cfg, run_id=run_id, node_id=node_id)
                 elif node_type == "email":
                     rendered_cfg = _render_any(cfg, merged_outputs)
-                    result = await _execute_email_node(node, rendered_cfg, founder_id)
+                    result = await _execute_email_node(node, rendered_cfg, founder_id, run_id=run_id, node_id=node_id)
                 elif node_type == "gmail":
                     rendered_cfg = _render_any(cfg, merged_outputs)
-                    result = await _execute_gmail_node(rendered_cfg, founder_id)
+                    result = await _execute_gmail_node(rendered_cfg, founder_id, run_id=run_id, node_id=node_id)
                 elif node_type == "slack_bot":
                     rendered_cfg = _render_any(cfg, merged_outputs)
                     result = await _execute_slack_bot_node(rendered_cfg, founder_id)

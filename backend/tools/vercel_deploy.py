@@ -1,8 +1,12 @@
+import asyncio
 import hashlib
 import logging
 import os
 import subprocess
+import threading
 import time
+from typing import Any, Callable
+
 import requests
 
 from backend.config import settings
@@ -10,6 +14,80 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 _VERCEL_API = "https://api.vercel.com"
+
+
+# ── Durable idempotency for the production deploy trigger ───────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." If a Temporal activity
+# times out AFTER Vercel accepted the deploy trigger but BEFORE the activity's
+# result is durably recorded, a retry of the whole activity would trigger a
+# SECOND production deploy -- wasting build resources, or deploying different
+# content twice if the agent's output changed between attempts. Vercel's
+# deployments API has no native idempotency-key parameter, so (like Gmail)
+# Astra's own durable action/receipt layer is the only protection available,
+# and only when session_id (this codebase's run_id) is provided.
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _deploy_trigger_with_idempotency(
+    *, run_id: str, step_id: str, args: dict[str, Any], deploy_call: Callable[[], Any],
+) -> Any:
+    """Route the deploy-triggering POST through Astra's durable action/receipt
+    control plane when run_id is available. `step_id` should incorporate the
+    internal build-retry attempt number (see vercel_deploy_from_github's
+    MAX_DEPLOY_ATTEMPTS loop) so each genuinely-new attempt after a build
+    failure gets its own action, while a Temporal-level re-invocation of the
+    SAME attempt correctly replays the stored receipt instead of deploying
+    again."""
+    if not run_id:
+        return deploy_call()
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        canonicalize_tool_args,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::vercel_deploy_trigger::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, _idempotency_key: str) -> dict:
+        return deploy_call()
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or "vercel_deploy_trigger",
+            action_id=action_id,
+            tool="vercel_deploy_trigger",
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    return dict(result.provider_result or {})
 
 
 def _resolve_vercel_token(founder_id: str = "") -> str:
@@ -468,13 +546,26 @@ def vercel_deploy_from_github(
         last_result: dict = {}
 
         for attempt in range(1, MAX_DEPLOY_ATTEMPTS + 1):
-            deploy_resp = requests.post(deploy_url, json=deploy_payload, headers=headers, timeout=30)
+            def _trigger_deploy() -> dict:
+                resp = requests.post(deploy_url, json=deploy_payload, headers=headers, timeout=30)
+                body = {}
+                try:
+                    body = resp.json()
+                except Exception:
+                    pass
+                return {"ok": resp.ok, "status_code": resp.status_code, "text": resp.text[:200], "body": body}
 
-            if not deploy_resp.ok:
-                last_result = {"deployed": False, "error": f"Deploy trigger failed: {deploy_resp.text[:200]}"}
+            deploy_result = _deploy_trigger_with_idempotency(
+                run_id=session_id, step_id=f"vercel_deploy:attempt_{attempt}",
+                args={"deploy_url": deploy_url, "deploy_payload": deploy_payload},
+                deploy_call=_trigger_deploy,
+            )
+
+            if not deploy_result.get("ok"):
+                last_result = {"deployed": False, "error": f"Deploy trigger failed: {deploy_result.get('text', '')}"}
                 break
 
-            dep_data = deploy_resp.json()
+            dep_data = deploy_result.get("body") or {}
             dep_id = dep_data.get("id", "")
             deployment_url = f"https://{dep_data.get('url', '')}" if dep_data.get("url") else ""
 
