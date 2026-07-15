@@ -17,6 +17,11 @@ from typing import Any, Optional
 
 from backend.config import settings
 
+try:
+    from graphiti_core.embedder.client import EmbedderClient as _EmbedderClientBase
+except Exception:  # graphiti_core not installed in local/dev environments
+    _EmbedderClientBase = object
+
 
 def graphiti_available() -> bool:
     try:
@@ -46,7 +51,7 @@ def _get_local_embedder_model() -> Any:
         return _local_embedder_model
 
 
-class LocalSentenceTransformerEmbedder:
+class LocalSentenceTransformerEmbedder(_EmbedderClientBase):
     """Zero-external-cost EmbedderClient backed by a local sentence-transformers
     model, for when no dedicated OpenAI-compatible embeddings credential exists
     (OpenRouter has no /embeddings endpoint -- see _build_graphiti's fallback
