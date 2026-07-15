@@ -7,11 +7,126 @@ Required env vars:
   STRIPE_SECRET_KEY   — Astra's platform secret key
   STRIPE_CLIENT_ID    — Astra's Connect client_id (ca_xxx)
 """
+import asyncio
+import hashlib
 import logging
 import os
+import threading
 from datetime import datetime
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
+
+
+# ── Durable idempotency for side-effecting Stripe calls ────────────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." The 4 functions below
+# that call requests.post() (create_stripe_product, create_stripe_price,
+# create_stripe_payment_link, register_stripe_webhook) route through this
+# helper so a retried Temporal activity can't create duplicate Stripe
+# products/prices/payment links/webhooks.
+
+def _run_async(coro):
+    """Run an async coroutine from sync code, safely, whether or not the
+    calling thread already has a running event loop.
+
+    These Stripe functions are called synchronously from a lot of places —
+    some inside a running asyncio event loop (e.g. FastAPI route handlers in
+    backend/api/routes.py call create_product_with_payment_link() directly,
+    without await or to_thread), some from plain worker threads. asyncio.run()
+    raises if a loop is already running on the current thread, so when one is
+    detected we run the coroutine to completion on a dedicated helper thread
+    instead of blocking/crashing the caller's loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _execute_with_idempotency(
+    *,
+    tool: str,
+    run_id: str,
+    step_id: str,
+    args: dict[str, Any],
+    http_call: Callable[[str], dict],
+) -> dict:
+    """Route a Stripe side-effecting call through Astra's durable action/receipt
+    control plane (backend.control_plane.action_executor.execute_external_action)
+    AND pass the computed idempotency key to Stripe's own Idempotency-Key HTTP
+    header, so retries are protected at both layers: Astra's receipt (a retry
+    of the same run/step/args replays the stored result without calling Stripe
+    again) and, if a crash happens between a successful Stripe call and the
+    receipt being persisted, Stripe's own native dedup on the header value.
+
+    `http_call` is a zero-network-yet closure that takes the idempotency key
+    and performs the actual `requests.post(...)` call, returning the parsed
+    result dict this function already promises to its callers.
+
+    If no run_id is available (a direct/manual call outside an agent run —
+    e.g. a plain API route that doesn't thread run context through), we can't
+    key a durable Astra receipt to anything, so we skip that layer entirely
+    and fall back to a content-derived idempotency key sent to Stripe. That
+    still protects against exact-duplicate resubmission within Stripe's own
+    idempotency window, just without Astra's durable, cross-process replay
+    guarantee.
+    """
+    from backend.control_plane.action_executor import canonicalize_tool_args
+
+    if not run_id:
+        fallback_key = hashlib.sha256(
+            canonicalize_tool_args({"tool": tool, "args": args}).encode("utf-8")
+        ).hexdigest()
+        return http_call(fallback_key)
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    # action_id feeds into the idempotency key hash (see compute_action_hashes).
+    # A fresh random id per call would defeat retries, so derive it
+    # deterministically from the same inputs that make the call idempotent —
+    # a retry with the same run_id/step_id/tool/args reuses the same action
+    # and replays its receipt instead of calling Stripe again.
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::{tool}::{canonical_args}".encode("utf-8")).hexdigest()
+
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, idempotency_key: str) -> dict:
+        return http_call(idempotency_key)
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or tool,
+            action_id=action_id,
+            tool=tool,
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    return dict(result.provider_result or {})
 
 
 def _platform_stripe():
@@ -233,23 +348,44 @@ def create_stripe_product(
     access_token: str,
     name: str,
     description: str = "",
+    run_id: str = "",
+    step_id: str = "",
+    session_id: str = "",
 ) -> dict:
     """
     Create a Stripe Product in the founder's account.
     Returns {product_id, name, created}.
+
+    run_id (or session_id, an alias so callers dispatched from
+    backend/core/agent.py's tool-call injection — which auto-fills a
+    `session_id` param — get it for free) keys a durable Astra action/receipt
+    to this call so a retry replays instead of creating a duplicate product;
+    it also seeds the idempotency key sent to Stripe's own Idempotency-Key
+    header. See _execute_with_idempotency for the no-run_id fallback.
     """
     try:
         import requests as _req
-        resp = _req.post(
-            "https://api.stripe.com/v1/products",
-            data={"name": name, "description": description},
-            auth=(access_token, ""),
-            timeout=15,
+
+        def _post(idempotency_key: str) -> dict:
+            resp = _req.post(
+                "https://api.stripe.com/v1/products",
+                data={"name": name, "description": description},
+                auth=(access_token, ""),
+                headers={"Idempotency-Key": idempotency_key},
+                timeout=15,
+            )
+            body = resp.json()
+            if resp.status_code != 200:
+                return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
+            return {"product_id": body["id"], "name": body["name"], "created": True}
+
+        return _execute_with_idempotency(
+            tool="create_stripe_product",
+            run_id=run_id or session_id,
+            step_id=step_id or "create_stripe_product",
+            args={"name": name, "description": description},
+            http_call=_post,
         )
-        body = resp.json()
-        if resp.status_code != 200:
-            return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
-        return {"product_id": body["id"], "name": body["name"], "created": True}
     except Exception as e:
         return {"error": str(e)}
 
@@ -260,10 +396,15 @@ def create_stripe_price(
     amount: int,          # in cents
     currency: str = "usd",
     interval: str = "",   # "month", "year", or "" for one-time
+    run_id: str = "",
+    step_id: str = "",
+    session_id: str = "",
 ) -> dict:
     """
     Create a Stripe Price for a Product.
     Returns {price_id, amount, currency, interval, created}.
+
+    See create_stripe_product for the run_id/session_id idempotency contract.
     """
     try:
         import requests as _req
@@ -274,43 +415,74 @@ def create_stripe_price(
         }
         if interval in ("month", "year", "week", "day"):
             data["recurring[interval]"] = interval
-        resp = _req.post(
-            "https://api.stripe.com/v1/prices",
-            data=data,
-            auth=(access_token, ""),
-            timeout=15,
+
+        def _post(idempotency_key: str) -> dict:
+            resp = _req.post(
+                "https://api.stripe.com/v1/prices",
+                data=data,
+                auth=(access_token, ""),
+                headers={"Idempotency-Key": idempotency_key},
+                timeout=15,
+            )
+            body = resp.json()
+            if resp.status_code != 200:
+                return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
+            return {
+                "price_id": body["id"],
+                "amount": amount,
+                "currency": currency,
+                "interval": interval or "one_time",
+                "created": True,
+            }
+
+        return _execute_with_idempotency(
+            tool="create_stripe_price",
+            run_id=run_id or session_id,
+            step_id=step_id or "create_stripe_price",
+            args={"product_id": product_id, "amount": amount, "currency": currency, "interval": interval},
+            http_call=_post,
         )
-        body = resp.json()
-        if resp.status_code != 200:
-            return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
-        return {
-            "price_id": body["id"],
-            "amount": amount,
-            "currency": currency,
-            "interval": interval or "one_time",
-            "created": True,
-        }
     except Exception as e:
         return {"error": str(e)}
 
 
-def create_stripe_payment_link(access_token: str, price_id: str, quantity: int = 1) -> dict:
+def create_stripe_payment_link(
+    access_token: str,
+    price_id: str,
+    quantity: int = 1,
+    run_id: str = "",
+    step_id: str = "",
+    session_id: str = "",
+) -> dict:
     """
     Create a Stripe Payment Link for a Price.
     Returns {url, payment_link_id}.
+
+    See create_stripe_product for the run_id/session_id idempotency contract.
     """
     try:
         import requests as _req
-        resp = _req.post(
-            "https://api.stripe.com/v1/payment_links",
-            data={"line_items[0][price]": price_id, "line_items[0][quantity]": str(quantity)},
-            auth=(access_token, ""),
-            timeout=15,
+
+        def _post(idempotency_key: str) -> dict:
+            resp = _req.post(
+                "https://api.stripe.com/v1/payment_links",
+                data={"line_items[0][price]": price_id, "line_items[0][quantity]": str(quantity)},
+                auth=(access_token, ""),
+                headers={"Idempotency-Key": idempotency_key},
+                timeout=15,
+            )
+            body = resp.json()
+            if resp.status_code != 200:
+                return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
+            return {"url": body["url"], "payment_link_id": body["id"], "active": body.get("active", True)}
+
+        return _execute_with_idempotency(
+            tool="create_stripe_payment_link",
+            run_id=run_id or session_id,
+            step_id=step_id or "create_stripe_payment_link",
+            args={"price_id": price_id, "quantity": quantity},
+            http_call=_post,
         )
-        body = resp.json()
-        if resp.status_code != 200:
-            return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
-        return {"url": body["url"], "payment_link_id": body["id"], "active": body.get("active", True)}
     except Exception as e:
         return {"error": str(e)}
 
@@ -378,12 +550,21 @@ def create_product_with_payment_link(
     access_token: str = "",
     currency: str = "usd",
     interval: str = "",
+    run_id: str = "",
+    step_id: str = "",
+    session_id: str = "",
 ) -> dict:
     """
     Full flow: create Product → Price → Payment Link in one call.
     Used by agents to set up pricing from research findings.
     Returns {product_id, price_id, payment_link_url, name, amount, currency, interval}.
+
+    run_id/session_id and step_id are threaded through to each of the 3 sub-calls
+    (with distinct step suffixes, since they're 3 separate idempotent actions,
+    not one) — see create_stripe_product for the idempotency contract.
     """
+    run_id = run_id or session_id
+    base_step = step_id or "create_product_with_payment_link"
     # Load per-founder Stripe token from credentials store if access_token not provided
     if not access_token and founder_id:
         try:
@@ -403,15 +584,24 @@ def create_product_with_payment_link(
             "reason": "No Stripe account connected. Connect Stripe in Integrations to create a real payment link; the pricing plan is recorded for later.",
             "name": name, "amount": amount, "currency": currency, "interval": interval or "one_time",
         }
-    product = create_stripe_product(access_token, name, description)
+    product = create_stripe_product(
+        access_token, name, description,
+        run_id=run_id, step_id=f"{base_step}:product",
+    )
     if "error" in product:
         return product
 
-    price = create_stripe_price(access_token, product["product_id"], amount, currency, interval)
+    price = create_stripe_price(
+        access_token, product["product_id"], amount, currency, interval,
+        run_id=run_id, step_id=f"{base_step}:price",
+    )
     if "error" in price:
         return price
 
-    link = create_stripe_payment_link(access_token, price["price_id"])
+    link = create_stripe_payment_link(
+        access_token, price["price_id"],
+        run_id=run_id, step_id=f"{base_step}:payment_link",
+    )
     if "error" in link:
         return {**product, **price, "payment_link_url": None, "payment_link_error": link["error"]}
 
@@ -429,11 +619,19 @@ def create_product_with_payment_link(
 
 # ── Webhooks ──────────────────────────────────────────────────────────────────
 
-def register_stripe_webhook(access_token: str, endpoint_url: str) -> dict:
+def register_stripe_webhook(
+    access_token: str,
+    endpoint_url: str,
+    run_id: str = "",
+    step_id: str = "",
+    session_id: str = "",
+) -> dict:
     """
     Register a webhook endpoint on the founder's Stripe account.
     Listens for payment, subscription, and payout events.
     Returns {webhook_id, secret, url}.
+
+    See create_stripe_product for the run_id/session_id idempotency contract.
     """
     events = [
         "payment_intent.succeeded",
@@ -450,21 +648,32 @@ def register_stripe_webhook(access_token: str, endpoint_url: str) -> dict:
     try:
         import requests as _req
         data: dict = {"url": endpoint_url, "enabled_events[]": events}
-        resp = _req.post(
-            "https://api.stripe.com/v1/webhook_endpoints",
-            data=data,
-            auth=(access_token, ""),
-            timeout=15,
+
+        def _post(idempotency_key: str) -> dict:
+            resp = _req.post(
+                "https://api.stripe.com/v1/webhook_endpoints",
+                data=data,
+                auth=(access_token, ""),
+                headers={"Idempotency-Key": idempotency_key},
+                timeout=15,
+            )
+            body = resp.json()
+            if resp.status_code != 200:
+                return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
+            return {
+                "webhook_id": body["id"],
+                "secret": body.get("secret", ""),
+                "url": body["url"],
+                "registered": True,
+            }
+
+        return _execute_with_idempotency(
+            tool="register_stripe_webhook",
+            run_id=run_id or session_id,
+            step_id=step_id or "register_stripe_webhook",
+            args={"endpoint_url": endpoint_url},
+            http_call=_post,
         )
-        body = resp.json()
-        if resp.status_code != 200:
-            return {"error": body.get("error", {}).get("message", f"HTTP {resp.status_code}")}
-        return {
-            "webhook_id": body["id"],
-            "secret": body.get("secret", ""),
-            "url": body["url"],
-            "registered": True,
-        }
     except Exception as e:
         return {"error": str(e)}
 
