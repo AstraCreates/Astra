@@ -208,7 +208,7 @@ async def _loop(interval_seconds: int) -> None:
             continue
 
 
-def start_missions_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
+async def start_missions_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
     """Start the singleton missions background scheduler.
 
     Safe to call multiple times — returns immediately if already running.
@@ -221,20 +221,26 @@ def start_missions_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
     """
     global _task, _stop_event, _status
     interval = max(60, int(interval_seconds or 3600))
+    temporal_error = ""
     if _temporal_scheduler_enabled():
         try:
-            asyncio.create_task(_ensure_temporal_schedule(interval))
-            _status.update({
-                "running": True,
-                "interval_seconds": interval,
-                "last_error": "",
-                "mode": "temporal",
-                "schedule_id": _TEMPORAL_SCHEDULE_ID,
-            })
+            # Await so a failure INSIDE _ensure_temporal_schedule (e.g. Temporal briefly
+            # unreachable) is actually caught here instead of becoming an unhandled task
+            # exception, which used to leave the status falsely claiming "running: true /
+            # mode: temporal" while nothing was actually scheduled. _ensure_temporal_schedule
+            # only flips _status to running/temporal after the schedule is confirmed created.
+            await _ensure_temporal_schedule(interval)
             return get_missions_scheduler_status()
         except Exception as exc:
             logger.warning("missions_scheduler: temporal schedule bootstrap failed, falling back to legacy: %s", exc)
-            _status["last_error"] = str(exc)
+            temporal_error = str(exc)
+            _status.update({
+                "running": False,
+                "interval_seconds": interval,
+                "last_error": temporal_error,
+                "mode": "legacy",
+                "schedule_id": "",
+            })
     if _task and not _task.done():
         logger.debug("missions_scheduler: already running, ignoring start request")
         return get_missions_scheduler_status()
@@ -242,7 +248,9 @@ def start_missions_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
     _status.update({
         "running": True,
         "interval_seconds": interval,
-        "last_error": "",
+        # Preserve the temporal bootstrap failure (if any) so the status endpoint still
+        # explains why we're on the legacy loop instead of silently discarding it.
+        "last_error": temporal_error,
         "mode": "legacy",
         "schedule_id": "",
     })

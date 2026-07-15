@@ -136,13 +136,13 @@ async def startup_background_jobs():
     from backend.missions.scheduler import start_missions_scheduler
     # Goal loop is event-driven (agent_done → tasks; complete goal → auto-chain).
     # This scheduler is only a 30-min safety net to recover stalled goals.
-    start_missions_scheduler(interval_seconds=1800)
+    await start_missions_scheduler(interval_seconds=1800)
     from backend.custom_agents.scheduler import start_custom_agents_scheduler
     # Recurring custom agents — checks for due agents every 15 min.
-    start_custom_agents_scheduler(interval_seconds=900)
+    await start_custom_agents_scheduler(interval_seconds=900)
     from backend.monitoring.scheduler import start_monitoring_scheduler
     # Live company: re-verify shipped artifacts hourly (content weekly) + auto-heal.
-    start_monitoring_scheduler(interval_seconds=3600)
+    await start_monitoring_scheduler(interval_seconds=3600)
     _background_tasks[:] = [
         asyncio.create_task(_platform_alert_loop()),
         asyncio.create_task(_pii_purge_loop()),
