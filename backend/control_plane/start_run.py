@@ -669,12 +669,16 @@ async def start_run(
         orch = get_orchestrator()
 
         try:
-            from backend.accounts import get_or_create_org, record_usage
+            from backend.accounts import RunLimitExceeded, check_and_consume_run
 
-            org = get_or_create_org(body.founder_id)
-            if org.get("entitlements", {}).get("remaining_runs", 0) <= 0:
-                raise HTTPException(status_code=402, detail="Monthly run limit reached for this workspace.")
-            record_usage(org["org_id"], actor_id=actor_id, runs=1)
+            # check_and_consume_run() performs the remaining_runs check and the
+            # usage.recorded write atomically under one lock acquisition, so two
+            # concurrent start_run() calls for a founder with exactly 1 remaining
+            # run cannot both pass the check before either has consumed it (see
+            # backend/accounts.py for details).
+            check_and_consume_run(body.founder_id, actor_id=actor_id)
+        except RunLimitExceeded as limit_exc:
+            raise HTTPException(status_code=402, detail=str(limit_exc)) from limit_exc
         except HTTPException:
             raise
         except Exception as usage_exc:
@@ -718,22 +722,28 @@ async def start_run(
                 if request is not None:
                     require_founder_access(request, str(company.get("founder_id") or ""), min_role="operator")
                 workspace_id = requested_company_id
+            elif body.workspace_name:
+                # find_or_create_workspace() serializes the find-then-create
+                # sequence behind a per (founder_id, name) lock so two concurrent
+                # requests with the same workspace_name can't both observe "no
+                # existing workspace" and each create a duplicate (see
+                # backend/core/workspace_store.py for details).
+                ws = _wss.find_or_create_workspace(
+                    body.founder_id,
+                    body.workspace_name,
+                    create_name=ws_name,
+                    goal=goal_instruction,
+                    stack_id=effective_stack or "idea_to_revenue",
+                )
+                workspace_id = ws["workspace_id"]
             else:
-                existing = None
-                if body.workspace_name:
-                    from backend.core.workspace_store import find_workspace_by_name as _find_workspace_by_name
-
-                    existing = _find_workspace_by_name(body.founder_id, body.workspace_name)
-                if existing:
-                    workspace_id = existing["workspace_id"]
-                else:
-                    ws = _wss.create_workspace(
-                        founder_id=body.founder_id,
-                        name=ws_name,
-                        goal=goal_instruction,
-                        stack_id=effective_stack or "idea_to_revenue",
-                    )
-                    workspace_id = ws["workspace_id"]
+                ws = _wss.create_workspace(
+                    founder_id=body.founder_id,
+                    name=ws_name,
+                    goal=goal_instruction,
+                    stack_id=effective_stack or "idea_to_revenue",
+                )
+                workspace_id = ws["workspace_id"]
             chapter = _wss.create_chapter(workspace_id=workspace_id, session_id=resolved_run_id)
             chapter_id = chapter["chapter_id"]
             constraints["company_id"] = workspace_id
