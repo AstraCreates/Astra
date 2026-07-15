@@ -37,6 +37,20 @@ def test_record_anomaly_tracks_metrics(tmp_path, monkeypatch):
     assert listed["events"][0]["key"] == "approval_mismatch"
 
 
+def test_record_anomaly_never_touches_real_rollout_evidence_under_pytest(tmp_path, monkeypatch, mocker):
+    # Regression test for a real incident: record_anomaly() is called unconditionally
+    # from action_executor.py's collision-detection code even when exercised through
+    # fake repos in tests. Its rollout-evidence mirror hits real Supabase with no
+    # dependency injection available -- confirm PYTEST_CURRENT_TEST (always set here)
+    # short-circuits before that call is ever made, regardless of what's importable.
+    monkeypatch.chdir(tmp_path)
+    spy = mocker.patch("backend.control_plane.wave7_rollout.record_rollout_evidence")
+
+    record_anomaly("receipt_collision", run_id="run_1", payload={"idempotency_key": "k1"})
+
+    spy.assert_not_called()
+
+
 def test_fake_approval_consume_records_mismatch_anomaly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     repo = FakeApprovalRequestRepository()

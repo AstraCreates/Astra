@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -122,6 +123,17 @@ def anomaly_metrics() -> dict[str, int]:
 
 
 def _mirror_rollout_evidence(event: dict[str, Any]) -> None:
+    # record_anomaly() is called unconditionally from action_executor.py/fakes.py
+    # collision/mismatch/gap-detection code -- including from FAKE repos exercised by
+    # the test suite. The local ledger write above is safely test-isolated (callers
+    # chdir to tmp_path), but this function makes a REAL Supabase call via the default
+    # SupabaseRolloutEvidenceRepository, with no dependency injection available at this
+    # call depth. Any dev running tests locally against real prod Supabase credentials
+    # would otherwise silently write fake halt-triggering evidence into a live rollout
+    # campaign (this happened for real: see astra_rollout_evidence rows created by
+    # test_execute_external_action_marks_receipt_collision on 2026-07-15).
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     from backend.control_plane.wave7_rollout import evaluate_rollout_campaign, record_rollout_evidence, rollout_status_snapshot
 
     campaigns = (rollout_status_snapshot().get("campaigns") or {})
