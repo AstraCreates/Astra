@@ -354,8 +354,11 @@ services:
         condition: service_healthy
     # Was 512m -- too small now that this container runs the same
     # get_orchestrator() code path backend does (backend needs 4g for it).
-    mem_limit: 2g
-    memswap_limit: 2g
+    # Bumped again 2g->4g: BAAI/bge-large-en-v1.5 (local Graphiti embedder,
+    # graphiti_adapter.py's OpenRouter-fallback path) loads real torch model
+    # weights into memory once per process and stays resident.
+    mem_limit: 4g
+    memswap_limit: 4g
     pids_limit: 256
     volumes:
       - astra_docs_data:/data/astra_docs

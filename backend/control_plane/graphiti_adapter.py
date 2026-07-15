@@ -27,6 +27,55 @@ def graphiti_available() -> bool:
         return False
 
 
+_LOCAL_EMBEDDER_MODEL_NAME = "BAAI/bge-large-en-v1.5"  # 1024-dim -- matches
+# graphiti_core.embedder.client.EMBEDDING_DIM exactly, no padding/projection needed.
+_local_embedder_model_lock = threading.Lock()
+_local_embedder_model: Any | None = None
+
+
+def _get_local_embedder_model() -> Any:
+    """Lazily load the local sentence-transformers model, once per process,
+    shared across every GraphitiBrainClient instance (loading it is the slow/
+    heavy part -- keep it out of the hot path)."""
+    global _local_embedder_model
+    with _local_embedder_model_lock:
+        if _local_embedder_model is None:
+            from sentence_transformers import SentenceTransformer
+
+            _local_embedder_model = SentenceTransformer(_LOCAL_EMBEDDER_MODEL_NAME)
+        return _local_embedder_model
+
+
+class LocalSentenceTransformerEmbedder:
+    """Zero-external-cost EmbedderClient backed by a local sentence-transformers
+    model, for when no dedicated OpenAI-compatible embeddings credential exists
+    (OpenRouter has no /embeddings endpoint -- see _build_graphiti's fallback
+    branch). Runs CPU inference in a worker thread since sentence-transformers
+    itself is synchronous and graphiti_core's EmbedderClient interface is
+    async."""
+
+    def __init__(self) -> None:
+        pass
+
+    async def create(self, input_data: Any) -> list[float]:
+        if isinstance(input_data, str):
+            text = input_data
+        elif isinstance(input_data, (list, tuple)) and input_data and isinstance(input_data[0], str):
+            text = " ".join(str(item) for item in input_data)
+        else:
+            text = str(input_data)
+        vectors = await self.create_batch([text])
+        return vectors[0]
+
+    async def create_batch(self, input_data_list: list[str]) -> list[list[float]]:
+        def _encode() -> list[list[float]]:
+            model = _get_local_embedder_model()
+            embeddings = model.encode(list(input_data_list), normalize_embeddings=True)
+            return [list(float(x) for x in vec) for vec in embeddings]
+
+        return await asyncio.to_thread(_encode)
+
+
 @dataclass
 class GraphitiSearchResult:
     record_ids: list[str]
@@ -226,10 +275,12 @@ class GraphitiBrainClient:
             # Fall back to the existing OpenRouter credential (via Headroom, same
             # routing this codebase already uses everywhere else) so entity/
             # relationship extraction and reranking still work with zero new
-            # credentials. embedder stays None -- OpenRouter has no /embeddings
-            # endpoint, so Graphiti-side semantic vector search is unavailable in
-            # this mode; graph structure, LLM-extracted relationships, and
-            # brain_retrieval.py's keyword-search fallback are unaffected.
+            # paid credentials. Graphiti's own Graphiti(embedder=...) always
+            # constructs a *default* OpenAIEmbedder() internally if embedder is
+            # None (verified: not truly optional, needs OPENAI_API_KEY) -- since
+            # OpenRouter has no /embeddings endpoint, use a local
+            # sentence-transformers model instead so embeddings still work with
+            # zero external cost/credentials.
             openrouter_key = str(settings.openrouter_api_key or "").strip()
             # deepseek-v4-flash: cheap/fast, already a known-good gateway alias
             # (see backend/control_plane/gateway.py's _KNOWN_GATEWAY_ALIASES) --
@@ -240,6 +291,7 @@ class GraphitiBrainClient:
                 model="deepseek/deepseek-v4-flash",
                 small_model="deepseek/deepseek-v4-flash",
             )
+            embedder = LocalSentenceTransformerEmbedder()
 
         llm_client = OpenAIClient(config=llm_config)
         cross_encoder = OpenAIRerankerClient(config=llm_config)

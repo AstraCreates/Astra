@@ -136,9 +136,14 @@ def test_dedicated_api_key_uses_full_openai_embeddings(monkeypatch):
     assert g.llm_client.config.model == "openai/gpt-4.1-mini"
 
 
-def test_no_dedicated_key_falls_back_to_openrouter_without_embeddings(monkeypatch):
+def test_no_dedicated_key_falls_back_to_openrouter_with_local_embedder(monkeypatch):
+    # Graphiti's own Graphiti(embedder=...) constructs a *default* OpenAIEmbedder()
+    # internally whenever embedder is None (verified against the real installed
+    # library: not truly optional, needs OPENAI_API_KEY) -- so the fallback path
+    # must supply a real, working embedder instance, not None. OpenRouter has no
+    # /embeddings endpoint, hence the local sentence-transformers embedder.
     from backend.config import settings
-    from backend.control_plane.graphiti_adapter import GraphitiBrainClient
+    from backend.control_plane.graphiti_adapter import GraphitiBrainClient, LocalSentenceTransformerEmbedder
 
     monkeypatch.setattr(settings, "astra_brain_graph_api_key", "")
     monkeypatch.setattr(settings, "openrouter_api_key", "sk-or-real-key")
@@ -148,10 +153,43 @@ def test_no_dedicated_key_falls_back_to_openrouter_without_embeddings(monkeypatc
     assert client._has_model_credentials is True
 
     g = client._build_graphiti()
-    assert g.embedder is None
+    assert isinstance(g.embedder, LocalSentenceTransformerEmbedder)
     assert g.llm_client.config.api_key == "sk-or-real-key"
     assert g.llm_client.config.base_url == "http://headroom:8787/v1"
     assert g.llm_client.config.model == "deepseek/deepseek-v4-flash"
+
+
+@pytest.mark.asyncio
+async def test_local_embedder_produces_correct_dimension_and_normalized_vectors(monkeypatch):
+    # graphiti_core.embedder.client.EMBEDDING_DIM is 1024 -- the local model
+    # (BAAI/bge-large-en-v1.5) must match exactly, no padding/projection.
+    from backend.control_plane import graphiti_adapter as ga_mod
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_name):
+            self.model_name = model_name
+
+        def encode(self, texts, normalize_embeddings=True):
+            import math
+            vectors = []
+            for _ in texts:
+                raw = [1.0] * 1024
+                norm = math.sqrt(sum(v * v for v in raw))
+                vectors.append([v / norm for v in raw] if normalize_embeddings else raw)
+            return vectors
+
+    fake_st_module = types.ModuleType("sentence_transformers")
+    fake_st_module.SentenceTransformer = _FakeSentenceTransformer
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_st_module)
+    monkeypatch.setattr(ga_mod, "_local_embedder_model", None)
+
+    embedder = ga_mod.LocalSentenceTransformerEmbedder()
+    vector = await embedder.create("some text")
+    assert len(vector) == 1024
+
+    batch = await embedder.create_batch(["a", "b"])
+    assert len(batch) == 2
+    assert all(len(v) == 1024 for v in batch)
 
 
 def test_no_credentials_at_all_reports_unavailable(monkeypatch):
