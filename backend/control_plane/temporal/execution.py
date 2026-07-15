@@ -292,7 +292,13 @@ async def build_temporal_run_plan(
                     "instruction": f"{task.get('instruction') or goal}\n\n{_RESEARCH_LANE_FOCUS.get(research_agent_name, '')}".strip(),
                     "phase": str(task.get("phase") or "diagnose") or "diagnose",
                     "depends_on": [],
-                    "expected_artifacts": list(task.get("expected_artifacts") or task.get("deliverables") or []),
+                    # Same bug, second occurrence: see _derive_step_specs_from_stack's
+                    # matching comment above. Each fanned lane's focus only covers part
+                    # of the parent task's full artifact set -- cloning it here made
+                    # research_competitors/research_customers/research_gtm permanently
+                    # unable to pass verification. Match legacy's fan-out (no per-lane
+                    # artifact requirement at all).
+                    "expected_artifacts": [],
                     "stack_task_title": str(task.get("stack_task_title") or task.get("title") or "Market foundation"),
                 }
             continue

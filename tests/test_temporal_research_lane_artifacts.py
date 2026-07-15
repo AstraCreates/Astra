@@ -1,4 +1,6 @@
-from backend.control_plane.temporal.execution import _derive_step_specs_from_stack
+import pytest
+
+from backend.control_plane.temporal.execution import _derive_step_specs_from_stack, build_temporal_run_plan
 
 
 def test_fanned_research_lanes_have_no_individual_artifact_requirement():
@@ -15,6 +17,27 @@ def test_fanned_research_lanes_have_no_individual_artifact_requirement():
 
     specs = _derive_step_specs_from_stack(meta)
     research_specs = {tid: spec for tid, spec in specs.items() if str(spec.get("agent", "")).startswith("research")}
+
+    assert research_specs, "expected at least one fanned research lane"
+    for tid, spec in research_specs.items():
+        assert spec.get("expected_artifacts") == [], f"{tid} ({spec.get('agent')}) should have no per-lane artifact requirement"
+
+
+@pytest.mark.asyncio
+async def test_selected_agents_research_fan_out_has_no_individual_artifact_requirement():
+    # Same bug, second occurrence: build_temporal_run_plan()'s selected-agents/task_list
+    # branch (used when constraints.agents is set, e.g. via a copilot dispatch_agents
+    # call) has its own separate research fan-out loop that cloned the parent task's
+    # expected_artifacts the same way _derive_step_specs_from_stack did.
+    meta = {
+        "goal": "Build a cap table SaaS for startups",
+        "stack_id": "idea_to_revenue",
+        "constraints": {"agents": ["research", "design"]},
+    }
+
+    result = await build_temporal_run_plan("test_run", meta)
+    step_specs = result.get("step_specs", {})
+    research_specs = {tid: spec for tid, spec in step_specs.items() if str(spec.get("agent", "")).startswith("research")}
 
     assert research_specs, "expected at least one fanned research lane"
     for tid, spec in research_specs.items():
