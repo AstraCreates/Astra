@@ -925,3 +925,233 @@ async def test_multi_phase_workflow_continues_as_new_after_threshold(monkeypatch
     assert continued["input"].run_id == "run_can"
     assert [phase.phase_name for phase in continued["input"].phases] == ["deploy"]
     assert [phase["phase_name"] for phase in continued["input"].completed_phases_seed] == ["design"]
+
+
+class _FakeCompanyBrainProjectionQuery:
+    """Mirrors `_FakeProjectionQuery` in test_control_plane_brain_projection.py."""
+
+    def __init__(self, rows, updates):
+        self._rows = rows
+        self._updates = updates
+        self._patch = None
+        self._job_id = None
+
+    def select(self, *_args, **_kwargs):
+        return self
+
+    def in_(self, *_args, **_kwargs):
+        return self
+
+    def order(self, *_args, **_kwargs):
+        return self
+
+    def limit(self, *_args, **_kwargs):
+        return self
+
+    def update(self, patch):
+        self._patch = patch
+        return self
+
+    def eq(self, _field, value):
+        self._job_id = value
+        return self
+
+    def execute(self):
+        if self._patch is None:
+            return type("Resp", (), {"data": list(self._rows)})()
+        self._updates.append((self._job_id, dict(self._patch)))
+        return type("Resp", (), {"data": []})()
+
+
+class _FakeCompanyBrainProjectionSupabase:
+    def __init__(self, rows):
+        self.rows = rows
+        self.updates = []
+
+    def table(self, name):
+        assert name == "astra_brain_projection_jobs"
+        return _FakeCompanyBrainProjectionQuery(self.rows, self.updates)
+
+
+@pytest.mark.asyncio
+async def test_company_brain_tick_processes_projection_jobs_not_just_legacy_sync(monkeypatch):
+    """Regression test: the Wave 6 `astra_brain_projection_jobs` queue must
+    actually be drained by the scheduled tick, not just the legacy
+    `.astra/company_brain/*.json` sync. Before this fix,
+    `process_brain_projection_jobs` had zero callers and rows accumulated
+    forever with status="pending"."""
+    if temporalio is None:
+        pytest.skip("temporalio not installed in this environment")
+
+    from backend.control_plane.fakes import (
+        FakeBrainAclRepository,
+        FakeBrainRecordRepository,
+        FakeGraphitiClient,
+    )
+    from backend.control_plane.models import BrainAcl, BrainRecord
+    from backend.control_plane.temporal.activities import ExecuteCompanyBrainTickActivity
+    import backend.control_plane.brain_projection as brain_projection_mod
+    import backend.tools.company_brain as company_brain_mod
+
+    company_id = "company_tick_regression"
+    record_repo = FakeBrainRecordRepository()
+    acl_repo = FakeBrainAclRepository()
+    graphiti = FakeGraphitiClient()
+
+    record = record_repo.create(
+        BrainRecord(
+            id="rec_1",
+            company_id=company_id,
+            source="manual",
+            external_id="rec_1",
+            version=1,
+            content_hash="h",
+            provenance={"content": {"title": "Alpha", "body": "Shared"}},
+            is_canonical=True,
+        )
+    )
+    acl_repo.create(
+        BrainAcl(id="a1", record_id=record.id, principal_type="company", principal_id=company_id, access_level="read")
+    )
+
+    jobs = [
+        {"id": "job_1", "record_id": record.id, "job_type": "upsert", "status": "pending", "attempts": 0},
+    ]
+    fake_supabase = _FakeCompanyBrainProjectionSupabase(jobs)
+
+    # Legacy sync stays wired in and untouched.
+    monkeypatch.setattr(company_brain_mod, "run_due_company_brain_syncs", lambda: {"syncs_run": 4})
+
+    # Force process_brain_projection_jobs() to use our fakes instead of a
+    # real Supabase client, without changing its default-construction
+    # behavior for real callers.
+    real_process_brain_projection_jobs = brain_projection_mod.process_brain_projection_jobs
+
+    def _process_with_fakes(**kwargs):
+        kwargs.setdefault("supabase_client", fake_supabase)
+        kwargs.setdefault("record_repo", record_repo)
+        kwargs.setdefault("acl_repo", acl_repo)
+        kwargs.setdefault("graphiti_client", graphiti)
+        return real_process_brain_projection_jobs(**kwargs)
+
+    monkeypatch.setattr(brain_projection_mod, "process_brain_projection_jobs", _process_with_fakes)
+
+    result = await ExecuteCompanyBrainTickActivity.execute()
+
+    # Legacy sync result is preserved.
+    assert result["syncs_run"] == 4
+    # The projection queue was actually drained: one job seen, one succeeded.
+    assert result["projection_jobs_seen"] == 1
+    assert result["projection_jobs_succeeded"] == 1
+    assert result["projection_jobs_failed"] == 0
+    assert result["projection_jobs_dead_lettered"] == 0
+    # The job's bookkeeping columns were updated (attempts/last_attempted_at
+    # via the "running" patch, then "succeeded").
+    statuses = [patch["status"] for _job_id, patch in fake_supabase.updates]
+    assert "running" in statuses
+    assert "succeeded" in statuses
+    running_patch = next(patch for _job_id, patch in fake_supabase.updates if patch["status"] == "running")
+    assert running_patch["attempts"] == 1
+    assert running_patch["last_attempted_at"] is not None
+    # The record actually got projected into Graphiti.
+    assert graphiti.get_episode(company_id, record.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_company_brain_tick_survives_graphiti_unreachable_without_crashing(monkeypatch):
+    """If the projection sweep blows up entirely (e.g. Graphiti/FalkorDB is
+    unreachable at a layer process_brain_projection_jobs doesn't itself
+    catch, such as the initial Supabase query), the scheduled tick must not
+    raise -- it should log and return a zeroed projection summary while still
+    reporting the legacy sync result."""
+    if temporalio is None:
+        pytest.skip("temporalio not installed in this environment")
+
+    from backend.control_plane.temporal.activities import ExecuteCompanyBrainTickActivity
+    import backend.control_plane.brain_projection as brain_projection_mod
+    import backend.tools.company_brain as company_brain_mod
+
+    monkeypatch.setattr(company_brain_mod, "run_due_company_brain_syncs", lambda: {"syncs_run": 2})
+
+    def _boom(**_kwargs):
+        raise ConnectionError("graphiti/falkordb unreachable")
+
+    monkeypatch.setattr(brain_projection_mod, "process_brain_projection_jobs", _boom)
+
+    result = await ExecuteCompanyBrainTickActivity.execute()
+
+    assert result["syncs_run"] == 2
+    assert result["projection_jobs_seen"] == 0
+    assert result["projection_jobs_succeeded"] == 0
+    assert result["projection_jobs_failed"] == 0
+    assert result["projection_jobs_dead_lettered"] == 0
+
+
+@pytest.mark.asyncio
+async def test_company_brain_tick_dead_letters_job_when_graphiti_projection_fails(monkeypatch):
+    """When an individual job's Graphiti projection raises (e.g. connection
+    refused because Graphiti isn't deployed), process_brain_projection_jobs's
+    existing per-job retry/dead-letter bookkeeping must record the failure via
+    attempts/status instead of losing the job or crashing the tick."""
+    if temporalio is None:
+        pytest.skip("temporalio not installed in this environment")
+
+    from backend.control_plane.fakes import FakeBrainAclRepository, FakeBrainRecordRepository
+    from backend.control_plane.models import BrainAcl, BrainRecord
+    from backend.control_plane.temporal.activities import ExecuteCompanyBrainTickActivity
+    import backend.control_plane.brain_projection as brain_projection_mod
+    import backend.tools.company_brain as company_brain_mod
+
+    company_id = "company_tick_dead_letter"
+    record_repo = FakeBrainRecordRepository()
+    acl_repo = FakeBrainAclRepository()
+
+    record = record_repo.create(
+        BrainRecord(
+            id="rec_dl",
+            company_id=company_id,
+            source="manual",
+            external_id="rec_dl",
+            version=1,
+            content_hash="h",
+            provenance={"content": {"title": "Alpha", "body": "Shared"}},
+            is_canonical=True,
+        )
+    )
+    acl_repo.create(
+        BrainAcl(id="a1", record_id=record.id, principal_type="company", principal_id=company_id, access_level="read")
+    )
+
+    class _UnreachableGraphitiClient:
+        def upsert_episode(self, *_args, **_kwargs):
+            raise ConnectionError("connection refused: graphiti/falkordb not deployed")
+
+    jobs = [
+        {"id": "job_unreachable", "record_id": record.id, "job_type": "upsert", "status": "pending", "attempts": 2},
+    ]
+    fake_supabase = _FakeCompanyBrainProjectionSupabase(jobs)
+
+    monkeypatch.setattr(company_brain_mod, "run_due_company_brain_syncs", lambda: {"syncs_run": 0})
+
+    real_process_brain_projection_jobs = brain_projection_mod.process_brain_projection_jobs
+
+    def _process_with_fakes(**kwargs):
+        kwargs.setdefault("supabase_client", fake_supabase)
+        kwargs.setdefault("record_repo", record_repo)
+        kwargs.setdefault("acl_repo", acl_repo)
+        kwargs.setdefault("graphiti_client", _UnreachableGraphitiClient())
+        kwargs.setdefault("dead_letter_after", 3)
+        return real_process_brain_projection_jobs(**kwargs)
+
+    monkeypatch.setattr(brain_projection_mod, "process_brain_projection_jobs", _process_with_fakes)
+
+    result = await ExecuteCompanyBrainTickActivity.execute()
+
+    # The tick itself did not crash, and the failure was recorded as a
+    # dead letter (attempts=2 -> 3rd attempt hits dead_letter_after=3)
+    # rather than silently dropped.
+    assert result["projection_jobs_seen"] == 1
+    assert result["projection_jobs_dead_lettered"] == 1
+    assert result["projection_jobs_succeeded"] == 0
+    dead_letter_patch = next(patch for _job_id, patch in fake_supabase.updates if patch["status"] == "dead_letter")
+    assert "connection refused" in dead_letter_patch["error"]

@@ -154,16 +154,50 @@ class ExecuteMissionSchedulerTickActivity:
 
 
 class ExecuteCompanyBrainTickActivity:
-    """Activity that runs one Company Brain sync sweep."""
+    """Activity that runs one Company Brain sync sweep.
+
+    Runs two independent sweeps each tick:
+    - the legacy local-file sync (`run_due_company_brain_syncs`), kept for
+      back-compat with `.astra/company_brain/*.json` sources.
+    - the Wave 6 Supabase-backed projection queue
+      (`process_brain_projection_jobs`), which drains
+      `astra_brain_projection_jobs` rows written by the brain ingestion
+      outbox and projects them into Graphiti/FalkorDB. This previously had
+      no caller anywhere, so projection jobs accumulated forever.
+
+    `process_brain_projection_jobs` already has per-job retry/dead-letter
+    handling (see `_process_single_projection_job`), so a Graphiti-unreachable
+    error for one job is recorded via the `attempts`/`status` columns rather
+    than raised. The outer try/except here is an extra safety net in case the
+    Supabase query itself fails (e.g. transient DB error) -- that must not
+    crash the whole scheduled tick, since the legacy sync result would
+    otherwise be lost too.
+    """
 
     @staticmethod
     @activity.defn(name="execute_company_brain_tick")
     async def execute() -> dict[str, int]:
         from backend.tools.company_brain import run_due_company_brain_syncs
+        from backend.control_plane.brain_projection import process_brain_projection_jobs
 
         result = await asyncio.to_thread(run_due_company_brain_syncs)
         syncs = int((result or {}).get("syncs_run") or (result or {}).get("runs") or 0)
-        return {"syncs_run": syncs}
+
+        try:
+            projection_summary = await asyncio.to_thread(process_brain_projection_jobs)
+        except Exception as exc:
+            activity.logger.warning(
+                "Company brain projection job sweep failed (tick continues): %s", exc,
+            )
+            projection_summary = {"seen": 0, "succeeded": 0, "failed": 0, "dead_lettered": 0}
+
+        return {
+            "syncs_run": syncs,
+            "projection_jobs_seen": int(projection_summary.get("seen") or 0),
+            "projection_jobs_succeeded": int(projection_summary.get("succeeded") or 0),
+            "projection_jobs_failed": int(projection_summary.get("failed") or 0),
+            "projection_jobs_dead_lettered": int(projection_summary.get("dead_lettered") or 0),
+        }
 
 
 class ExecuteCustomAgentsTickActivity:
