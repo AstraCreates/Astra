@@ -87,7 +87,17 @@ def _derive_step_specs_from_stack(session_meta: dict[str, Any]) -> dict[str, dic
                 "instruction": f"{instruction}\n\n{_RESEARCH_LANE_FOCUS.get(agent_name, '')}".strip(),
                 "phase": "diagnose",
                 "depends_on": [],
-                "expected_artifacts": list(getattr(task, "artifacts", []) or []),
+                # The legacy orchestrator's own fan-out of this same single "research" task
+                # into focused parallel lanes (core/orchestrator.py's parallel_research_tasks)
+                # never puts task.artifacts on the fanned lanes -- each lane's focus (market
+                # size vs named competitors vs customer intel vs GTM, see _RESEARCH_LANE_FOCUS)
+                # only covers part of the parent task's full artifact set, so requiring every
+                # lane to individually produce market_brief/icp_brief/pricing_hypothesis is
+                # unsatisfiable for 3 of the 4 lanes by construction. Confirmed live: this
+                # cloned requirement left research_customers/research_gtm/research permanently
+                # "blocked" every restart, retrying against artifacts they were never asked to
+                # write, burning real iterations. Match legacy: no per-lane artifact gate here.
+                "expected_artifacts": [],
                 "stack_task_title": str(getattr(task, "title", "") or "Market foundation"),
             }
 
