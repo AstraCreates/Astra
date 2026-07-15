@@ -1,5 +1,10 @@
 """Resend email tools — transactional email for user projects (not Astra itself)."""
+import asyncio
+import hashlib
 import logging
+import threading
+from typing import Any
+
 import requests
 from backend.config import settings
 
@@ -7,11 +12,87 @@ logger = logging.getLogger(__name__)
 _API = "https://api.resend.com"
 
 
+# ── Durable idempotency for resend_send_email ───────────────────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." Same reasoning/pattern
+# as backend/tools/stripe_tools.py's _execute_with_idempotency: Resend's send
+# endpoint accepts a native Idempotency-Key header, layered on top of Astra's
+# own durable action/receipt tracking so retries are safe whether run_id is
+# available or not.
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _send_with_idempotency(*, run_id: str, step_id: str, args: dict[str, Any], http_call) -> dict:
+    """Route the Resend send through Astra's durable action/receipt control
+    plane AND pass the computed idempotency key as Resend's own
+    Idempotency-Key header. With no run_id, we can't key a durable Astra
+    receipt to anything, so we fall back to a content-derived key sent only
+    to Resend -- still protects against exact-duplicate resubmission within
+    Resend's own idempotency window."""
+    from backend.control_plane.action_executor import canonicalize_tool_args
+
+    if not run_id:
+        fallback_key = hashlib.sha256(canonicalize_tool_args(args).encode("utf-8")).hexdigest()
+        return http_call(fallback_key)
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::resend_send_email::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, idempotency_key: str) -> dict:
+        return http_call(idempotency_key)
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or "resend_send_email",
+            action_id=action_id,
+            tool="resend_send_email",
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    return dict(result.provider_result or {})
+
+
 def resend_send_email(
     to: str, from_email: str, subject: str, html: str, text: str = "",
     attachment_path: str = "", attachment_paths: list[str] | None = None,
+    *, run_id: str = "", step_id: str = "",
 ) -> dict:
-    """Send transactional email via Resend. Requires RESEND_API_KEY in founder's env."""
+    """Send transactional email via Resend. Requires RESEND_API_KEY in founder's env.
+
+    run_id/step_id are optional and, when provided by the caller, route the
+    send through Astra's durable action/receipt idempotency layer so a
+    Temporal activity retry replays the stored result instead of re-sending
+    to the real recipient."""
     api_key = getattr(settings, "resend_api_key", "")
     if not api_key:
         return {
@@ -35,17 +116,29 @@ def resend_send_email(
                 content = base64.b64encode(f.read()).decode()
             attachments.append({"filename": os.path.basename(p), "content": content})
         payload["attachments"] = attachments
-    try:
-        resp = requests.post(
-            f"{_API}/emails",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=20,
-        )
-        data = resp.json()
-        return {"sent": resp.ok, "id": data.get("id"), "status": resp.status_code}
-    except Exception as e:
-        return {"error": str(e), "sent": False}
+
+    def _post(idempotency_key: str) -> dict:
+        try:
+            resp = requests.post(
+                f"{_API}/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": idempotency_key,
+                },
+                json=payload,
+                timeout=20,
+            )
+            data = resp.json()
+            return {"sent": resp.ok, "id": data.get("id"), "status": resp.status_code}
+        except Exception as e:
+            return {"error": str(e), "sent": False}
+
+    return _send_with_idempotency(
+        run_id=run_id, step_id=step_id,
+        args={"to": to, "from_email": from_email, "subject": subject, "html": html, "text": text, "paths": paths},
+        http_call=_post,
+    )
 
 
 def send_deliverable_email(to: str, label: str, attachment_path: str) -> dict:
