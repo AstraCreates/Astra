@@ -284,28 +284,36 @@ async def _loop(interval_seconds: int) -> None:
             continue
 
 
-def start_monitoring_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
+async def start_monitoring_scheduler(interval_seconds: int = 3600) -> dict[str, Any]:
     """Start the singleton monitoring scheduler. Safe to call repeatedly."""
     global _task, _stop_event, _status
     interval = max(60, int(interval_seconds or 3600))
+    temporal_error = ""
     if _temporal_scheduler_enabled():
         try:
-            asyncio.create_task(_ensure_temporal_schedule(interval))
-            _status.update({
-                "running": True,
-                "interval_seconds": interval,
-                "last_error": "",
-                "mode": "temporal",
-                "schedule_id": _TEMPORAL_SCHEDULE_ID,
-            })
+            # Await so a failure INSIDE _ensure_temporal_schedule (e.g. Temporal briefly
+            # unreachable) is actually caught here instead of becoming an unhandled task
+            # exception, which used to leave the status falsely claiming "running: true /
+            # mode: temporal" while nothing was actually scheduled. _ensure_temporal_schedule
+            # only flips _status to running/temporal after the schedule is confirmed created.
+            await _ensure_temporal_schedule(interval)
             return get_monitoring_scheduler_status()
         except Exception as exc:
             logger.warning("monitoring_scheduler: temporal schedule bootstrap failed, falling back to legacy: %s", exc)
-            _status["last_error"] = str(exc)
+            temporal_error = str(exc)
+            _status.update({
+                "running": False,
+                "interval_seconds": interval,
+                "last_error": temporal_error,
+                "mode": "legacy",
+                "schedule_id": "",
+            })
     if _task and not _task.done():
         return get_monitoring_scheduler_status()
     _stop_event = asyncio.Event()
-    _status.update({"running": True, "interval_seconds": interval, "last_error": "", "mode": "legacy", "schedule_id": ""})
+    # Preserve the temporal bootstrap failure (if any) so the status endpoint still
+    # explains why we're on the legacy loop instead of silently discarding it.
+    _status.update({"running": True, "interval_seconds": interval, "last_error": temporal_error, "mode": "legacy", "schedule_id": ""})
     _task = asyncio.create_task(_loop(interval))
     logger.info("monitoring_scheduler: started (interval=%ds)", interval)
     return get_monitoring_scheduler_status()
