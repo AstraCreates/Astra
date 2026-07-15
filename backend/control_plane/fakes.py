@@ -146,6 +146,12 @@ class FakeApprovalRequestRepository:
             if r.run_id == run_id and r.gate_key == gate_key and r.status == "pending"
         ]
 
+    def list_pending_for_run(self, run_id: str) -> list[ApprovalRequest]:
+        return [
+            r for r in self._by_id.values()
+            if r.run_id == run_id and r.status == "pending"
+        ]
+
     def decide(self, request_id: str, status: str, *, decided_by: str, note: Optional[str] = None) -> ApprovalRequest:
         with self._lock:
             request = self._by_id.get(request_id)

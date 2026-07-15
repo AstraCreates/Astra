@@ -390,3 +390,83 @@ async def test_tool_get_subteam_report_returns_summary(monkeypatch):
     assert result["team"] == "engineering"
     assert result["record_count"] == 4
     assert result["next_actions"] == ["Review deploy"]
+
+
+@pytest.mark.asyncio
+async def test_tool_get_session_approvals_merges_durable_phase_gate_approvals(monkeypatch):
+    # Regression test for a real incident: a Temporal-routed run sitting on a
+    # pending phase-gate approval (which lives in astra_approval_requests, not
+    # the legacy approval_workflows.py store) was invisible to this tool -- the
+    # copilot told a founder "the team is idle" while a real phase gate was
+    # waiting on their decision.
+    from backend.control_plane.models import ApprovalRequest
+
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+    monkeypatch.setattr("backend.approval_workflows.get_approval_workflow", lambda session_id: {"requests": [], "updated_at": "t0"})
+
+    class _FakeDurableRepo:
+        def list_pending_for_run(self, run_id):
+            return [ApprovalRequest(
+                id="ap_1", run_id=run_id, gate_key="phase_gate_diagnose",
+                action_digest="digest_1", status="pending",
+            )]
+
+    monkeypatch.setattr("backend.control_plane.supabase_repositories.SupabaseApprovalRequestRepository", _FakeDurableRepo)
+
+    result = await copilot._tool_get_session_approvals("founder_123", "sess_123", {})
+
+    assert result["ok"] is True
+    gate_keys = [r.get("gate_key") for r in result["requests"]]
+    assert "phase_gate_diagnose" in gate_keys
+    phase_gate = next(r for r in result["requests"] if r.get("gate_key") == "phase_gate_diagnose")
+    assert phase_gate["is_phase_gate"] is True
+    assert phase_gate["request_id"] == "ap_1"
+
+
+@pytest.mark.asyncio
+async def test_tool_decide_approval_gate_decides_durable_approval_and_signals_temporal(monkeypatch):
+    from backend.control_plane.models import ApprovalRequest, Run
+
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+
+    decided_calls = []
+
+    class _FakeDurableRepo:
+        def get(self, request_id):
+            return ApprovalRequest(
+                id=request_id, run_id="sess_123", gate_key="phase_gate_diagnose",
+                action_digest="digest_1", status="pending", policy_version="v1",
+            )
+
+        def decide(self, request_id, status, *, decided_by, note=None):
+            decided_calls.append((request_id, status, decided_by))
+            return ApprovalRequest(
+                id=request_id, run_id="sess_123", gate_key="phase_gate_diagnose",
+                action_digest="digest_1", status=status, decided_by=decided_by,
+            )
+
+    class _FakeRunRepo:
+        def get(self, run_id):
+            return Run(id=run_id, owner_id="founder_123", org_id="founder_123", goal="g", engine="temporal")
+
+    signaled = {}
+
+    async def _fake_send_approval_decision(run_id, *, approval_id, action_digest, decision, policy_version, decided_by, note):
+        signaled["called"] = (run_id, approval_id, decision)
+        return True
+
+    monkeypatch.setattr("backend.control_plane.supabase_repositories.SupabaseApprovalRequestRepository", _FakeDurableRepo)
+    monkeypatch.setattr("backend.control_plane.supabase_repositories.SupabaseRunRepository", _FakeRunRepo)
+    monkeypatch.setattr("backend.control_plane.temporal.dispatch.send_approval_decision", _fake_send_approval_decision)
+
+    result = await copilot._tool_decide_approval_gate("founder_123", "sess_123", {
+        "gate_key": "phase_gate_diagnose",
+        "decision": "approved",
+        "request_id": "ap_1",
+        "expected_action_digest": "digest_1",
+    })
+
+    assert result["ok"] is True
+    assert result["decision"] == "approved"
+    assert decided_calls == [("ap_1", "approved", "founder_123")]
+    assert signaled["called"] == ("sess_123", "ap_1", "approved")

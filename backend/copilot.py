@@ -593,16 +593,39 @@ async def _tool_get_completion_audit(founder_id: str, session_id: str, args: dic
 
 async def _tool_get_session_approvals(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.approval_workflows import get_approval_workflow
+    from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository
 
     target = str(args.get("session_id") or session_id)
     err = _assert_session_owner(target, founder_id)
     if err:
         return {"ok": False, "error": err}
     workflow = get_approval_workflow(target) or {}
+    requests = list(workflow.get("requests") or [])
+    # Temporal-routed runs (phase gates) write to astra_approval_requests, not the
+    # legacy approval_workflows.py store -- merge both so the copilot sees pending
+    # approvals regardless of which engine the run is on. Real incident: a founder
+    # asked "what is the team working on" on a Temporal run sitting at a pending
+    # phase-gate approval; the copilot only checked the legacy store, saw nothing,
+    # and told the founder the team was idle.
+    try:
+        durable_pending = SupabaseApprovalRequestRepository().list_pending_for_run(target)
+        requests.extend(
+            {
+                "gate_key": req.gate_key,
+                "request_id": req.id,
+                "approval_id": req.id,
+                "action_digest": req.action_digest,
+                "status": req.status,
+                "is_phase_gate": True,
+            }
+            for req in durable_pending
+        )
+    except Exception:
+        pass
     return {
         "ok": True,
         "session_id": target,
-        "requests": workflow.get("requests") or [],
+        "requests": requests,
         "updated_at": workflow.get("updated_at"),
     }
 
@@ -624,6 +647,36 @@ async def _tool_decide_approval_gate(founder_id: str, session_id: str, args: dic
     err = _assert_session_owner(target, founder_id)
     if err:
         return {"ok": False, "error": err}
+
+    # Temporal-routed runs (phase gates) live in astra_approval_requests, not the
+    # legacy approval_workflows.py store this function otherwise uses -- check there
+    # first and, on a match, decide + signal the workflow directly (same primitives
+    # as the working /runs/{run_id}/approvals/{approval_id}/decision endpoint the
+    # frontend's Approve button already uses correctly).
+    try:
+        from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository, SupabaseRunRepository
+        from backend.control_plane.temporal.dispatch import send_approval_decision
+
+        durable = SupabaseApprovalRequestRepository().get(request_id)
+        if durable is not None and durable.run_id == target:
+            if durable.status != "pending":
+                return {"ok": False, "error": f"approval is already {durable.status}"}
+            if durable.action_digest != expected_action_digest:
+                return {"ok": False, "error": "expected_action_digest does not match the pending approval request"}
+            decided = SupabaseApprovalRequestRepository().decide(
+                request_id, decision, decided_by=founder_id, note=note,
+            )
+            run = SupabaseRunRepository().get(target)
+            if run and str(run.engine or "").lower() == "temporal":
+                await send_approval_decision(
+                    target, approval_id=request_id, action_digest=expected_action_digest,
+                    decision=decision, policy_version=durable.policy_version,
+                    decided_by=founder_id, note=note,
+                )
+            return {"ok": True, "session_id": target, "gate_key": gate_key, "decision": decision, "approval": decided.model_dump(mode="json")}
+    except Exception as exc:
+        logger.warning("durable approval decide failed for %s/%s, falling back to legacy: %s", target, request_id, exc)
+
     workflow = decide_approval_request(
         target,
         gate_key,
@@ -1811,6 +1864,14 @@ async def run_copilot(
         "0. SESSION DONE CHECK: if session_meta.status == 'done' OR state.status == 'done', "
         "the session has COMPLETED — there are NO running agents regardless of what running_agents shows. "
         "NEVER call steer_agents for a done session. Treat ALL imperatives as dispatch_agents or set_goal.\n"
+        "0b. EMPTY running_agents IS NOT THE SAME AS IDLE: a phase can finish all its agents and sit "
+        "waiting on a phase-gate approval — running_agents is correctly [] in that state, but the run is "
+        "NOT idle and does not need fresh agents dispatched. Before answering ANY question or claiming "
+        "nothing is happening, check recent_approvals AND pending_agent_question in the snapshot (this "
+        "carries phase-gate approvals from Temporal-routed runs, distinct from and in addition to "
+        "approval_workflow.requests/goal_pending_approvals below). If either has a pending item, report "
+        "exactly what's pending and why (e.g. 'Research finished — the diagnose phase is waiting on your "
+        "approval') instead of saying the team is idle or asking what to dispatch.\n"
         "1. RUNNING AGENTS + DIRECTIVE: if session is NOT done AND running_agents or child_sessions_running is NON-EMPTY "
         "AND the founder is giving a directive:\n"
         "   a) Directive targets a SPECIFIC agent by name (web, sales, design, research, etc.) "
@@ -1833,7 +1894,8 @@ async def run_copilot(
         "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
         "   'redesign the landing page' → dispatch_agents {agents:['design','web'], instruction:'redesign the landing page: ...'}\n"
         "3. BROADER OBJECTIVE: → set_goal with per-workstream tasks (auto-dispatches).\n"
-        "4. APPROVAL OR BLOCKER: if approval_workflow.requests or goal_pending_approvals or pending_agent_question are relevant, "
+        "4. APPROVAL OR BLOCKER: if approval_workflow.requests, goal_pending_approvals, recent_approvals "
+        "(includes Temporal phase-gate approvals), or pending_agent_question are relevant, "
         "use get_session_approvals / decide_approval_gate / decide_goal_task / answer_agent_question.\n"
         "5. QUESTION: 'what is...', 'how is...', 'show me...' → ask_brain / session_status / list_goals / get_completion_audit.\n"
         "NEVER dispatch_agents if running_agents is non-empty AND session is NOT done. NEVER narrate options for an imperative.\n\n"

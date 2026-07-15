@@ -270,6 +270,20 @@ class SupabaseApprovalRequestRepository:
         )
         return [_row_to_approval(row) for row in rows]
 
+    def list_pending_for_run(self, run_id: str) -> list[ApprovalRequest]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_approval_requests")
+            .select("*")
+            .eq("run_id", run_id)
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        )
+        return [_row_to_approval(row) for row in rows]
+
     def decide(self, request_id: str, status: str, *, decided_by: str, note: Optional[str] = None) -> ApprovalRequest:
         from backend.db.client import get_supabase
         from datetime import datetime, timezone
