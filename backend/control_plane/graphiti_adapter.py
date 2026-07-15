@@ -39,7 +39,14 @@ class GraphitiBrainClient:
         self._lock = threading.Lock()
         self._graphiti: Any | None = None
         self._initialized = False
-        self._has_model_credentials = bool(str(settings.astra_brain_graph_api_key or "").strip())
+        # A dedicated ASTRA_BRAIN_GRAPH_API_KEY is preferred (real OpenAI-compatible
+        # embeddings work), but falls back to the existing OpenRouter credential --
+        # see _build_graphiti's driver selection for what that fallback can and
+        # can't do (no embeddings; OpenRouter has no /embeddings endpoint).
+        self._has_model_credentials = bool(
+            str(settings.astra_brain_graph_api_key or "").strip()
+            or str(settings.openrouter_api_key or "").strip()
+        )
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_thread: threading.Thread | None = None
 
@@ -188,32 +195,53 @@ class GraphitiBrainClient:
         from graphiti_core.driver.falkordb_driver import FalkorDriver
 
         graph_driver_mode = str(settings.astra_brain_graph_driver or "falkordblite").strip().lower()
-        llm_client = None
-        embedder = None
-        api_key = str(settings.astra_brain_graph_api_key or "").strip()
-        base_url = str(settings.astra_brain_graph_base_url or "").strip() or None
-        from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
         from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
         from graphiti_core.llm_client.config import LLMConfig
         from graphiti_core.llm_client.openai_client import OpenAIClient
 
-        effective_api_key = api_key or "sk-astra-placeholder"
-        llm_config = LLMConfig(
-            api_key=effective_api_key,
-            base_url=base_url,
-            model=str(settings.astra_brain_graph_model or "openai/gpt-4.1-mini"),
-            small_model=str(settings.astra_brain_graph_small_model or settings.astra_brain_graph_model or "openai/gpt-4.1-mini"),
-        )
-        llm_client = OpenAIClient(
-            config=llm_config
-        )
-        embedder = OpenAIEmbedder(
-            config=OpenAIEmbedderConfig(
-                api_key=effective_api_key,
+        api_key = str(settings.astra_brain_graph_api_key or "").strip()
+        base_url = str(settings.astra_brain_graph_base_url or "").strip() or None
+        embedder = None
+
+        if api_key:
+            # Dedicated, real OpenAI-compatible credentials -- full embeddings
+            # support (text-embedding-3-small is an OpenAI-native model, only
+            # correct against a genuine OpenAI-compatible /embeddings endpoint).
+            from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
+
+            llm_config = LLMConfig(
+                api_key=api_key,
                 base_url=base_url,
-                embedding_model=str(settings.astra_brain_graph_embedding_model or "text-embedding-3-small"),
+                model=str(settings.astra_brain_graph_model or "openai/gpt-4.1-mini"),
+                small_model=str(settings.astra_brain_graph_small_model or settings.astra_brain_graph_model or "openai/gpt-4.1-mini"),
             )
-        )
+            embedder = OpenAIEmbedder(
+                config=OpenAIEmbedderConfig(
+                    api_key=api_key,
+                    base_url=base_url,
+                    embedding_model=str(settings.astra_brain_graph_embedding_model or "text-embedding-3-small"),
+                )
+            )
+        else:
+            # Fall back to the existing OpenRouter credential (via Headroom, same
+            # routing this codebase already uses everywhere else) so entity/
+            # relationship extraction and reranking still work with zero new
+            # credentials. embedder stays None -- OpenRouter has no /embeddings
+            # endpoint, so Graphiti-side semantic vector search is unavailable in
+            # this mode; graph structure, LLM-extracted relationships, and
+            # brain_retrieval.py's keyword-search fallback are unaffected.
+            openrouter_key = str(settings.openrouter_api_key or "").strip()
+            # deepseek-v4-flash: cheap/fast, already a known-good gateway alias
+            # (see backend/control_plane/gateway.py's _KNOWN_GATEWAY_ALIASES) --
+            # entity extraction is a background task, not a latency-sensitive one.
+            llm_config = LLMConfig(
+                api_key=openrouter_key or "sk-astra-placeholder",
+                base_url=str(settings.openrouter_base_url or "").strip() or None,
+                model="deepseek/deepseek-v4-flash",
+                small_model="deepseek/deepseek-v4-flash",
+            )
+
+        llm_client = OpenAIClient(config=llm_config)
         cross_encoder = OpenAIRerankerClient(config=llm_config)
 
         if graph_driver_mode == "falkordb":
