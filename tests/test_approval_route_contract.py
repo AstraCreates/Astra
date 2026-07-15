@@ -160,11 +160,82 @@ async def test_run_approval_updates_durable_row_and_signals_temporal(monkeypatch
         "approval_id": "approval_1",
         "action_digest": "digest_1",
         "decision": "approved",
+        "policy_version": "v1",
         "decided_by": "admin_1",
         "note": "ship it",
     })]
     assert result["approval"]["status"] == "approved"
     assert result["temporal_signaled"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_approval_resolves_founder_id_from_run_owner_when_body_omits_it(monkeypatch):
+    # Regression test for a real incident: RunApprovalDecisionRequest.founder_id is
+    # never populated by the frontend's decideApproval() call (it only sends
+    # decision/note/expected_action_digest). Without a fallback, decide_stack_approval
+    # -> _approval_actor_role(None, actor_id) hits its `if not founder_id: return
+    # "viewer"` branch unconditionally, so every real approval decision through this
+    # endpoint (the one the UI's own Approve button uses) failed "actor role does not
+    # satisfy the approval requirement" for every founder, on every run -- confirmed
+    # live in production. This test exercises the REAL decide_stack_approval (not
+    # mocked, unlike the sibling test above) so the actor_role resolution path is
+    # actually covered.
+    from backend import accounts
+
+    approval = ApprovalRequest(
+        id="approval_1", run_id="run_1", gate_key="phase_gate_diagnose",
+        action_digest="digest_1", status="pending", required_role="owner",
+    )
+
+    class _ApprovalRepo:
+        def get(self, request_id):
+            return approval
+
+        def decide(self, request_id, status, *, decided_by, note=None):
+            return approval.model_copy(update={"status": status, "decided_by": decided_by})
+
+    class _RunRepo:
+        def get(self, run_id):
+            return Run(id="run_1", owner_id="founder_1", org_id="founder_1", goal="g", engine="legacy")
+
+    async def _require_session_access(*_args, **_kwargs):
+        return "founder_1"
+
+    monkeypatch.setattr(routes, "_require_session_access", _require_session_access)
+    monkeypatch.setattr(routes, "actor_or_body", lambda _request: "founder_1")
+    monkeypatch.setattr(routes, "require_founder_access", lambda *_args, **_kwargs: "founder_1")
+    monkeypatch.setattr(accounts, "get_or_create_org", lambda *_args: {"members": {"founder_1": {"role": "owner"}}})
+    monkeypatch.setattr(accounts, "record_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("backend.control_plane.supabase_repositories.SupabaseApprovalRequestRepository", _ApprovalRepo)
+    monkeypatch.setattr("backend.control_plane.supabase_repositories.SupabaseRunRepository", _RunRepo)
+
+    from backend import approval_workflows
+    from backend.core import events
+
+    captured = {}
+
+    def decide(session_id, gate_key, decision, *, request_id, actor_id, actor_role, note, expected_action_digest):
+        captured["actor_role"] = actor_role
+        if actor_role != "owner":
+            return {"ok": False, "error": "actor role does not satisfy the approval requirement", "requests": []}
+        return {"ok": True, "requests": [{"id": request_id, "approval_id": request_id, "action_digest": expected_action_digest}]}
+
+    monkeypatch.setattr(approval_workflows, "decide_approval_request", decide)
+    monkeypatch.setattr(events, "approval_decision_push", lambda *_args, **_kwargs: None)
+
+    async def publish(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(routes, "publish", publish)
+
+    request = Request({"type": "http", "headers": []})
+    body = RunApprovalDecisionRequest(decision="approved", expected_action_digest="digest_1")
+
+    result = await routes.decide_run_approval("run_1", "approval_1", body, request)
+
+    assert captured["actor_role"] == "owner"
+    assert result["ok"] is True
+    assert result["approval"]["status"] == "approved"
 
 
 @pytest.mark.asyncio

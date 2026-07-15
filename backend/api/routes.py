@@ -1401,11 +1401,20 @@ async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDe
     expected_action_digest = body.expected_action_digest or approval.action_digest
     if expected_action_digest != approval.action_digest:
         raise HTTPException(status_code=409, detail="expected_action_digest does not match the pending approval request")
+    run = await asyncio.to_thread(SupabaseRunRepository().get, run_id)
+    # RunApprovalDecisionRequest.founder_id is never populated by the frontend's
+    # decideApproval() call -- without this fallback, _approval_actor_role()'s
+    # `if not founder_id: return "viewer"` branch always fired, so every approval
+    # decision through this endpoint (the one the UI's Approve button actually
+    # uses) failed "actor role does not satisfy the approval requirement" for
+    # every founder, on every run, 100% of the time. The run's own owner_id is
+    # the authoritative founder for it regardless of what the client sends.
+    resolved_founder_id = body.founder_id or (run.owner_id if run else "")
     delegate = StackApprovalDecisionRequest(
         session_id=run_id,
         gate_key=body.gate_key or approval.gate_key,
         decision=body.decision,
-        founder_id=body.founder_id,
+        founder_id=resolved_founder_id,
         request_id=approval.id,
         approval_id=approval.id,
         expected_action_digest=expected_action_digest,
@@ -1420,7 +1429,6 @@ async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDe
         decided_by=actor_id,
         note=body.note,
     )
-    run = await asyncio.to_thread(SupabaseRunRepository().get, run_id)
     temporal_signaled = False
     if (run and str(run.engine or "").lower() == "temporal") or (
         run and str((run.metadata or {}).get("workflow_id") or "").startswith("astra-run/")
