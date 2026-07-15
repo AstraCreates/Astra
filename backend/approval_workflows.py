@@ -84,8 +84,40 @@ def create_approval_request(
     metadata = dict(metadata or {})
     existing_metadata = dict(existing.get("metadata") or {}) if existing else {}
     revision = int(existing.get("revision") or 1) if existing else 1
-    refreshes_final_request = bool(existing and existing.get("status") in {"rejected", "expired"})
-    if refreshes_final_request:
+    existing_status = existing.get("status") if existing else None
+    refreshes_final_request = bool(existing and existing_status in {"rejected", "expired"})
+    # An existing request that is still "live" (pending / already decided / already
+    # consumed to authorize an action) must never be silently overwritten with a
+    # different action_digest. Compare the digest the *new* arguments would produce
+    # at the existing request's own revision against what's actually stored: if they
+    # differ, the arguments genuinely changed and this must become a brand new
+    # request (new id) rather than mutating the live one in place. Identical
+    # arguments keep the idempotent "return the same request" behavior.
+    args_changed = False
+    if existing and not refreshes_final_request:
+        same_revision_digest = _action_digest(
+            session_id=session_id,
+            gate_key=gate_key,
+            action_id=action_id,
+            tool=tool,
+            agent=agent,
+            title=title,
+            reason=reason,
+            risk_level=risk_level,
+            required_role=required_role,
+            expires_at=expires_at,
+            metadata=metadata,
+            revision=revision,
+        )
+        args_changed = same_revision_digest != existing.get("action_digest")
+    supersedes_live_request = bool(
+        existing
+        and not refreshes_final_request
+        and existing_status in {"pending", "approved", "skipped", "consumed"}
+        and args_changed
+    )
+    creates_new_request = refreshes_final_request or supersedes_live_request
+    if creates_new_request:
         revision += 1
     request_id = base_request_id if revision == 1 else f"{base_request_id}:r{revision}"
     action_digest = _action_digest(
@@ -116,9 +148,9 @@ def create_approval_request(
         "agent": agent,
         "risk_level": risk_level,
         "required_role": required_role,
-        "expires_at": existing.get("expires_at") if existing and not refreshes_final_request else expires_at,
-        "status": "pending" if refreshes_final_request else (existing.get("status", "pending") if existing else "pending"),
-        "created_at": _now() if refreshes_final_request else (existing.get("created_at") if existing else _now()),
+        "expires_at": existing.get("expires_at") if existing and not creates_new_request else expires_at,
+        "status": "pending" if creates_new_request else (existing.get("status", "pending") if existing else "pending"),
+        "created_at": _now() if creates_new_request else (existing.get("created_at") if existing else _now()),
         "updated_at": _now(),
         "history": list(existing.get("history", [])) if existing else [],
         **existing_metadata,
@@ -127,13 +159,14 @@ def create_approval_request(
     payload["action_digest"] = action_digest
     if metadata:
         payload["metadata"] = metadata
-    if refreshes_final_request:
+    if creates_new_request:
         payload["refreshed_from"] = existing.get("id")
         payload["history"].append({
             "at": _now(),
-            "event": "refreshed",
+            "event": "refreshed" if refreshes_final_request else "revised",
             "actor": agent or "astra",
             "from_request_id": existing.get("id"),
+            **({} if refreshes_final_request else {"reason": "arguments_changed"}),
         })
         data["requests"].append(payload)
     elif existing:
