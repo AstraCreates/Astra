@@ -470,3 +470,87 @@ async def test_tool_decide_approval_gate_decides_durable_approval_and_signals_te
     assert result["decision"] == "approved"
     assert decided_calls == [("ap_1", "approved", "founder_123")]
     assert signaled["called"] == ("sess_123", "ap_1", "approved")
+
+
+def test_summarize_submit_goal_carries_session_id_for_frontend_link():
+    """submit_goal was registered as a tool but never given a result-summary case,
+    so a successful call fell through to a generic 'Submit Goal' label and dropped
+    the session_id the frontend needs to link to the new run."""
+    summary = copilot._summarize_copilot_action("submit_goal", {"ok": True, "session_id": "sess_new_1"})
+
+    assert summary["label"] == "Started a new run"
+    assert summary["session_id"] == "sess_new_1"
+    assert summary["tone"] == "success"
+
+
+def test_summarize_submit_goal_failure_has_no_session_id():
+    summary = copilot._summarize_copilot_action("submit_goal", {"ok": False, "error": "stack unavailable"})
+
+    assert summary["tone"] == "warn"
+    assert "session_id" not in summary
+
+
+@pytest.mark.asyncio
+async def test_run_copilot_routes_new_run_request_to_submit_goal(monkeypatch):
+    """submit_goal was registered and documented but never referenced in the decision
+    tree, so the model always routed 'start a new run' into dispatch_agents (which
+    stays scoped to the CURRENT company) instead of actually launching a separate one."""
+    outputs = iter([
+        '{"action":"tool","tool":"submit_goal","args":{"goal":"a dog walking marketplace app"}}',
+        '{"action":"reply","text":"Started a new run for the dog walking marketplace."}',
+    ])
+
+    async def fake_submit_goal(founder_id, session_id, args):
+        assert args["goal"] == "a dog walking marketplace app"
+        return {"ok": True, "session_id": "sess_new_dogwalk"}
+
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": []}))
+    monkeypatch.setitem(copilot._TOOLS, "submit_goal", ("doc", fake_submit_goal))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "start a new run for a dog walking marketplace app")
+
+    assert result["actions"] and result["actions"][0]["tool"] == "submit_goal"
+    assert result["actions"][0]["session_id"] == "sess_new_dogwalk"
+
+
+@pytest.mark.asyncio
+async def test_run_bootstrap_copilot_launches_run_for_founder_with_no_sessions(monkeypatch):
+    """A founder with zero runs can't use /copilot/{session_id} at all (no session
+    exists to scope to) -- run_bootstrap_copilot is the sessionless path that lets
+    them launch their first run straight from the dashboard copilot."""
+    outputs = iter([
+        '{"action":"tool","tool":"submit_goal","args":{"goal":"a bakery finder app"}}',
+    ])
+
+    async def fake_submit_goal(founder_id, session_id, args):
+        assert founder_id == "founder_abc"
+        assert args["goal"] == "a bakery finder app"
+        return {"ok": True, "session_id": "sess_bakery_1"}
+
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda key: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda key, history: None)
+    monkeypatch.setitem(copilot._TOOLS, "submit_goal", ("doc", fake_submit_goal))
+
+    result = await copilot.run_bootstrap_copilot("founder_abc", "build me a bakery finder app")
+
+    assert result["ok"] is True
+    assert result["session_id"] == "sess_bakery_1"
+    assert result["actions"][0]["tool"] == "submit_goal"
+
+
+@pytest.mark.asyncio
+async def test_run_bootstrap_copilot_asks_clarifying_question_when_too_vague(monkeypatch):
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"What do you want to build?"}'))
+    monkeypatch.setattr(copilot, "get_history", lambda key: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda key, history: None)
+
+    result = await copilot.run_bootstrap_copilot("founder_abc", "hi")
+
+    assert result["ok"] is True
+    assert result["session_id"] == ""
+    assert result["reply"] == "What do you want to build?"
+    assert result["actions"] == []

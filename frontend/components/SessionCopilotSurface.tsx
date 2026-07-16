@@ -37,7 +37,7 @@ export default function SessionCopilotSurface({
   agents: CopilotAgentOption[];
   activity: SessionActivityItem[];
   images: SessionImages;
-  copilot: { role: string; content: string; actions?: { tool: string; label: string; detail?: string; tone?: string }[] }[];
+  copilot: { role: string; content: string; actions?: { tool: string; label: string; detail?: string; tone?: string; session_id?: string }[] }[];
   copilotBusy: boolean;
   input: string;
   onInput: (value: string) => void;
@@ -79,7 +79,7 @@ export default function SessionCopilotSurface({
         </div>
 
         <div className={`session-copilot-thread${copilot.length === 0 ? " is-empty" : ""}`}>
-          {copilot.length === 0 ? <div className="session-copilot-starters"><button onClick={() => onInput("What is the team working on right now?")}>What is happening?</button><button onClick={() => onInput("What needs my attention?")}>What needs my attention?</button><button onClick={() => onInput("Summarize the strongest findings and next steps.")}>Summarize this run</button></div> : copilot.map((message, index) => <div key={index} className={`session-chat-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>{message.role !== "founder" && <span className="session-chat-avatar">A</span>}<div className="session-chat-bubble">{message.content}{message.actions && message.actions.length > 0 && <div className="copilot-actions">{message.actions.map((action, i) => <div key={`${action.tool}-${i}`} className={`copilot-action-card is-${action.tone || "info"}`}><div className="copilot-action-label">{action.label}</div>{action.detail && <div className="copilot-action-detail">{action.detail}</div>}</div>)}</div>}</div></div>)}
+          {copilot.length === 0 ? <div className="session-copilot-starters"><button onClick={() => onInput("What is the team working on right now?")}>What is happening?</button><button onClick={() => onInput("What needs my attention?")}>What needs my attention?</button><button onClick={() => onInput("Summarize the strongest findings and next steps.")}>Summarize this run</button></div> : copilot.map((message, index) => <div key={index} className={`session-chat-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>{message.role !== "founder" && <span className="session-chat-avatar">A</span>}<div className="session-chat-bubble">{message.content}{message.actions && message.actions.length > 0 && <div className="copilot-actions">{message.actions.map((action, i) => <div key={`${action.tool}-${i}`} className={`copilot-action-card is-${action.tone || "info"}`}><div className="copilot-action-label">{action.label}</div>{action.detail && <div className="copilot-action-detail">{action.detail}</div>}{action.tool === "submit_goal" && action.session_id && <a href={`/s/${action.session_id}`} className="copilot-action-link">Open new run →</a>}</div>)}</div>}</div></div>)}
           {copilotBusy && <div className="session-chat-row is-astra"><span className="session-chat-avatar"><LoaderCircle size={14} /></span><div className="copilot-thinking"><span /><span /><span /></div></div>}
         </div>
         <AstraCopilotComposer value={input} onChange={onInput} onSubmit={onSubmit} agents={agents} disabled={copilotBusy} placeholder="Ask Astra anything or @mention a specific agent" contextLabel={`${running.length} working · ${agents.filter((agent) => agent.status === "done").length} done`} />

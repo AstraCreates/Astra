@@ -1968,6 +1968,29 @@ async def runtime_metrics(request: Request):
     return {"ok": True, "metrics": snapshot()}
 
 
+@router.post("/copilot/bootstrap")
+async def copilot_bootstrap(body: dict, request: Request):
+    """Sessionless copilot for a founder with zero runs yet — no session exists for
+    /copilot/{session_id} to scope to, so this launches the first one instead.
+    Registered BEFORE /copilot/{session_id} — FastAPI matches path routes in
+    registration order, so this literal segment must win over the param route."""
+    founder_id = str(body.get("founder_id") or "").strip()
+    require_founder_access(request, founder_id, min_role="operator")
+    message = str(body.get("message", "")).strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    from backend.copilot import run_bootstrap_copilot
+    return await run_bootstrap_copilot(founder_id, message)
+
+
+@router.get("/copilot/bootstrap/{founder_id}")
+async def copilot_bootstrap_history(founder_id: str, request: Request):
+    """Return the bootstrap copilot's conversation history for a founder with no runs yet."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.copilot import _bootstrap_history_key, get_history
+    return {"ok": True, "history": get_history(_bootstrap_history_key(founder_id))}
+
+
 @router.post("/copilot/{session_id}")
 async def copilot_chat(session_id: str, body: dict, request: Request):
     """Founder copilot — an agentic chat that can query the brain, read/approve goals,

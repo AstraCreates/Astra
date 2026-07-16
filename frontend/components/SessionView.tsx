@@ -41,7 +41,7 @@ type Artifact = { key?: string; title?: string; status?: string; preview?: strin
 // below reading `a.request_id || a.approval_id || a.id` is not "falling back
 // to a different ID" — all three keys carry the same value for one request.
 type Approval = { gate_key: string; request_id: string; action_digest: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
-type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
+type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn"; session_id?: string };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
 type PlanTask = { id: string; agent: string; instruction: string };
 
@@ -163,6 +163,7 @@ function normalizeCopilotActions(actions: any): CopilotAction[] {
         label: String(action?.label || titleCaseTool(tool)),
         detail: typeof action?.detail === "string" ? action.detail : undefined,
         tone: action?.tone === "success" || action?.tone === "warn" ? action.tone : "info",
+        session_id: typeof action?.session_id === "string" ? action.session_id : undefined,
       };
     })
     .filter(Boolean) as CopilotAction[];

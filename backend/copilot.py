@@ -920,7 +920,7 @@ async def _tool_google_calendar_list(founder_id: str, session_id: str, args: dic
 # the same toolset as the MCP without reimplementing anything. Session-scoped tools
 # default session_id to the current session.
 _MCP_TOOLS = {
-    "submit_goal":      ("astra_submit_goal", "LAUNCH a brand-new company/run from a goal (resets to a fresh company). args: {goal, stack_id?}"),
+    "submit_goal":      ("astra_submit_goal", "LAUNCH a brand-new, SEPARATE company/run from a goal — independent of and does not touch the current session/company. Only for a genuinely new/different business idea, not more work on the current one (use dispatch_agents/set_goal for that). args: {goal, stack_id?, company_name?}"),
     "session_digest":   ("astra_session_digest", "summary of a run's progress. args: {session_id?}"),
     "session_artifacts":("astra_session_artifacts", "list the deliverables/artifacts a run produced. args: {session_id?}"),
     "workboard":        ("astra_session_workboard", "active work + blockers for a run. args: {session_id?}"),
@@ -1649,6 +1649,9 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
             detail = ", ".join(str(item) for item in dispatched[:4])
         else:
             detail = str(payload.get("session_id") or "Work started")
+    elif tool == "submit_goal":
+        label = "Started a new run"
+        detail = str(payload.get("session_id") or "Run created")
     elif tool == "steer_agents":
         label = "Steered live agents"
         detail = str(payload.get("message") or "New direction sent")
@@ -1704,7 +1707,10 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
         tone = "warn"
         detail = str(payload.get("error") or detail or "Tool unavailable")
 
-    return {"tool": tool, "label": label, "detail": detail, "tone": tone}
+    out = {"tool": tool, "label": label, "detail": detail, "tone": tone}
+    if tool == "submit_goal" and payload.get("session_id"):
+        out["session_id"] = str(payload["session_id"])
+    return out
 
 
 _DIRECTIVE_WORDS = {
@@ -1755,6 +1761,9 @@ def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
         if isinstance(dispatched, list) and dispatched:
             return f"I started work with {', '.join(str(item) for item in dispatched[:4])}."
         return "I started the work."
+    if tool == "submit_goal":
+        sid = result.get("session_id")
+        return f"Started a new run ({sid})." if sid else "Started a new run."
 
     if tool == "steer_agents":
         return "I sent that direction to the agents already working on it."
@@ -1893,7 +1902,12 @@ async def run_copilot(
         "→ dispatch_agents with the right agents. Examples:\n"
         "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
         "   'redesign the landing page' → dispatch_agents {agents:['design','web'], instruction:'redesign the landing page: ...'}\n"
-        "3. BROADER OBJECTIVE: → set_goal with per-workstream tasks (auto-dispatches).\n"
+        "3. BROADER OBJECTIVE (same company): → set_goal with per-workstream tasks (auto-dispatches).\n"
+        "3b. NEW/SEPARATE RUN: the founder explicitly wants to start a DIFFERENT, unrelated business/idea/product "
+        "(e.g. 'start a new run for a dog-walking app', 'launch a separate company doing X', 'kick off a new run') "
+        "→ submit_goal {goal: '<the new idea, in the founder's words>', stack_id?, company_name?}. This is DISTINCT "
+        "from dispatch_agents/set_goal, which both act on the CURRENT company — submit_goal creates a wholly new, "
+        "independent one. Never use it for follow-up work on the business already in this session.\n"
         "4. APPROVAL OR BLOCKER: if approval_workflow.requests, goal_pending_approvals, recent_approvals "
         "(includes Temporal phase-gate approvals), or pending_agent_question are relevant, "
         "use get_session_approvals / decide_approval_gate / decide_goal_task / answer_agent_question.\n"
@@ -2067,3 +2081,86 @@ async def run_copilot(
     history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
     _save_history(session_id, history)
     return {"ok": True, "reply": reply, "actions": action_summaries, "history": history}
+
+
+def _bootstrap_history_key(founder_id: str) -> str:
+    return f"bootstrap_{founder_id}"
+
+
+async def run_bootstrap_copilot(founder_id: str, message: str) -> dict[str, Any]:
+    """Sessionless copilot for a founder with zero runs yet — no session/company exists
+    for the usual tool surface (dispatch_agents, steer_agents, etc.) to act on, so the
+    only meaningful action is launching one via submit_goal. Kept separate from
+    run_copilot rather than threading a "no session exists" branch through its full
+    decision tree and 25-tool surface, most of which is meaningless pre-first-run."""
+    hist_key = _bootstrap_history_key(founder_id)
+    history = get_history(hist_key)
+
+    system = (
+        "You are Astra's onboarding copilot. This founder has no runs yet — there is no "
+        "company or session to inspect or steer. Your ONLY job is to understand what "
+        "business/product they want to build and launch it.\n\n"
+        "TOOLS:\n"
+        "- submit_goal: LAUNCH the run. args: {goal, stack_id?, company_name?}\n"
+        "- list_stacks: list available agent stack presets. args: {}\n"
+        "- recommend_stack: recommend a stack for a goal. args: {goal}\n\n"
+        "If the founder's message already describes a real goal (what to build, for whom), "
+        "call submit_goal right away — don't interrogate them for optional details. Only ask "
+        "ONE clarifying question first if the message is too vague to act on at all (e.g. just "
+        "'hi' or 'help me').\n\n"
+        'Respond with ONE JSON object per step:\n'
+        '  to use a tool: {"action":"tool","tool":"<name>","args":{...}}\n'
+        '  to answer:     {"action":"reply","text":"<your message to the founder>"}\n'
+    )
+    convo = [f"{h['role']}: {h['content']}" for h in history[-8:]]
+    convo.append(f"founder: {message}")
+    actions: list[dict[str, Any]] = []
+    reply = ""
+    new_session_id = ""
+
+    for _step in range(4):
+        prompt = system + "\n\nCONVERSATION:\n" + "\n".join(convo) + "\n\nYour next JSON step:"
+        try:
+            raw = await _copilot_generate(prompt)
+        except Exception as exc:
+            reply = f"(copilot error: {exc})"
+            break
+        act = _parse_action(raw)
+        if act.get("action") not in ("tool", "reply") and act.get("action") in ("submit_goal", "list_stacks", "recommend_stack"):
+            _tool_name = act["action"]
+            _args = act.get("args") if isinstance(act.get("args"), dict) else {
+                k: v for k, v in act.items() if k not in ("action", "preface", "args")
+            }
+            act = {"action": "tool", "tool": _tool_name, "args": _args}
+        if act.get("action") == "tool" and act.get("tool") in ("submit_goal", "list_stacks", "recommend_stack"):
+            name = act["tool"]
+            args = dict(act.get("args") or {})
+            args.setdefault("founder_id", founder_id)
+            try:
+                result = await _TOOLS[name][1](founder_id, hist_key, args)
+            except Exception as exc:
+                result = {"ok": False, "error": str(exc)}
+            actions.append({"tool": name, "args": args, "result": result})
+            convo.append(f"tool[{name}] -> {json.dumps(result)[:800]}")
+            if name == "submit_goal" and result.get("ok") and result.get("session_id"):
+                new_session_id = str(result["session_id"])
+                reply = f"Started a new run — taking you there now."
+                break
+            continue
+        reply = str(act.get("text") or raw).strip()
+        break
+
+    if not reply:
+        reply = "Tell me what you want to build and I'll launch it."
+
+    action_summaries = [
+        _summarize_copilot_action(str(action.get("tool") or ""), action.get("result"))
+        for action in actions
+        if action.get("tool")
+    ]
+
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    history.append({"role": "founder", "content": message, "at": now})
+    history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
+    _save_history(hist_key, history)
+    return {"ok": True, "reply": reply, "actions": action_summaries, "history": history, "session_id": new_session_id}

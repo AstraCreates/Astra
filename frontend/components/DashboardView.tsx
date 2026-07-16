@@ -52,7 +52,7 @@ function ago(ts: string | undefined): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
+type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn"; session_id?: string };
 
 function titleCaseTool(raw: string): string {
   return raw.split("_").filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
@@ -69,6 +69,7 @@ function normalizeCopilotActions(actions: any): CopilotAction[] {
       label: String(action?.label || titleCaseTool(tool)),
       detail: typeof action?.detail === "string" ? action.detail : undefined,
       tone: action?.tone === "success" || action?.tone === "warn" ? action.tone : "info",
+      session_id: typeof action?.session_id === "string" ? action.session_id : undefined,
     };
   }).filter(Boolean) as CopilotAction[];
 }
@@ -124,6 +125,7 @@ export default function DashboardView() {
   const retriedRef = useRef(false);
   const prevStatusRef = useRef<Map<string, string>>(new Map());
   const copilotLoadedSession = useRef<string | null>(null);
+  const suppressNextCopilotResetRef = useRef(false);
   const [copilotInput, setCopilotInput] = useState("");
   const [launchComplete, setLaunchComplete] = useState<{ companyName: string; founderName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
@@ -247,24 +249,36 @@ export default function DashboardView() {
     });
   }, [sessions]);
 
+  // No real session yet -- fall back to the sessionless bootstrap copilot (its
+  // only real capability is launching the founder's first run) keyed by founder id.
+  const bootstrapMode = !copilotSessionId && sessions !== null && sessions.length === 0 && !!userId;
+
   useEffect(() => {
-    if (!copilotSessionId || copilotLoadedSession.current === copilotSessionId) return;
+    const key = copilotSessionId || (bootstrapMode ? `bootstrap:${userId}` : "");
+    if (!key || copilotLoadedSession.current === key) return;
     let cancelled = false;
     (async () => {
       try {
-        const r = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`);
+        const url = copilotSessionId
+          ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`
+          : `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/bootstrap/${userId}`;
+        const r = await apiFetch(url);
         const d = await r.json();
         if (cancelled) return;
         if (Array.isArray(d.history)) {
           setCopilot((prev) => prev.length > 0 ? prev : d.history.map((item: any) => ({ role: item.role, content: item.content, actions: normalizeCopilotActions(item.actions) })));
         }
-        copilotLoadedSession.current = copilotSessionId;
+        copilotLoadedSession.current = key;
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [copilotSessionId]);
+  }, [copilotSessionId, bootstrapMode, userId]);
 
-  useEffect(() => { copilotLoadedSession.current = null; setCopilot([]); }, [copilotSessionId]);
+  useEffect(() => {
+    if (suppressNextCopilotResetRef.current) { suppressNextCopilotResetRef.current = false; return; }
+    copilotLoadedSession.current = null;
+    setCopilot([]);
+  }, [copilotSessionId]);
 
   useEffect(() => {
     if (!sessions) return;
@@ -299,22 +313,36 @@ export default function DashboardView() {
 
   const sendCopilot = useCallback(async () => {
     const msg = copilotInput.trim();
-    if (!msg || copilotBusy || !copilotSessionId) return;
+    if (!msg || copilotBusy) return;
+    if (!copilotSessionId && !userId) return;
+    const isBootstrap = !copilotSessionId;
     const mentionedAgents = extractAgentMentions(msg, copilotAgents);
     setCopilotInput("");
     setCopilot((current) => [...current, { role: "founder", content: msg }]);
     setCopilotBusy(true);
     try {
-      const r = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`, {
+      const url = isBootstrap
+        ? `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/bootstrap`
+        : `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`;
+      const body = isBootstrap
+        ? { founder_id: userId, message: msg }
+        : { message: msg, mentioned_agents: mentionedAgents };
+      const r = await apiFetch(url, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, mentioned_agents: mentionedAgents }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       setCopilot((current) => [...current, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
+      if (isBootstrap && d.session_id) {
+        suppressNextCopilotResetRef.current = true;
+        copilotLoadedSession.current = d.session_id;
+        setCopilotSessionId(d.session_id);
+        void load();
+      }
     } catch {
       setCopilot((current) => [...current, { role: "copilot", content: "Copilot error — try again." }]);
     } finally { setCopilotBusy(false); }
-  }, [copilotBusy, copilotInput, copilotSessionId, copilotAgents]);
+  }, [copilotBusy, copilotInput, copilotSessionId, copilotAgents, userId, load]);
 
   const metaLine = (s: SessionIndexEntry) => {
     const t = ago(s.created_at);
@@ -574,6 +602,11 @@ export default function DashboardView() {
                   )}
                   <div style={{ maxWidth: "85%", padding: "8px 10px", borderRadius: 10, background: message.role === "founder" ? "#002EFF" : "rgba(255,255,255,0.06)", color: "#EDF1FB", fontSize: 11, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                     {message.content}
+                    {(message.actions || []).filter(a => a.tool === "submit_goal" && a.session_id).map((a, i) => (
+                      <div key={i} style={{ marginTop: 6 }}>
+                        <a href={`/s/${a.session_id}`} style={{ fontSize: 11, fontWeight: 600, color: "rgb(125,143,255)" }}>Open new run →</a>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -602,12 +635,12 @@ export default function DashboardView() {
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendCopilot(); } }}
-                  placeholder={copilotSessionId ? "Ask Astra to start a run, draft copy, or find leads…" : "Start a run to enable copilot"}
-                  disabled={copilotBusy || !copilotSessionId}
+                  placeholder={copilotSessionId || bootstrapMode ? "Ask Astra to start a run, draft copy, or find leads…" : "Loading copilot…"}
+                  disabled={copilotBusy || (!copilotSessionId && !bootstrapMode)}
                   style={{ flex: "1 1 0%", background: "transparent", border: "none", outline: "none", color: "rgb(237,241,251)", fontSize: 13.5, fontFamily: "'Hanken Grotesk', inherit" }}
                 />
-                <button onClick={sendCopilot} disabled={copilotBusy || !copilotInput.trim() || !copilotSessionId}
-                  style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || !copilotSessionId) ? 0.5 : 1 }}>
+                <button onClick={sendCopilot} disabled={copilotBusy || !copilotInput.trim() || (!copilotSessionId && !bootstrapMode)}
+                  style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || (!copilotSessionId && !bootstrapMode)) ? 0.5 : 1 }}>
                   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>
