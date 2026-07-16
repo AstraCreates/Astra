@@ -99,21 +99,56 @@ def is_agent_killed(session_id: str, agent_name: str) -> bool:
 def pause_session(session_id: str) -> None:
     _paused.add(session_id)
     logger.info("Pause: session %s paused", session_id)
+    # Mirror to durable session_meta -- a Temporal-routed run's orchestrator loop
+    # executes inside the temporal-worker container (ExecuteOrchestratorActivity),
+    # a different process than whichever API replica served POST /pause. The
+    # in-process _paused set above is invisible across that boundary; without
+    # this, pausing a Temporal run showed "paused" in the UI while the workflow
+    # kept executing agents uninterrupted. Best-effort: legacy same-process
+    # pause (the common case) still works instantly even if this write fails.
+    try:
+        from backend.core.session_store import merge_session_meta
+        merge_session_meta(session_id, paused=True)
+    except Exception:
+        logger.warning("Pause: durable session_meta write failed for %s", session_id)
 
 
 def resume_session(session_id: str) -> None:
     _paused.discard(session_id)
     logger.info("Pause: session %s resumed", session_id)
+    try:
+        from backend.core.session_store import merge_session_meta
+        merge_session_meta(session_id, paused=False)
+    except Exception:
+        logger.warning("Pause: durable session_meta resume write failed for %s", session_id)
 
 
 def is_paused(session_id: str) -> bool:
     return session_id in _paused
 
 
+async def _is_paused_durable(session_id: str) -> bool:
+    """Cross-process pause check via session_meta -- see pause_session's comment."""
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = await asyncio.to_thread(get_session_meta, session_id)
+        return bool((meta or {}).get("paused"))
+    except Exception:
+        return False
+
+
 async def wait_if_paused(session_id: str, poll_interval: float = 1.0) -> None:
-    """Async-sleep until the session is no longer paused or is killed."""
-    while is_paused(session_id) and not is_killed(session_id):
-        await asyncio.sleep(poll_interval)
+    """Async-sleep until the session is no longer paused or is killed.
+
+    Checks both the fast in-process flag (legacy same-process sessions resume
+    instantly with zero I/O) and the durable session_meta flag (required for
+    Temporal-routed runs, whose orchestrator loop runs in a different process
+    than the API route that received the pause request)."""
+    while not is_killed(session_id):
+        if is_paused(session_id) or await _is_paused_durable(session_id):
+            await asyncio.sleep(poll_interval)
+            continue
+        break
 
 
 def is_killed(session_id: str) -> bool:
