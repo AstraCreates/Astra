@@ -372,6 +372,16 @@ async def start_continue_run(
     resolved_workspace_id = str((prior_meta or {}).get("workspace_id") or "")
     resolved_chapter_id = str((prior_meta or {}).get("chapter_id") or "")
 
+    from backend.accounts import get_or_create_org as _get_org_for_continue
+
+    continue_org = _get_org_for_continue(founder_id)
+    continue_plan = str((continue_org or {}).get("plan") or "starter")
+    # Missing here until this fix -- unlike the initial start_run (which sets
+    # constraints["unlimited_credits"]), continuation runs always defaulted to
+    # False regardless of the founder's actual plan, so scale/beta founders lost
+    # their reservation bypass on every continued run.
+    continue_unlimited = continue_plan in ("scale", "beta")
+
     try:
         register_session(
             session_id=resolved_run_id,
@@ -395,6 +405,7 @@ async def start_continue_run(
                 "agents": list(agents or []),
                 "exclude_agents": list(exclude_agents or []),
                 "research_depth": research_depth,
+                "unlimited_credits": continue_unlimited,
             },
         )
     except Exception as session_exc:
@@ -406,11 +417,6 @@ async def start_continue_run(
         _pre_queue(resolved_run_id)
     except Exception:
         pass
-
-    from backend.accounts import get_or_create_org as _get_org_for_continue
-
-    continue_org = _get_org_for_continue(founder_id)
-    continue_plan = str((continue_org or {}).get("plan") or "starter")
     feature_assignment = assign_run_features(
         resolved_company_id,
         resolved_run_id,

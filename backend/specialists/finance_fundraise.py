@@ -112,7 +112,7 @@ _FUNDRAISE_SEARCH_SEQUENCE = (
     "summary='<brief summary of raise recommendation and PDF path>', founder_id=<FOUNDER_ID>).\n\n"
     "After obsidian_log completes, immediately call done with output: "
     "{raise_amount, instrument, valuation_cap, investor_list, pitch_narrative_summary, safe_terms_path, pdf_path}.\n\n"
-    "CRITICAL: You MUST call done before iteration 28. Do not loop on research — 5 searches is enough."
+    "CRITICAL: You MUST call done before iteration 20. Do not loop on research — 5 searches is enough."
 )
 
 
