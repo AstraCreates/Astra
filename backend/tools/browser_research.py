@@ -82,9 +82,17 @@ _RESEARCH_BLOCK_WINDOW_SENTENCES = 1
 _CRW_TIMEOUT_SECONDS = max(3.0, float(os.environ.get("ASTRA_CRW_TIMEOUT_SECONDS", "12")))
 _CRW_BATCH_TIMEOUT_SECONDS = max(
     _CRW_TIMEOUT_SECONDS + 2.0,
-    float(os.environ.get("ASTRA_CRW_BATCH_TIMEOUT_SECONDS", "20")),
+    # 20s was tuned against a single-lane assumption. With no `chrome` renderer
+    # deployed (see config.docker.toml -- a deliberate tradeoff, not a bug),
+    # hard anti-bot pages fall through HTTP->lightpanda and can legitimately
+    # run long; under concurrent multi-lane research (research/competitors/
+    # customers/gtm firing together) the slowest straggler in a 12-query batch
+    # was blowing past 20s often enough to trip the breaker on real, not
+    # actually-broken, batches. 30s gives real batches breathing room without
+    # going unbounded.
+    float(os.environ.get("ASTRA_CRW_BATCH_TIMEOUT_SECONDS", "30")),
 )
-_CRW_FAILURE_THRESHOLD = max(1, int(os.environ.get("ASTRA_CRW_FAILURE_THRESHOLD", "3")))
+_CRW_FAILURE_THRESHOLD = max(1, int(os.environ.get("ASTRA_CRW_FAILURE_THRESHOLD", "4")))
 _CRW_COOLDOWN_SECONDS = max(10.0, float(os.environ.get("ASTRA_CRW_COOLDOWN_SECONDS", "180")))
 _RESEARCH_QUERY_STOPWORDS = {
     "the", "and", "for", "with", "from", "that", "this", "into", "about", "their", "there",

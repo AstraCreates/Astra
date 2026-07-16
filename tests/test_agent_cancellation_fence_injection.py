@@ -21,7 +21,10 @@ supplies a value can never make it through.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
+from unittest.mock import AsyncMock
 
 from backend.core.agent import Agent, AgentContext
 
@@ -87,3 +90,48 @@ async def test_execute_tool_injects_real_fence_when_absent(mocker):
     await agent._execute_tool("deep_research", {"queries": ["market size"]}, _ctx())
 
     assert hasattr(captured["cancellation_fence"], "is_set")
+
+
+@pytest.mark.asyncio
+async def test_done_rejected_for_insufficient_calls_names_an_untried_tool(mocker):
+    """A second real production bug, same log: 'research' hit max_iterations_reached
+    while 'research_competitors' completed cleanly on the same sequence of tool calls.
+
+    _MIN_CALLS_BY_AGENT["research"] is 3 but _REQUIRED_BY_AGENT["research"] only
+    names 2 tools (run_research_pipeline, deep_research) -- a 3rd, unspecified
+    distinct tool call is implicitly required. actual_calls counts DISTINCT tool
+    NAMES, so re-calling an already-used tool never helps, but the old rejection
+    message just said "keep researching / executing" with no hint which tool
+    would actually count, so the model could loop uselessly until MAX_ITERATIONS.
+    research_competitors (min_calls=2, exactly matching its 2 required tools)
+    never hits this gap, which is exactly why only "research" errored.
+    """
+    outputs = iter([
+        json.dumps({"action": "tool", "tool": "run_research_pipeline", "args": {}}),
+        json.dumps({"action": "tool", "tool": "deep_research", "args": {"queries": ["q"]}}),
+        json.dumps({"action": "done", "output": {"summary": "s", "sources": ["u"]}}),
+        json.dumps({"action": "tool", "tool": "news_search", "args": {"query": "q"}}),
+        json.dumps({"action": "done", "output": {"summary": "s", "sources": ["u"]}}),
+    ])
+    captured_messages = []
+
+    def fake_llm(messages, ctx=None):
+        captured_messages.append(list(messages))
+        return next(outputs)
+
+    agent = Agent(name="research", role="research", tools={
+        "run_research_pipeline": lambda **kw: {"coverage": {"ready": False}},
+        "deep_research": lambda **kw: {"ok": True},
+        "news_search": lambda **kw: {"ok": True},
+    })
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx())
+
+    assert result.get("status") != "max_iterations_reached"
+    assert result.get("summary") == "s"
+
+    rejection_prompt = captured_messages[3][-1]["content"]
+    assert "already used again does not count" in rejection_prompt
+    assert "news_search" in rejection_prompt

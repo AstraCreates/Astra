@@ -1783,10 +1783,21 @@ class Agent:
                 min_calls_needed = _min_calls_for_completion(self.name, _tool_results)
                 actual_calls = len(normalized_called_tools - {"obsidian_log"})
                 if actual_calls < min_calls_needed:
+                    # min_calls_needed can exceed len(required_tools) (e.g. "research"
+                    # needs 3 distinct calls but only run_research_pipeline/deep_research
+                    # are named-required) -- actual_calls counts DISTINCT tool NAMES, so
+                    # re-calling an already-used tool does not help. Without naming an
+                    # untried tool here, the model has no way to know that and can loop
+                    # re-calling the same 1-2 tools until MAX_ITERATIONS (confirmed live:
+                    # "research" hit max_iterations_reached while "research_competitors",
+                    # whose min_calls exactly matches its required-tool count, did not).
+                    untried = sorted(set(self.tools.keys()) - normalized_called_tools - {"obsidian_log", "done"})
+                    suggestion = f" Untried tools available: {', '.join(untried[:6])}." if untried else ""
                     messages.append({"role": "user", "content": (
                         f"You cannot call done yet. You have only made {actual_calls} distinct tool "
-                        f"call(s) but this task requires at least {min_calls_needed}. "
-                        "You have NOT done enough real work. Keep researching / executing."
+                        f"call(s) but this task requires at least {min_calls_needed}. Calling a tool you "
+                        "already used again does not count -- it must be a NEW tool you have not called yet."
+                        f"{suggestion} You have NOT done enough real work. Keep researching / executing."
                     )})
                     continue
                 missing = sorted(required_tools - normalized_called_tools)
