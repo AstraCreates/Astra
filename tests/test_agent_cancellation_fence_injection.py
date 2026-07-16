@@ -135,3 +135,39 @@ async def test_done_rejected_for_insufficient_calls_names_an_untried_tool(mocker
     rejection_prompt = captured_messages[3][-1]["content"]
     assert "already used again does not count" in rejection_prompt
     assert "news_search" in rejection_prompt
+
+
+@pytest.mark.parametrize("agent_name,required", [
+    ("research_market", {"deep_research"}),
+    ("research_financial", {"deep_research", "generate_pdf"}),
+    ("research_regulatory", {"deep_research", "generate_pdf"}),
+    ("research_execution", {"run_research_pipeline", "deep_research"}),
+])
+def test_research_lane_completion_gates_no_longer_missing(agent_name, required):
+    """research_market/financial/regulatory/execution had NO entry at all in
+    _REQUIRED_BY_AGENT/_MIN_CALLS_BY_AGENT -- the .get(name, set())/.get(name, 1)
+    fallbacks silently gave them zero required tools and min_calls=1, so a model
+    could call one throwaway tool (e.g. news_search) and `done`, never touching
+    deep_research despite every one of these prompts calling it "MANDATORY"."""
+    from backend.core import agent as agent_mod
+
+    assert agent_name in agent_mod._REQUIRED_BY_AGENT
+    assert agent_mod._REQUIRED_BY_AGENT[agent_name] == required
+    assert agent_name in agent_mod._MIN_CALLS_BY_AGENT
+    assert agent_mod._MIN_CALLS_BY_AGENT[agent_name] <= len(agent_mod._REQUIRED_BY_AGENT[agent_name]) + 2
+
+
+def test_research_execution_has_its_own_focus_role_not_generic_market_fallback():
+    """research_execution silently inherited _FOCUS_ROLES["research"] (generic
+    TAM/SAM/SOM market role) via _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
+    since no "research_execution" key existed -- it produced market-research output
+    duplicating the "research" lane instead of the execution-strategy/GTM/tech-stack
+    output the "custom" stack's StackArtifact entries for it actually expect."""
+    from backend.specialists.research import _FOCUS_ROLES, _research_focus_for_agent
+
+    assert "research_execution" in _FOCUS_ROLES
+    role_text = _FOCUS_ROLES["research_execution"]
+    assert "execution_strategy" in role_text
+    assert "recommended_tech_stack" in role_text
+    assert role_text != _FOCUS_ROLES["research"]
+    assert _research_focus_for_agent("research_execution") == "execution"

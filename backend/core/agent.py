@@ -128,6 +128,20 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "research_competitors":  {"run_research_pipeline", "deep_research"},
     "research_customers":    {"deep_research"},
     "research_gtm":          {"deep_research"},
+    # These four had NO entry at all until this fix -- _required_tools_for_completion's
+    # .get(agent_name, set()) fallback silently gave them zero required tools and
+    # _min_calls_for_completion's .get(agent_name, 1) gave a min of 1, so a model could
+    # call e.g. news_search once and `done`, never touching deep_research despite every
+    # one of these prompts calling it "MANDATORY" (confirmed live: no completion gate
+    # was actually enforcing it). research_market has no run_research_pipeline tool at
+    # all (see research_market.py's tools dict) so only deep_research is required there;
+    # research_financial/research_regulatory explicitly require generate_pdf too since
+    # adding them here removes the generic "not in _REQUIRED_BY_AGENT" PDF fallback
+    # they were previously (accidentally) covered by.
+    "research_market":       {"deep_research"},
+    "research_financial":    {"deep_research", "generate_pdf"},
+    "research_regulatory":   {"deep_research", "generate_pdf"},
+    "research_execution":    {"run_research_pipeline", "deep_research"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
@@ -152,6 +166,7 @@ _MIN_CALLS_BY_AGENT: dict[str, int] = {
     "research": 3, "r_market": 3, "r_competitors": 2,
     "r_customers": 2, "r_gtm": 2,
     "research_competitors": 2, "research_customers": 2, "research_gtm": 2,
+    "research_market": 2, "research_financial": 2, "research_regulatory": 2, "research_execution": 2,
     "sales": 3, "marketing_outreach": 3,
     "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
     "design": 3, "marketing_content": 3,
