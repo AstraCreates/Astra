@@ -1011,20 +1011,25 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       setAgentAnswer("");
     } catch { setToastErr("Failed to send answer — try again."); }
   };
+  // Control-plane (Temporal) runs only stop via /runs/{id}/cancel -- the legacy
+  // /sessions/{id}/kill endpoint no-ops on them, so any caller that skipped this
+  // and went straight to killSession() would see killed=false forever.
+  const cancelRun = async (): Promise<boolean> => {
+    try {
+      const response = await apiFetch(`${API}/runs/${encodeURIComponent(sessionId)}/cancel`, { method: "POST" });
+      if (!response.ok) throw new Error("Control-plane cancel unavailable");
+      return true;
+    } catch {
+      return killSession(sessionId);
+    }
+  };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
   // made Stop/Restart silently no-op. Roll back and reconnect when the kill fails.
   const stop = async () => {
     const previousStatus = S.current.status;
     S.current.status = controlPlaneStatus ? "cancelling" : "killed";
     commitState();
-    let killed = false;
-    try {
-      const response = await apiFetch(`${API}/runs/${encodeURIComponent(sessionId)}/cancel`, { method: "POST" });
-      if (!response.ok) throw new Error("Control-plane cancel unavailable");
-      killed = response.ok;
-    } catch {
-      killed = await killSession(sessionId);
-    }
+    const killed = await cancelRun();
     S.current.status = controlPlaneStatus && killed ? "cancelling" : stopStatusAfterKill(previousStatus, killed);
     commitState();
     if (!killed) {
@@ -1040,7 +1045,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (!goal) { showErr("Original goal hasn't loaded yet — try again in a moment."); return; }
     // Keep this session visible until its replacement has been accepted.
     try {
-      const killed = await killSession(sessionId);
+      const killed = await cancelRun();
       if (shouldRetainOriginalSession(killed)) throw new Error("Could not stop the original run; it remains visible and connected.");
       const instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
       const data = await submitGoal(founderId, instruction, {}, stack);
