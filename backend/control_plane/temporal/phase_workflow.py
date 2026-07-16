@@ -19,6 +19,7 @@ from backend.control_plane.temporal.contracts import (
     PhaseGateResult,
     PhaseRunInput,
     PhaseRunResult,
+    RetryStepInput,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -33,6 +34,7 @@ class PhaseRunWorkflow:
         self._waiting_gate: Optional[str] = None
         self._latest_gate_request: Optional[dict] = None
         self._current_gate_approval: Optional[dict] = None
+        self._retry_request: Optional[dict] = None
 
     @workflow.signal
     async def cancel(self) -> None:
@@ -47,6 +49,14 @@ class PhaseRunWorkflow:
             "policy_version": decision.policy_version,
             "decided_by": decision.decided_by,
             "note": decision.note,
+        }
+
+    @workflow.signal(name="retry_step")
+    async def retry_step(self, retry: RetryStepInput) -> None:
+        self._retry_request = {
+            "step_key": retry.step_key,
+            "requested_by": retry.requested_by,
+            "note": retry.note,
         }
 
     @workflow.query(name="waiting_gate")
@@ -136,62 +146,107 @@ class PhaseRunWorkflow:
                 if step_key in pending:
                     pending.remove(step_key)
 
-        gate_artifacts = []
-        for result in lane_results:
-            verification = dict(result.get("verification") or {})
-            gate_artifacts.append({
-                "key": result.get("step_key") or "",
-                "title": result.get("agent") or result.get("step_key") or "",
-                "agent": result.get("agent") or "",
-                "status": verification.get("status") or result.get("status") or "passed",
-                "preview": (verification.get("summary") or "")[:600],
-            })
+        gate_attempt = 0
+        retry_attempt = 0
+        while True:
+            gate_artifacts = []
+            for result in lane_results:
+                verification = dict(result.get("verification") or {})
+                gate_artifacts.append({
+                    "key": result.get("step_key") or "",
+                    "title": result.get("agent") or result.get("step_key") or "",
+                    "agent": result.get("agent") or "",
+                    "status": verification.get("status") or result.get("status") or "passed",
+                    "preview": (verification.get("summary") or "")[:600],
+                })
 
-        self._waiting_gate = input.phase_name
-        gate_handle = await workflow.start_child_workflow(
-            PhaseGateWorkflow.run,
-            PhaseGateInput(
-                run_id=input.run_id,
-                gate_key=f"phase_gate_{input.phase_name}",
-                phase_name=input.phase_name,
-                next_phase=input.next_phase,
-                artifacts=gate_artifacts,
-                timeout_seconds=input.timeout_seconds,
-            ),
-            id=f"phase-gate/{input.run_id}/{input.phase_name}",
-            task_queue=self._task_queue(),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
-        while not gate_handle.done():
-            if self._cancelled:
-                gate_handle.cancel()
-                try:
-                    await gate_handle
-                except asyncio.CancelledError:
-                    pass
-                return PhaseRunResult(
+            self._waiting_gate = input.phase_name
+            gate_attempt += 1
+            gate_handle = await workflow.start_child_workflow(
+                PhaseGateWorkflow.run,
+                PhaseGateInput(
                     run_id=input.run_id,
+                    gate_key=f"phase_gate_{input.phase_name}",
                     phase_name=input.phase_name,
                     next_phase=input.next_phase,
-                    status="cancelled",
-                    decision="cancelled",
-                    lane_results=lane_results,
-                )
-            try:
-                self._current_gate_approval = await gate_handle.query("waiting_approval")
-            except Exception:
-                pass
-            if self._latest_gate_request:
-                await gate_handle.signal(
-                    "approval_decision",
-                    ApprovalDecisionInput(**self._latest_gate_request),
-                )
-            await asyncio.sleep(1)
+                    artifacts=gate_artifacts,
+                    timeout_seconds=input.timeout_seconds,
+                ),
+                id=f"phase-gate/{input.run_id}/{input.phase_name}"
+                + ("" if gate_attempt == 1 else f"/retry{gate_attempt - 1}"),
+                task_queue=self._task_queue(),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+            retried_this_round = False
+            while not gate_handle.done():
+                if self._cancelled:
+                    gate_handle.cancel()
+                    try:
+                        await gate_handle
+                    except asyncio.CancelledError:
+                        pass
+                    return PhaseRunResult(
+                        run_id=input.run_id,
+                        phase_name=input.phase_name,
+                        next_phase=input.next_phase,
+                        status="cancelled",
+                        decision="cancelled",
+                        lane_results=lane_results,
+                    )
+                try:
+                    self._current_gate_approval = await gate_handle.query("waiting_approval")
+                except Exception:
+                    pass
+                if self._latest_gate_request:
+                    await gate_handle.signal(
+                        "approval_decision",
+                        ApprovalDecisionInput(**self._latest_gate_request),
+                    )
+                    self._latest_gate_request = None
+                # A founder can retry a specific step's already-completed result
+                # while the phase is sitting at its approval gate (the point where
+                # results are actually visible for review). Cancel the in-flight
+                # gate, re-run just that one step, replace its stale result, and
+                # restart the gate with fresh artifacts -- rather than silently
+                # no-op'ing or (the pre-fix behavior) spawning a disconnected,
+                # untracked duplicate agent run in the API process that was never
+                # part of this workflow at all.
+                if self._retry_request and self._retry_request.get("step_key") in completed_step_keys:
+                    retry_step_key = str(self._retry_request["step_key"])
+                    self._retry_request = None
+                    gate_handle.cancel()
+                    try:
+                        await gate_handle
+                    except asyncio.CancelledError:
+                        pass
+                    retry_attempt += 1
+                    retry_handle = await workflow.start_child_workflow(
+                        LaneAttemptWorkflow.run,
+                        LaneAttemptInput(run_id=input.run_id, step_key=retry_step_key),
+                        id=f"phase/{input.run_id}/{input.phase_name}/{retry_step_key}/retry{retry_attempt}",
+                        task_queue=self._task_queue(),
+                        retry_policy=RetryPolicy(maximum_attempts=1),
+                    )
+                    retry_result = await retry_handle
+                    retry_result_dict = (
+                        retry_result if isinstance(retry_result, dict)
+                        else (retry_result.model_dump() if hasattr(retry_result, "model_dump") else retry_result.__dict__)
+                    )
+                    lane_results[:] = [r for r in lane_results if r.get("step_key") != retry_step_key]
+                    lane_results.append(retry_result_dict)
+                    retried_this_round = True
+                    break
+                await asyncio.sleep(1)
 
-        gate_result = await gate_handle
-        self._waiting_gate = None
-        self._latest_gate_request = None
-        self._current_gate_approval = None
+            if retried_this_round:
+                continue
+
+            gate_result = await gate_handle
+            self._waiting_gate = None
+            self._latest_gate_request = None
+            self._current_gate_approval = None
+            break
+
         if isinstance(gate_result, dict):
             gate_result_dict = gate_result
         else:

@@ -1275,6 +1275,35 @@ async def retry_run_step(run_id: str, step_key: str, body: RunStepRetryRequest, 
             max_attempts=10,
         ),
     )
+
+    # dispatch.retry_step() correctly signals the real, live Temporal workflow
+    # (propagated AstraRunWorkflow -> MultiPhaseRunWorkflow -> PhaseRunWorkflow,
+    # which re-runs just that one step and replaces its result at the phase
+    # gate). rerun_agent() spawns a bare asyncio task calling the specialist
+    # directly in THIS API process -- for a Temporal-routed run, the real
+    # orchestrator/workflow execution lives in the temporal-worker container,
+    # so that produced a disconnected, untracked duplicate agent run that was
+    # never part of the actual run at all, while looking like it worked.
+    if str(run.engine or "").lower() == "temporal":
+        from backend.control_plane.temporal.dispatch import retry_step as temporal_retry_step
+
+        signaled = await temporal_retry_step(
+            run_id,
+            step_key=step_key,
+            requested_by=body.founder_id or run.owner_id,
+            note=body.instruction or None,
+        )
+        if not signaled:
+            raise HTTPException(status_code=502, detail="failed to signal retry to the running workflow")
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "step_key": step_key,
+            "engine": "temporal",
+            "attempt": step.model_dump(mode="json"),
+            "dispatch": {"ok": True, "signaled": True},
+        }
+
     result = await rerun_agent(
         run_id,
         step_key,

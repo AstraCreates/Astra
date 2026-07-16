@@ -288,6 +288,10 @@ class AstraRunWorkflow:
                             self._approval_decision = None
 
                         if self._retry_request:
+                            await child_handle.signal(
+                                "retry_step",
+                                RetryStepInput(**self._retry_request),
+                            )
                             self._state.metadata["retry_request"] = dict(self._retry_request)
                             self._retry_request = None
 

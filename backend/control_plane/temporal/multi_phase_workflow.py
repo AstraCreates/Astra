@@ -11,6 +11,7 @@ from backend.control_plane.temporal.contracts import (
     ApprovalDecisionInput,
     MultiPhaseRunInput,
     MultiPhaseRunResult,
+    RetryStepInput,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -28,6 +29,7 @@ class MultiPhaseRunWorkflow:
         self._pending_decision: Optional[dict] = None
         self._active_phase: Optional[str] = None
         self._waiting_gate: Optional[str] = None
+        self._pending_retry: Optional[dict] = None
 
     @workflow.signal
     async def cancel(self) -> None:
@@ -42,6 +44,14 @@ class MultiPhaseRunWorkflow:
             "policy_version": decision.policy_version,
             "decided_by": decision.decided_by,
             "note": decision.note,
+        }
+
+    @workflow.signal(name="retry_step")
+    async def retry_step(self, retry: RetryStepInput) -> None:
+        self._pending_retry = {
+            "step_key": retry.step_key,
+            "requested_by": retry.requested_by,
+            "note": retry.note,
         }
 
     @workflow.query(name="active_phase")
@@ -100,6 +110,13 @@ class MultiPhaseRunWorkflow:
                             "approval_decision",
                             ApprovalDecisionInput(**self._pending_decision),
                         )
+                        self._pending_decision = None
+                    if self._pending_retry:
+                        await handle.signal(
+                            "retry_step",
+                            RetryStepInput(**self._pending_retry),
+                        )
+                        self._pending_retry = None
                     try:
                         self._waiting_gate = await handle.query("waiting_gate")
                     except Exception:
