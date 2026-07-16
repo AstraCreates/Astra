@@ -148,13 +148,25 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
     "sales":             {"find_leads", "build_outreach_sequence", "build_crm_contact"},
     "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
-    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo_brief"},
+    # generate_logo_brief was required here but design.py's own 12-step MANDATORY
+    # WORKFLOW never calls it -- it calls generate_logo (steps 5-6, from
+    # backend/tools/_llm.py) to produce the actual logo_wordmark/logo_icon image
+    # assets the prompt's own done-output spec requires. The agent was forced to
+    # improvise an undocumented call to a tool its own prompt never explains.
+    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo"},
     "sales_enablement":  {"generate_pdf", "obsidian_log"},
     "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
     "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
     "marketing_seo":     {"web_search", "generate_pdf", "obsidian_log"},
     "marketing_paid":    {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-    "web":               {"github_create_repo", "run_mvp_loop", "obsidian_log"},
+    # github_create_repo was required unconditionally, but web.py's own prompt says
+    # to SKIP it when step 1's obsidian_read finds a prior repo_url -- github_create_repo
+    # has no idempotency (always appends a random suffix and creates a brand-new repo),
+    # so the gate forced creation of a genuinely new, orphaned, duplicate repo on every
+    # resumed/continued run. run_mvp_loop already can't do anything without a real
+    # repo_url (from either path), so it alone is enough to enforce real progress here --
+    # matches "technical"'s existing (correct) required set below.
+    "web":               {"run_mvp_loop", "obsidian_log"},
     "technical":         {"run_mvp_loop", "obsidian_log"},
     "technical_infra":   {"web_search", "generate_pdf", "obsidian_log"},
     "technical_data":    {"generate_pdf", "obsidian_log"},
