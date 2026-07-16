@@ -1294,6 +1294,15 @@ class Agent:
                 params = ", ".join(
                     pname
                     for pname, param in sig.parameters.items()
+                    # Framework-injected, never something the model should fill in
+                    # itself (see _run_tool's cancellation_fence handling below) --
+                    # inspect.signature follows functools.wraps' __wrapped__ through
+                    # to the real tool fn, so these leaked into the prompt as if
+                    # they were real args. A model that then supplied its own junk
+                    # value (e.g. an empty string) for cancellation_fence crashed
+                    # deep_research with 'str' object has no attribute 'is_set',
+                    # since setdefault() only fills the real fence in when absent.
+                    if pname not in ("cancellation_fence", "cancel_event")
                 )
                 doc = (fn.__doc__ or "").split("\n")[0].strip()
                 return f"  - {name}({params}): {doc}"
@@ -2695,7 +2704,12 @@ class Agent:
             args.setdefault("agent", self.name)
         if "cancellation_fence" in _sig_params:
             from backend.core import cancellation
-            args.setdefault("cancellation_fence", cancellation.cancellation_fence(ctx.session_id, self.name))
+            # Force-overwrite, not setdefault: this must always be the real
+            # threading.Event fence. A model that supplies its own value here
+            # (e.g. because an older prompt/signature leak exposed the param
+            # name) has no way to construct a valid one -- letting a string
+            # survive crashes every downstream .is_set() check.
+            args["cancellation_fence"] = cancellation.cancellation_fence(ctx.session_id, self.name)
         try:
             # Strip any keys the function doesn't accept (if it doesn't use **kwargs)
             _has_var_kw = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _inspect.signature(fn).parameters.values())
