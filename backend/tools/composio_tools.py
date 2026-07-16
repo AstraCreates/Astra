@@ -5,13 +5,82 @@ One SDK call replaces OAuth, token refresh, rate limiting, and API schema mappin
 All public functions are sync (AstraAgent wraps in asyncio.to_thread).
 Each takes founder_id so Composio scopes the call to the right entity's credentials.
 """
+import asyncio
+import hashlib
 import logging
-from typing import Optional
+import threading
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
 _toolset = None
 _toolset_failed = False  # cache init failure so we don't re-hit a dead API every call
+
+
+# ── Durable idempotency for gmail_send_direct ────────────────────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." sales.py and ops.py
+# both expose gmail_send_direct AND composio_gmail_send as separate tools on
+# the same agent -- composio_gmail_send calls gmail_send_direct internally as
+# its first step, so a model that calls one and then (confused, or retrying)
+# calls the other sends a real duplicate email to the same recipient. Neither
+# had any idempotency key or dedup, unlike gmail_api.py's already-fixed
+# gmail_send_email (a separate, unrelated implementation used elsewhere).
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _send_gmail_with_idempotency(
+    *, run_id: str, step_id: str, args: dict[str, Any], send_call: Callable[[], dict],
+) -> dict:
+    if not run_id:
+        return send_call()
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        canonicalize_tool_args,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::gmail_send_direct::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, _idempotency_key: str) -> dict:
+        return send_call()
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or "gmail_send_direct",
+            action_id=action_id,
+            tool="gmail_send_direct",
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    return dict(result.provider_result or {})
 
 
 def _reset_toolset() -> None:
@@ -124,7 +193,7 @@ def _gmail_refresh_token(creds: dict) -> str | None:
         return None
 
 
-def gmail_send_direct(founder_id: str, to: str, subject: str, body: str) -> dict:
+def gmail_send_direct(founder_id: str, to: str, subject: str, body: str, session_id: str = "") -> dict:
     """Send via Gmail API using locally-stored Google OAuth tokens (no Composio)."""
     import base64
     import email as _email_lib
@@ -133,32 +202,41 @@ def gmail_send_direct(founder_id: str, to: str, subject: str, body: str) -> dict
     creds = load_credentials(founder_id, "gmail")
     if not creds or creds.get("connected_via") != "google_oauth":
         return {"error": "Gmail not connected via Google OAuth — go to Integrations and connect Gmail directly"}
-    access_token = creds.get("access_token")
-    # Try token; refresh if it fails
-    for attempt in range(2):
-        msg = _email_lib.message.EmailMessage()
-        msg["To"] = to
-        msg["Subject"] = subject
-        msg.set_content(body)
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-        r = _req.post(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-            json={"raw": raw},
-            timeout=15,
-        )
-        if r.status_code == 401 and attempt == 0:
-            new_token = _gmail_refresh_token(creds)
-            if not new_token:
-                return {"error": "Gmail token expired and refresh failed — reconnect Gmail on the Integrations page"}
-            access_token = new_token
-            creds["access_token"] = new_token
-            store_credentials(founder_id, "gmail", creds)
-            continue
-        if r.status_code not in (200, 201):
-            return {"error": f"Gmail API error {r.status_code}: {r.text[:200]}"}
-        return {"ok": True, "message_id": r.json().get("id"), "to": to, "subject": subject}
-    return {"error": "Gmail send failed after token refresh"}
+
+    def _do_send() -> dict:
+        access_token = creds.get("access_token")
+        # Try token; refresh if it fails
+        for attempt in range(2):
+            msg = _email_lib.message.EmailMessage()
+            msg["To"] = to
+            msg["Subject"] = subject
+            msg.set_content(body)
+            raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+            r = _req.post(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+                json={"raw": raw},
+                timeout=15,
+            )
+            if r.status_code == 401 and attempt == 0:
+                new_token = _gmail_refresh_token(creds)
+                if not new_token:
+                    return {"error": "Gmail token expired and refresh failed — reconnect Gmail on the Integrations page"}
+                access_token = new_token
+                creds["access_token"] = new_token
+                store_credentials(founder_id, "gmail", creds)
+                continue
+            if r.status_code not in (200, 201):
+                return {"error": f"Gmail API error {r.status_code}: {r.text[:200]}"}
+            return {"ok": True, "message_id": r.json().get("id"), "to": to, "subject": subject}
+        return {"error": "Gmail send failed after token refresh"}
+
+    return _send_gmail_with_idempotency(
+        run_id=session_id,
+        step_id="gmail_send_direct",
+        args={"founder_id": founder_id, "to": to, "subject": subject, "body": body},
+        send_call=_do_send,
+    )
 
 
 def _gmail_api_get(founder_id: str, path: str, params: dict | None = None) -> tuple[int, dict]:
@@ -264,16 +342,19 @@ def gmail_get_message(founder_id: str, message_id: str) -> dict:
     }
 
 
-def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> dict:
+def composio_gmail_send(founder_id: str, to: str, subject: str, body: str, session_id: str = "") -> dict:
     """Send email via founder's Gmail (direct Gmail API) with Resend fallback."""
-    direct = gmail_send_direct(founder_id, to, subject, body)
+    direct = gmail_send_direct(founder_id, to, subject, body, session_id=session_id)
     if not direct.get("error"):
         return direct
     try:
         from backend.tools.resend_tools import resend_send_email
         from backend.config import settings
         if settings.resend_api_key:
-            return resend_send_email(to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai")
+            return resend_send_email(
+                to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai",
+                run_id=session_id, step_id="composio_gmail_send:resend_fallback",
+            )
     except Exception:
         pass
     return {"error": f"Gmail send failed: {direct.get('error')}"}
