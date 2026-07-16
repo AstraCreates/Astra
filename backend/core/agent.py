@@ -2776,7 +2776,18 @@ class Agent:
         if "session_id" in _sig_params:
             args.setdefault("session_id", ctx.session_id)
         if "founder_id" in _sig_params:
-            args.setdefault("founder_id", ctx.founder_id)
+            # Force-overwrite, not setdefault: founder_id is account ownership, not
+            # a legitimate cross-target parameter like session_id (which copilot/
+            # dispatch tools deliberately let the model point at a different run).
+            # There is no legitimate reason for a tool call inside THIS agent's run
+            # to write data under a different founder's account. Prompts across the
+            # specialists (e.g. sales.py) tell the model to type founder_id=<FOUNDER_ID>
+            # explicitly, and setdefault only filled it in when the model omitted it
+            # entirely -- a stale/hallucinated founder_id echoed from earlier context
+            # in a long session would previously survive untouched, silently writing
+            # real data (Hunter/contact-scraper Supabase rows, sent emails) under the
+            # wrong founder.
+            args["founder_id"] = ctx.founder_id
         if "agent" in _sig_params:
             args.setdefault("agent", self.name)
         if "cancellation_fence" in _sig_params:

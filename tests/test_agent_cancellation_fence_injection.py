@@ -77,6 +77,34 @@ async def test_execute_tool_overrides_model_supplied_cancellation_fence(mocker):
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_overrides_model_supplied_founder_id(mocker):
+    """Real gap: sales.py's own prompt tells the model to type
+    founder_id=<FOUNDER_ID> into Hunter/contact-scraper calls performing real
+    Supabase writes. The old args.setdefault("founder_id", ...) only filled
+    it in when absent -- a stale/hallucinated founder_id echoed from earlier
+    context in a long session would survive untouched, silently writing real
+    data under the wrong founder. founder_id is account ownership, not a
+    legitimate cross-target param like session_id, so it must always be the
+    real ctx.founder_id."""
+    captured = {}
+
+    def hunter_search_by_domains(founder_id=None, domains=None):
+        captured["founder_id"] = founder_id
+        return {"ok": True}
+
+    agent = Agent(name="sales", role="sales", tools={"hunter_search_by_domains": hunter_search_by_domains})
+    mocker.patch("backend.core.events.publish", new=mocker.AsyncMock())
+
+    await agent._execute_tool(
+        "hunter_search_by_domains",
+        {"founder_id": "stale_hallucinated_founder", "domains": ["acme.com"]},
+        _ctx(founder_id="real_founder"),
+    )
+
+    assert captured["founder_id"] == "real_founder"
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_injects_real_fence_when_absent(mocker):
     captured = {}
 
