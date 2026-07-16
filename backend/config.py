@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # scrape pipeline as deep_research's primary path (see deep_research's own
     # comment: crw has no chrome/JS-renderer tier deployed, so anti-bot-heavy
     # pages routinely timed out under concurrent multi-lane research).
-    native_research_model: str = "google/gemini-2.5-flash-lite"
+    native_research_model: str = "openai/gpt-4o-mini-search-preview"
     native_research_enabled: bool = True
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).

@@ -120,14 +120,14 @@ def _tune_headroom_pipeline_once() -> None:
 
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
-    "research":              {"run_research_pipeline", "deep_research"},
-    "r_market":              {"run_research_pipeline", "deep_research"},
-    "r_competitors":         {"run_research_pipeline", "deep_research"},
-    "r_customers":           {"deep_research"},
-    "r_gtm":                 {"deep_research"},
-    "research_competitors":  {"run_research_pipeline", "deep_research"},
-    "research_customers":    {"deep_research"},
-    "research_gtm":          {"deep_research"},
+    "research":              {"run_research_pipeline"},
+    "r_market":              {"run_research_pipeline"},
+    "r_competitors":         {"run_research_pipeline"},
+    "r_customers":           {"run_research_pipeline"},
+    "r_gtm":                 {"run_research_pipeline"},
+    "research_competitors":  {"run_research_pipeline"},
+    "research_customers":    {"run_research_pipeline"},
+    "research_gtm":          {"run_research_pipeline"},
     # These four had NO entry at all until this fix -- _required_tools_for_completion's
     # .get(agent_name, set()) fallback silently gave them zero required tools and
     # _min_calls_for_completion's .get(agent_name, 1) gave a min of 1, so a model could
