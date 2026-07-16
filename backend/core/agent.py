@@ -417,6 +417,8 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
 # Aliases for tool names models commonly hallucinate → the real registered tool.
 _TOOL_ALIASES = {
     "obsidian_write": "obsidian_log",
+    "search_engine": "run_research_pipeline",
+    "web_search": "run_research_pipeline",
     "obsidian_save": "obsidian_log",
     "obsidian_note": "obsidian_log",
     "obsidian_create": "obsidian_log",
