@@ -177,6 +177,26 @@ _RESEARCH_AGENT_NAMES = {
     "research_market", "research_financial", "research_regulatory", "research_execution",
 }
 
+# Must stay in sync with backend/specialists/marketing_content.py's Mode A-E trigger
+# phrases. _REQUIRED_BY_AGENT["marketing_content"] only fits Mode F (Social Content
+# Package) -- for every other mode (blog post, press kit, lead magnet, case study,
+# roadmap) the prompt itself only calls generate_pdf/obsidian_log, but the static
+# required-tool set forced the model to also generate 3 Reel scripts, 2 TikTok
+# packages, and 3 Meta ad variants for e.g. a plain blog-post request. Real bug,
+# confirmed live: goal="write a blog post..." still got the full social-package gate.
+_MARKETING_CONTENT_OTHER_MODE_TRIGGERS = (
+    "blog post", "article", "write a post", "publish a post",
+    "press kit", "media kit", "founder bio", "press release",
+    "lead magnet", "template", "guide", "checklist", "ebook",
+    "case study", "customer story", "success story", "testimonial",
+    "roadmap", "changelog", "what's coming", "product update",
+)
+
+
+def _is_marketing_content_social_mode(goal: str) -> bool:
+    low = (goal or "").lower()
+    return not any(trigger in low for trigger in _MARKETING_CONTENT_OTHER_MODE_TRIGGERS)
+
 
 def _normalized_tool_names(tool_names: set[str]) -> set[str]:
     """Compare completion/tool-cap requirements against canonical tool names."""
@@ -202,7 +222,10 @@ def _latest_research_pipeline_ready(tool_results: list[tuple[str, dict[str, Any]
 def _required_tools_for_completion(
     agent_name: str,
     tool_results: list[tuple[str, dict[str, Any]]],
+    goal: str = "",
 ) -> set[str]:
+    if agent_name == "marketing_content" and not _is_marketing_content_social_mode(goal):
+        return {"generate_pdf", "obsidian_log"}
     required = set(_REQUIRED_BY_AGENT.get(agent_name, set()))
     if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
         required.discard("deep_research")
@@ -214,7 +237,10 @@ def _required_tools_for_completion(
 def _min_calls_for_completion(
     agent_name: str,
     tool_results: list[tuple[str, dict[str, Any]]],
+    goal: str = "",
 ) -> int:
+    if agent_name == "marketing_content" and not _is_marketing_content_social_mode(goal):
+        return 1
     if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
         return 1
     return _MIN_CALLS_BY_AGENT.get(agent_name, 1)
@@ -1793,9 +1819,9 @@ class Agent:
                 _consecutive_unknown = 0
 
             if action == "done":
-                required_tools = _required_tools_for_completion(self.name, _tool_results)
+                required_tools = _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                 normalized_called_tools = _normalized_tool_names(_called_tools)
-                min_calls_needed = _min_calls_for_completion(self.name, _tool_results)
+                min_calls_needed = _min_calls_for_completion(self.name, _tool_results, ctx.goal)
                 actual_calls = len(normalized_called_tools - {"obsidian_log"})
                 if actual_calls < min_calls_needed:
                     # min_calls_needed can exceed len(required_tools) (e.g. "research"
@@ -1832,7 +1858,7 @@ class Agent:
                 output = parsed.get("output", {})
                 if isinstance(output, dict):
                     output = self._normalize_done_output(output, _tool_results)
-                    missing_output = self._missing_required_output(output, _attempted_tools)
+                    missing_output = self._missing_required_output(output, _attempted_tools, ctx.goal)
                     if missing_output:
                         messages.append({"role": "user", "content": (
                             "You cannot call done yet. Output is missing required fields: "
@@ -2018,7 +2044,7 @@ class Agent:
                         # Ling from spending the remaining budget rephrasing reads.
                         if (
                             self.name in _RESEARCH_AGENT_NAMES
-                            and _required_tools_for_completion(self.name, _tool_results)
+                            and _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                             <= _normalized_tool_names(_called_tools)
                         ):
                             logger.info("[%s] required research evidence complete; forcing synthesis after blocked %s", self.name, tool_name)
@@ -2275,11 +2301,11 @@ class Agent:
                 output = self._normalize_done_output(output, _tool_results)
                 if isinstance(output, dict):
                     # Apply same quality checks as normal done path — can't re-prompt, just flag
-                    _synth_required_tools = _required_tools_for_completion(self.name, _tool_results)
+                    _synth_required_tools = _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                     _synth_called_tools = _normalized_tool_names(_called_tools)
                     _synth_missing_tools = sorted(_synth_required_tools - _synth_called_tools)
-                    _synth_missing_output = self._missing_required_output(output, _attempted_tools)
-                    _synth_min = _min_calls_for_completion(self.name, _tool_results)
+                    _synth_missing_output = self._missing_required_output(output, _attempted_tools, ctx.goal)
+                    _synth_min = _min_calls_for_completion(self.name, _tool_results, ctx.goal)
                     _synth_actual = len(_synth_called_tools - {"obsidian_log"})
                     if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
                         quality_flags = {
@@ -2327,7 +2353,7 @@ class Agent:
             logger.warning("%s forced synthesis failed: %s", self.name, e)
         return {"status": "max_iterations_reached", "agent": self.name}
 
-    def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None) -> list[str]:
+    def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None, goal: str = "") -> list[str]:
         """Require key preview artifacts per role before accepting done."""
         if self.manifest and self.manifest.output_schema:
             missing = self.manifest.missing_output_fields(output)
@@ -2353,6 +2379,12 @@ class Agent:
                 missing.append("outreach_status")
             return missing
         if self.name == "marketing_content":
+            if not _is_marketing_content_social_mode(goal):
+                # Modes A-E (blog/press kit/lead magnet/case study/roadmap) never
+                # produce reel/tiktok/meta-ad output -- only Mode F does. This was
+                # unconditional before, so even a plain blog-post goal was rejected
+                # for missing reel_scripts/tiktok_packages/meta_ads/content_calendar_pdf.
+                return []
             missing: list[str] = []
             reel_scripts = output.get("reel_scripts")
             tiktok_packages = output.get("tiktok_packages")

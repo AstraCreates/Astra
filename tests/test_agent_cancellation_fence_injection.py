@@ -171,3 +171,71 @@ def test_research_execution_has_its_own_focus_role_not_generic_market_fallback()
     assert "recommended_tech_stack" in role_text
     assert role_text != _FOCUS_ROLES["research"]
     assert _research_focus_for_agent("research_execution") == "execution"
+
+
+@pytest.mark.asyncio
+async def test_marketing_content_blog_post_mode_not_forced_into_social_package(mocker):
+    """marketing_content's static _REQUIRED_BY_AGENT set only fits Mode F (Social
+    Content Package) -- a "write a blog post" goal (Mode A) still got forced through
+    3 Reel scripts, 2 TikTok packages, and 3 Meta ad variants it never needed, since
+    the gate never looked at which mode the agent's own prompt told it to use."""
+    outputs = iter([
+        json.dumps({"action": "tool", "tool": "generate_pdf", "args": {"title": "t", "sections": []}}),
+        json.dumps({"action": "tool", "tool": "obsidian_log", "args": {}}),
+        json.dumps({"action": "done", "output": {"blog_post": "full text", "pdf_path": "/tmp/x.pdf", "summary": "s"}}),
+    ])
+
+    def fake_llm(messages, ctx=None):
+        return next(outputs)
+
+    agent = Agent(name="marketing_content", role="marketing", tools={
+        "generate_pdf": lambda **kw: {"pdf_path": "/tmp/x.pdf"},
+        "generate_reel_package": lambda **kw: {"ok": True},
+        "generate_tiktok_package": lambda **kw: {"ok": True},
+        "generate_meta_ad": lambda **kw: {"ok": True},
+        "obsidian_log": lambda **kw: {"ok": True},
+    })
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx(goal="write a blog post about our launch"))
+
+    assert result.get("status") != "max_iterations_reached"
+    assert result.get("blog_post") == "full text"
+
+
+@pytest.mark.asyncio
+async def test_marketing_content_social_mode_still_requires_full_package(mocker):
+    """The default Mode F (no other mode's trigger phrase present) must keep
+    requiring the full social-content-package tool set -- this is the one mode
+    the original static required-tool set was actually correct for. Agent calls
+    generate_pdf + obsidian_log but skips the reel/tiktok/meta_ad steps -- done
+    must still be rejected for the missing social tools specifically."""
+    done_call = json.dumps({"action": "done", "output": {"summary": "s"}})
+    outputs = iter([
+        json.dumps({"action": "tool", "tool": "generate_pdf", "args": {"title": "t", "sections": []}}),
+        json.dumps({"action": "tool", "tool": "obsidian_log", "args": {}}),
+    ] + [done_call] * 10)
+
+    def fake_llm(messages, ctx=None):
+        try:
+            return next(outputs)
+        except StopIteration:
+            return done_call
+
+    agent = Agent(name="marketing_content", role="marketing", max_iterations=5, tools={
+        "generate_pdf": lambda **kw: {"pdf_path": "/tmp/x.pdf"},
+        "generate_reel_package": lambda **kw: {"ok": True},
+        "generate_tiktok_package": lambda **kw: {"ok": True},
+        "generate_meta_ad": lambda **kw: {"ok": True},
+        "obsidian_log": lambda **kw: {"ok": True},
+    })
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx(goal="create launch assets for our new product"))
+
+    assert result.get("status") == "max_iterations_reached"
+    assert set(result.get("quality_flags", {}).get("missing_tools", [])) == {
+        "generate_reel_package", "generate_tiktok_package", "generate_meta_ad",
+    }
