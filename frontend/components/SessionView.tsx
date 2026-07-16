@@ -864,17 +864,32 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         }
         commitState();
       } catch {
-        // A legacy run may not have been backfilled yet. Its existing endpoint
-        // remains a supported compatibility path during the strangler rollout.
+        // Legacy runs may not have a durable control-plane projection yet.
+        // Fall back to the session state endpoint so Workbench remains live
+        // during the strangler rollout instead of requiring a hard refresh.
+        try {
+          const legacy = await apiFetch(`/sessions//state`);
+          if (!cancelled && legacy.ok) {
+            applyStateSnapshot(await legacy.json(), false);
+            commitState();
+          }
+        } catch {}
       }
     };
+    const refreshOnReturn = () => {
+      if (!document.hidden) void sync();
+    };
     void sync();
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
     timer = setInterval(() => { void sync(); }, 5_000);
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [applyControlPlaneSnapshot, commitState, handleEvent, isSignedIn, sessionId]);
+  }, [applyControlPlaneSnapshot, applyStateSnapshot, commitState, handleEvent, isSignedIn, sessionId]);
 
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
@@ -1017,9 +1032,18 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   // and went straight to killSession() would see killed=false forever.
   const cancelRun = async (): Promise<boolean> => {
     try {
-      const response = await apiFetch(`${API}/runs/${encodeURIComponent(sessionId)}/cancel`, { method: "POST" });
+      const response = await apiFetch(API + "/runs/" + encodeURIComponent(sessionId) + "/cancel", { method: "POST" });
       if (!response.ok) throw new Error("Control-plane cancel unavailable");
-      return true;
+      const terminal = new Set(["cancelled", "succeeded", "failed"]);
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        try {
+          const snapshot = await getRunSnapshot(sessionId);
+          if (terminal.has(snapshot.run.status)) return true;
+        } catch {}
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
+      return false;
     } catch {
       return killSession(sessionId);
     }

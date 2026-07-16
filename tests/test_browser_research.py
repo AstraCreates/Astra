@@ -325,7 +325,10 @@ def test_native_research_pass_uses_native_web_plugin_and_extracts_citations(monk
     )
 
     assert captured["model"] == settings.native_research_model
-    assert captured["extra_body"]["plugins"] == [{"id": "web", "engine": "native"}]
+    if "search-preview" in settings.native_research_model:
+        assert captured["extra_body"] is None
+    else:
+        assert captured["extra_body"]["plugins"] == [{"id": "web", "engine": "native"}]
     assert result["sources"] == [{"id": "src_1", "url": "https://example.com/report", "title": "Report"}]
     assert result["results_by_query"]["AI model aggregation platform competitors pricing"]["citations"] == ["src_1"]
 

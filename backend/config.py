@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.
-    native_research_model: str = "google/gemini-3.1-flash-lite"
-    native_research_enabled: bool = False
+    native_research_model: str = "openai/gpt-4o-mini-search-preview"
+    native_research_enabled: bool = True
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"

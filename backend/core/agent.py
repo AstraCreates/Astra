@@ -120,14 +120,14 @@ def _tune_headroom_pipeline_once() -> None:
 
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
-    "research":              {"run_research_pipeline", "deep_research"},
-    "r_market":              {"run_research_pipeline", "deep_research"},
-    "r_competitors":         {"run_research_pipeline", "deep_research"},
-    "r_customers":           {"deep_research"},
-    "r_gtm":                 {"deep_research"},
-    "research_competitors":  {"run_research_pipeline", "deep_research"},
-    "research_customers":    {"deep_research"},
-    "research_gtm":          {"deep_research"},
+    "research":              {"run_research_pipeline"},
+    "r_market":              {"run_research_pipeline"},
+    "r_competitors":         {"run_research_pipeline"},
+    "r_customers":           {"run_research_pipeline"},
+    "r_gtm":                 {"run_research_pipeline"},
+    "research_competitors":  {"run_research_pipeline"},
+    "research_customers":    {"run_research_pipeline"},
+    "research_gtm":          {"run_research_pipeline"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
@@ -149,9 +149,9 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "ops":               {"generate_pdf", "obsidian_log"},
 }
 _MIN_CALLS_BY_AGENT: dict[str, int] = {
-    "research": 3, "r_market": 3, "r_competitors": 2,
-    "r_customers": 2, "r_gtm": 2,
-    "research_competitors": 2, "research_customers": 2, "research_gtm": 2,
+    "research": 1, "r_market": 1, "r_competitors": 1,
+    "r_customers": 1, "r_gtm": 1,
+    "research_competitors": 1, "research_customers": 1, "research_gtm": 1,
     "sales": 3, "marketing_outreach": 3,
     "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
     "design": 3, "marketing_content": 3,
@@ -312,7 +312,7 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     # confirmed live in production (research lanes stuck at max_iterations_reached,
     # zero real tool calls succeeding). Only skip normalization when there's
     # nothing dict-shaped left to unwrap.
-    if parsed.get("action") is not None and not isinstance(parsed.get("tool"), dict):
+    if parsed.get("action") is not None and isinstance(parsed.get("tool"), str) and parsed.get("tool").strip():
         return parsed
 
     def _coerce_args(value: Any) -> dict[str, Any]:
@@ -1968,6 +1968,12 @@ class Agent:
 
             elif action == "tool":
                 tool_name = tool_field
+                if not tool_name:
+                    available = ", ".join(sorted(self.tools.keys()))
+                    _schedule_error_backoff("missing tool selector")
+                    await self._emit(ctx, "tool_unavailable", tool="", available=available[:1000], reason="model omitted tool selector")
+                    messages.append({"role": "user", "content": f"Your tool request omitted the tool name. Choose exactly one registered tool: {available}. Return JSON with action=tool and a non-empty tool field."})
+                    continue
                 args = parsed.get("args", {})
                 # Some models wrap args under "arguments" key instead of "args"
                 if not args and "arguments" in parsed:

@@ -1501,6 +1501,23 @@ def _native_research_pass(topic: str, focus: str, queries: list[str], cancellati
     """Run one provider-native grounded pass instead of recursive local search."""
     if _cancelled(cancellation_fence):
         return {"queries_run": 0, "results_by_query": {}, "sources": [], "combined_formatted": "", "error": "cancelled"}
+    if len(queries) > 1:
+        aggregate = {"queries_run": 0, "results_by_query": {}, "sources": [], "combined_formatted": ""}
+        seen_urls = set()
+        for query in queries:
+            if _cancelled(cancellation_fence):
+                aggregate["error"] = "cancelled"
+                break
+            one = _native_research_pass(topic, focus, [query], cancellation_fence=cancellation_fence)
+            aggregate["queries_run"] += int(one.get("queries_run", 0))
+            aggregate["results_by_query"].update(one.get("results_by_query") or {})
+            aggregate["combined_formatted"] += ("\n\n" if aggregate["combined_formatted"] else "") + (one.get("combined_formatted") or "")
+            for source in one.get("sources") or []:
+                url = source.get("url") if isinstance(source, dict) else None
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    aggregate["sources"].append(source)
+        return aggregate
     from backend.config import settings
     from backend.core.key_rotator import get_openrouter_key
     from backend.core.llm_cache import openrouter_extra_body
@@ -1510,7 +1527,7 @@ def _native_research_pass(topic: str, focus: str, queries: list[str], cancellati
     prompt = (
         "Research resources, not the named product. Do not search for the company name unless it is an established public company.\n"
         f"Research subject: {topic}\nFocus: {focus}\n\n"
-        "Answer the following source-seeking questions with concrete facts, dates, pricing, named resources, and URLs. Return ONLY JSON: {\"answers\":[{\"query\":\"exact input question\",\"answer\":\"grounded answer\",\"citation_urls\":[\"https://...\"]}]}. Include an answers item only when you have evidence for that exact question.\n"
+        "Answer the following source-seeking questions with concrete facts, dates, pricing, named resources, and URLs. Return ONLY JSON: {\"answers\":[{\"query\":\"exact input question\",\"answer\":\"grounded answer\",\"citation_urls\":[\"https://...\"]}]}. Include an answers item only when you have evidence for that exact question. Keep each answer under 120 words and return at most one answer per input question.\n"
         + "\n".join(f"{i + 1}. {query}" for i, query in enumerate(queries))
         + "\nPrefer primary sources, analyst reports, pricing pages, public datasets, and credible reviews."
     )
@@ -1518,9 +1535,9 @@ def _native_research_pass(topic: str, focus: str, queries: list[str], cancellati
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=1800,
+        max_tokens=3000,
         temperature=0.2,
-        extra_body=openrouter_extra_body(model, {"plugins": [{"id": "web", "engine": "native"}]}),
+        extra_body=(None if "search-preview" in model else openrouter_extra_body(model, {"plugins": [{"id": "web", "engine": "native"}]})),
         timeout=180.0,
     )
     message = resp.choices[0].message if getattr(resp, "choices", None) else None
@@ -1547,8 +1564,20 @@ def _native_research_pass(topic: str, focus: str, queries: list[str], cancellati
         by_url = {source["url"]: source for source in sources}
         for item in parsed_answers:
             query, response = str(item.get("query") or "").strip(), str(item.get("answer") or "").strip()
-            if query not in queries or not response:
+            if not response:
                 continue
+            if query not in queries:
+                if len(queries) == 1:
+                    query = queries[0]
+                else:
+                    def _tokens(value):
+                        return {token for token in re.findall(r"[a-z0-9]+", value.lower()) if len(token) > 2}
+                    query_tokens = _tokens(query)
+                    best_query = max(queries, key=lambda candidate: len(query_tokens & _tokens(candidate)))
+                    overlap = len(query_tokens & _tokens(best_query)) / max(1, len(query_tokens))
+                    if overlap < 0.2:
+                        continue
+                    query = best_query
             cited = [by_url[url] for url in (_normalize_url(url) for url in item.get("citation_urls") or [] if isinstance(url, str)) if url in by_url]
             if not cited and len(parsed_answers) == 1:
                 cited = sources

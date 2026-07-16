@@ -52,6 +52,18 @@ model_list:
       api_base: os.environ/OPENROUTER_BASE_URL
       api_key: os.environ/OPENROUTER_API_KEY
 
+  - model_name: google/gemini-2.5-flash-lite
+    litellm_params:
+      model: openrouter/google/gemini-2.5-flash-lite
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: openai/gpt-4o-mini-search-preview
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini-search-preview
+      api_base: os.environ/OPENROUTER_BASE_URL
+      api_key: os.environ/OPENROUTER_API_KEY
+
   - model_name: perplexity/sonar
     litellm_params:
       model: openrouter/perplexity/sonar

@@ -458,6 +458,14 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         "obsidian_read": obsidian_read,
         "obsidian_append": obsidian_append,
     }
+    if agent_name in {"research", "research_market", "research_financial", "research_regulatory", "research_execution", "research_competitors", "research_customers", "research_gtm"}:
+        lane_tools.pop("deep_research", None)
+        lane_tools.pop("sonar_research", None)
+
+    if agent_name in {"research", "research_market", "research_financial", "research_regulatory", "research_execution", "research_competitors", "research_customers", "research_gtm"}:
+        for _research_tool in ("batch_search", "search_and_fetch", "fetch_and_read", "deep_research", "sonar_research", "research_papers", "news_search", "patent_search", "youtube_research", "youtube_get_transcript", "tiktok_research"):
+            lane_tools.pop(_research_tool, None)
+
     # Research wrappers already persist evidence and the final report. Do not
     # expose the generic append path, which invites one-write-per-thought loops.
     lane_tools.pop("obsidian_append", None)
