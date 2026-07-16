@@ -49,6 +49,61 @@ def test_legal_normalizes_documents_from_tool_sequence():
     assert normalized["documents"][0]["path"] == "/tmp/privacy_policy.pdf"
 
 
+def test_legal_preserves_both_documents_when_tool_batch_drafts_two_before_any_pdf():
+    """Real bug: tool_batch lets the model call format_legal_document twice in one
+    turn before any generate_pdf. The old code overwrote (and lost) the first
+    draft entirely, then paired the next generate_pdf's path with the SECOND
+    document's text -- so the first document vanished and the second got the
+    wrong pairing undetected."""
+    agent = Agent(name="legal", role="l", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("format_legal_document", {"doc_type": "privacy_policy", "formatted_text": "Privacy text"}),
+        ("format_legal_document", {"doc_type": "terms_of_service", "formatted_text": "Terms text"}),
+        ("generate_pdf", {"path": "/tmp/privacy_policy.pdf"}),
+        ("generate_pdf", {"path": "/tmp/terms_of_service.pdf"}),
+    ])
+    docs = normalized["documents"]
+    assert len(docs) == 2
+    privacy = next(d for d in docs if d["doc_type"] == "privacy_policy")
+    terms = next(d for d in docs if d["doc_type"] == "terms_of_service")
+    assert privacy["text"] == "Privacy text"
+    assert privacy["path"] == "/tmp/privacy_policy.pdf"
+    assert terms["text"] == "Terms text"
+    assert terms["path"] == "/tmp/terms_of_service.pdf"
+
+
+def test_legal_entity_preserves_both_documents_when_tool_batch_drafts_two_before_any_pdf():
+    agent = Agent(name="legal_entity", role="l", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("format_legal_document", {"doc_type": "operating_agreement", "formatted_text": "OA text"}),
+        ("format_legal_document", {"doc_type": "bylaws", "formatted_text": "Bylaws text"}),
+        ("generate_pdf", {"path": "/tmp/oa.pdf"}),
+        ("generate_pdf", {"path": "/tmp/bylaws.pdf"}),
+    ])
+    docs = normalized["documents"]
+    assert len(docs) == 2
+    oa = next(d for d in docs if d["doc_type"] == "operating_agreement")
+    bylaws = next(d for d in docs if d["doc_type"] == "bylaws")
+    assert oa["text"] == "OA text" and oa["path"] == "/tmp/oa.pdf"
+    assert bylaws["text"] == "Bylaws text" and bylaws["path"] == "/tmp/bylaws.pdf"
+
+
+def test_legal_ip_preserves_both_documents_when_tool_batch_drafts_two_before_any_pdf():
+    agent = Agent(name="legal_ip", role="l", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("format_legal_document", {"doc_type": "nda", "formatted_text": "NDA text"}),
+        ("format_legal_document", {"doc_type": "ip_assignment", "formatted_text": "IP text"}),
+        ("generate_pdf", {"path": "/tmp/nda.pdf"}),
+        ("generate_pdf", {"path": "/tmp/ip_assignment.pdf"}),
+    ])
+    docs = normalized["documents"]
+    assert len(docs) == 2
+    nda = next(d for d in docs if d["doc_type"] == "nda")
+    ip_doc = next(d for d in docs if d["doc_type"] == "ip_assignment")
+    assert nda["text"] == "NDA text" and nda["path"] == "/tmp/nda.pdf"
+    assert ip_doc["text"] == "IP text" and ip_doc["path"] == "/tmp/ip_assignment.pdf"
+
+
 def test_marketing_content_normalizes_content_packages():
     agent = Agent(name="marketing_content", role="mc", tools={})
     normalized = agent._normalize_done_output({}, [
@@ -87,6 +142,34 @@ def test_web_normalizes_repo_and_deploy_from_tool_results():
     assert normalized["success"] is True
     assert normalized["build_passes"] is True
     assert normalized["files_in_repo"] == 18
+
+
+def test_web_normalize_reflects_latest_run_mvp_loop_call_not_first():
+    """Real bug: out.setdefault(...) locked in the FIRST run_mvp_loop call's
+    success/build_passes forever. A second call (e.g. adding a feature after
+    the initial build) that actually broke the build had its real, worse
+    outcome silently discarded -- done reported a broken repo as a passing,
+    deployed success."""
+    agent = Agent(name="technical", role="t", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("run_mvp_loop", {
+            "repo_url": "https://github.com/acme/site",
+            "deploy_url": "https://acme.vercel.app",
+            "success": True,
+            "build_passes": True,
+            "files_in_repo": 18,
+        }),
+        ("run_mvp_loop", {
+            "repo_url": "https://github.com/acme/site",
+            "deploy_url": "https://acme.vercel.app",
+            "success": False,
+            "build_passes": False,
+            "files_in_repo": 21,
+        }),
+    ])
+    assert normalized["success"] is False
+    assert normalized["build_passes"] is False
+    assert normalized["files_in_repo"] == 21
 
 
 def test_web_requires_successful_mvp_build_output():

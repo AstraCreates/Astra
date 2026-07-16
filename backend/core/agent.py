@@ -3043,23 +3043,29 @@ class Agent:
             # path or text. Previously the model's raw (often malformed) documents array
             # seeded index 0, so _missing_required_output's documents[0] check failed
             # forever → legal re-generated everything each loop → 10min timeout.
+            # tool_batch lets the model issue multiple format_legal_document calls
+            # in one turn before any generate_pdf -- this previously assumed strict
+            # 1:1 alternation via a single current_doc slot, so a 2nd draft silently
+            # overwrote (and lost) the 1st, and the next generate_pdf then paired its
+            # path with the WRONG document's text. A FIFO queue of pending drafts
+            # handles both the normal alternating case and the batched case: each
+            # generate_pdf claims the OLDEST still-unpaired draft.
             tool_docs: list[dict[str, Any]] = []
-            current_doc: dict[str, Any] | None = None
+            pending_drafts: list[dict[str, Any]] = []
             for tool_name, result in tool_results:
                 if tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    tool_docs.append(current_doc)
-                    current_doc = None
-            if current_doc is not None and current_doc.get("text"):
-                tool_docs.append(current_doc)
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    tool_docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    tool_docs.append(doc)
             model_docs = [
                 d for d in (out.get("documents") or [])
                 if isinstance(d, dict) and (d.get("path") or d.get("text"))
@@ -3144,14 +3150,21 @@ class Agent:
                 if tool_name == "github_create_repo" and result.get("repo_url") and not out.get("repo_url"):
                     out["repo_url"] = result.get("repo_url")
                 elif tool_name == "run_mvp_loop":
-                    out.setdefault("repo_url", result.get("repo_url"))
-                    out.setdefault("deploy_url", result.get("deploy_url"))
-                    out.setdefault("url", result.get("deploy_url"))
-                    out.setdefault("files_in_repo", result.get("files_in_repo"))
-                    out.setdefault("success", result.get("success"))
-                    out.setdefault("build_passes", result.get("build_passes"))
+                    # Direct assignment (not setdefault): tool_results is chronological,
+                    # so this deliberately lets the LATEST run_mvp_loop call win. A model
+                    # that calls run_mvp_loop again to add a feature after an earlier
+                    # successful call can break the build on that second call --
+                    # setdefault previously locked in the FIRST call's success/
+                    # build_passes=True forever, silently discarding a real later build
+                    # failure and reporting a broken repo as a passing, deployed success.
+                    out["repo_url"] = result.get("repo_url") or out.get("repo_url")
+                    out["deploy_url"] = result.get("deploy_url") or out.get("deploy_url")
+                    out["url"] = result.get("deploy_url") or out.get("url")
+                    out["files_in_repo"] = result.get("files_in_repo") if result.get("files_in_repo") is not None else out.get("files_in_repo")
+                    out["success"] = result.get("success")
+                    out["build_passes"] = result.get("build_passes")
                     if result.get("files_preview"):
-                        out.setdefault("files_preview", result.get("files_preview"))
+                        out["files_preview"] = result.get("files_preview")
         elif self.name == "technical_infra":
             for tool_name, result in tool_results:
                 if tool_name == "generate_pdf":
@@ -3163,20 +3176,24 @@ class Agent:
         elif self.name == "legal_entity":
             filing = next((result for tool_name, result in tool_results if tool_name == "file_llc_live"), None)
             docs = out.get("documents") if isinstance(out.get("documents"), list) else []
-            current_doc: dict[str, Any] | None = None
+            # FIFO queue -- see the legal/legal_docs block above for why a single
+            # current_doc slot loses drafts when tool_batch issues multiple
+            # format_legal_document calls before any generate_pdf.
+            pending_drafts: list[dict[str, Any]] = []
             for tool_name, result in tool_results:
                 if tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    docs.append(current_doc)
-                    current_doc = None
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    docs.append(doc)
             if filing:
                 out.setdefault("entity_type", filing.get("entity_type"))
                 # The real filer (llc_filing.file_llc_live) returns confirmation_url;
@@ -3188,23 +3205,27 @@ class Agent:
                 out["documents"] = docs
         elif self.name == "legal_ip":
             docs = out.get("documents") if isinstance(out.get("documents"), list) else []
-            current_doc: dict[str, Any] | None = None
+            # FIFO queue -- see the legal/legal_docs block above for why a single
+            # current_doc slot loses drafts when tool_batch issues multiple
+            # format_legal_document calls before any generate_pdf.
+            pending_drafts: list[dict[str, Any]] = []
             patent_summaries = []
             for tool_name, result in tool_results:
                 if tool_name == "patent_search":
                     patent_summaries.append(result)
                 elif tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    docs.append(current_doc)
-                    current_doc = None
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    docs.append(doc)
             if docs:
                 out["documents"] = docs
             if patent_summaries and "recommended_filings" not in out:
