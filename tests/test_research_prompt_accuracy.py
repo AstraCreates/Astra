@@ -14,17 +14,18 @@ def test_role_prompt_does_not_claim_pipeline_calls_deep_research():
     assert "handles content fetching internally" not in role
 
 
-def test_focus_roles_still_instruct_deep_research_escalation_after_pipeline():
-    """deep_research used to be mandated unconditionally after run_research_pipeline;
-    it's now an escalation used only when coverage gaps remain (cuts a redundant
-    research pass per lane — see perf(cost) commit). This test now guards the
-    weaker-but-still-real invariant: the prompt must still tell the model to call
-    deep_research when the first pass is thin, not silently drop it."""
+def test_focus_roles_still_instruct_pipeline_escalation_on_coverage_gaps():
+    """deep_research (a standalone escalation tool) was removed from these lanes'
+    toolsets entirely when research was redirected through provider-native
+    grounded search inside run_research_pipeline itself (no separate scrape+
+    synthesize pass needed). This guards the surviving invariant: the prompt
+    must still tell the model to call run_research_pipeline AGAIN with refined
+    queries when coverage gaps remain, not silently give up after one pass."""
     market_role = research._FOCUS_ROLES["research"]
     competitors_role = research._FOCUS_ROLES["research_competitors"]
     assert "sonar_research handles fetching internally" not in market_role
     assert "deep_research handles content fetching internally" not in competitors_role
-    assert "deep_research(" in competitors_role
+    assert "deep_research(" not in competitors_role
     assert "coverage gaps" in competitors_role
 
 

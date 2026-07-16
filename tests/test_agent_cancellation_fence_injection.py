@@ -141,7 +141,7 @@ async def test_done_rejected_for_insufficient_calls_names_an_untried_tool(mocker
     ("research_market", {"deep_research"}),
     ("research_financial", {"deep_research", "generate_pdf"}),
     ("research_regulatory", {"deep_research", "generate_pdf"}),
-    ("research_execution", {"run_research_pipeline", "deep_research"}),
+    ("research_execution", {"run_research_pipeline"}),
 ])
 def test_research_lane_completion_gates_no_longer_missing(agent_name, required):
     """research_market/financial/regulatory/execution had NO entry at all in

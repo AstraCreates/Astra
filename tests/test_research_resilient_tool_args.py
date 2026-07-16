@@ -173,9 +173,12 @@ def test_general_research_pipeline_keeps_explicit_focus_choice():
 
 
 def test_research_customers_toolset_stays_narrow():
+    """deep_research/sonar_research were pruned from this lane's tools entirely
+    when research was redirected through provider-native grounded search inside
+    run_research_pipeline itself -- there is no separate escalation tool anymore."""
     agent = build_research_agent("research_customers")
 
-    assert "deep_research" in agent.tools
+    assert "deep_research" not in agent.tools
     assert "build_research_queries" in agent.tools
     assert "run_research_pipeline" in agent.tools
     assert "search_and_fetch" not in agent.tools
@@ -187,7 +190,7 @@ def test_research_customers_toolset_stays_narrow():
 def test_research_gtm_toolset_stays_narrow_but_keeps_pipeline():
     agent = build_research_agent("research_gtm")
 
-    assert "deep_research" in agent.tools
+    assert "deep_research" not in agent.tools
     assert "build_research_queries" in agent.tools
     assert "run_research_pipeline" in agent.tools
     assert "search_and_fetch" not in agent.tools
@@ -195,11 +198,11 @@ def test_research_gtm_toolset_stays_narrow_but_keeps_pipeline():
     assert "batch_search" not in agent.tools
 
 
-def test_research_toolset_prefers_pipeline_and_deep_research_without_raw_fetch_loops():
+def test_research_toolset_prefers_pipeline_without_raw_fetch_loops():
     agent = build_research_agent("research")
 
     assert "run_research_pipeline" in agent.tools
-    assert "deep_research" in agent.tools
+    assert "deep_research" not in agent.tools
     assert "build_research_queries" in agent.tools
     assert "search_and_fetch" not in agent.tools
     assert "fetch_and_read" not in agent.tools

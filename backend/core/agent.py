@@ -137,11 +137,16 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     # all (see research_market.py's tools dict) so only deep_research is required there;
     # research_financial/research_regulatory explicitly require generate_pdf too since
     # adding them here removes the generic "not in _REQUIRED_BY_AGENT" PDF fallback
-    # they were previously (accidentally) covered by.
+    # they were previously (accidentally) covered by. research_execution IS built via
+    # build_research_agent() (research.py), which now prunes deep_research/sonar_research
+    # (and everything else except run_research_pipeline/build_research_queries/
+    # obsidian_log/obsidian_read) from its tools dict for the native-search redesign --
+    # requiring deep_research here made the gate impossible to satisfy (the tool no
+    # longer exists), a real regression caught when reconciling with that change.
     "research_market":       {"deep_research"},
     "research_financial":    {"deep_research", "generate_pdf"},
     "research_regulatory":   {"deep_research", "generate_pdf"},
-    "research_execution":    {"run_research_pipeline", "deep_research"},
+    "research_execution":    {"run_research_pipeline"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
