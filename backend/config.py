@@ -36,7 +36,14 @@ class Settings(BaseSettings):
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.
-    native_research_model: str = "openai/gpt-4o-mini-search-preview"
+    # gemini-2.5-flash-lite over gpt-4o-mini-search-preview: native Google Search
+    # grounding (vs relying on prompt-delivered payloads) and a 1M-token context
+    # window, which matters when a research round's evidence blocks span many
+    # sources. Enabled by default -- this replaces the crw+searxng+lightpanda
+    # scrape pipeline as deep_research's primary path (see deep_research's own
+    # comment: crw has no chrome/JS-renderer tier deployed, so anti-bot-heavy
+    # pages routinely timed out under concurrent multi-lane research).
+    native_research_model: str = "google/gemini-2.5-flash-lite"
     native_research_enabled: bool = True
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).

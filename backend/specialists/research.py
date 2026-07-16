@@ -79,6 +79,8 @@ def _research_focus_for_agent(agent_name: str) -> str:
         return "customers"
     if agent_name == "research_gtm":
         return "gtm"
+    if agent_name == "research_execution":
+        return "execution"
     return "market"
 
 
@@ -214,6 +216,16 @@ _DONE_GTM = (
     '"sources":["url1","url2"]}}\n'
 )
 
+_DONE_EXECUTION = (
+    "\n\nDONE OUTPUT — plain text, no markdown.\n"
+    '{"action":"done","output":{'
+    '"execution_strategy":"first-90-days plan grounded in comparable founder case studies, 2-3 sentences",'
+    '"go_to_market":"GTM channels, sequencing, and early-traction playbook, 1-2 sentences",'
+    '"recommended_tech_stack":"tech stack recommendation with rationale, 1-2 sentences",'
+    '"summary":"execution intelligence synthesis",'
+    '"sources":["url1","url2"]}}\n'
+)
+
 _FOCUS_ROLES = {
     "research": (
         "MARKET OPPORTUNITY RESEARCH — cover market sizing, timing, and investment narrative only:\n\n"
@@ -266,6 +278,19 @@ _FOCUS_ROLES = {
         "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
         "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
         + _DONE_GTM
+    ),
+    "research_execution": (
+        "EXECUTION & GO-TO-MARKET INTELLIGENCE (first-90-days plan, GTM sequencing, tech stack):\n"
+        "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
+        "1. run_research_pipeline(topic='{topic}', focus='execution') for source discovery — comparable founder "
+        "case studies, launch sequencing, and common early-execution mistakes.\n"
+        "2. Call deep_research(['<topic> first 90 days startup execution case study', "
+        "'<topic> go-to-market channel sequencing early traction', "
+        "'<topic> recommended tech stack rationale', "
+        "'<topic> common early execution mistakes founders']) only if the first pass leaves coverage gaps.\n"
+        "3. news_search for recent comparable launches in this space.\n\n"
+        "obsidian_log with: FIRST-90-DAYS PLAN, GTM SEQUENCING, TECH STACK RECOMMENDATION, SOURCES."
+        + _DONE_EXECUTION
     ),
 }
 

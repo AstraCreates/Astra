@@ -1246,10 +1246,23 @@ def deep_research(queries=None, max_rounds: int | None = None, recursive_depth: 
         requested_rounds = max_rounds if max_rounds is not None else recursive_depth
         effective_max_rounds = (1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS) if requested_rounds is None else max(1, min(int(requested_rounds), _RECURSIVE_RESEARCH_ROUNDS))
 
+        from backend.config import settings as _dr_settings
+
         for round_index in range(effective_max_rounds):
             if not round_queries or (cancel_event is not None and cancel_event.is_set()):
                 break
-            search = _crw_batch_search(round_queries, max_results_each=5) if cancel_event is None else _crw_batch_search(round_queries, max_results_each=5, cancel_event=cancel_event)
+            # Native provider-grounded search (OpenRouter's web plugin against
+            # settings.native_research_model, e.g. Gemini's built-in Google Search
+            # grounding) replaces the crw+searxng+lightpanda scrape pipeline as the
+            # default path -- crw has no chrome/JS-renderer tier deployed (see
+            # config.docker.toml), so anti-bot-heavy pages routinely timed out and
+            # tripped the circuit breaker under concurrent multi-lane research,
+            # confirmed live this session. Same results_by_query/sources/
+            # combined_formatted contract either way, so nothing downstream changes.
+            if _dr_settings.native_research_enabled:
+                search = _native_research_pass("", "general research", round_queries, cancellation_fence=cancel_event)
+            else:
+                search = _crw_batch_search(round_queries, max_results_each=5) if cancel_event is None else _crw_batch_search(round_queries, max_results_each=5, cancel_event=cancel_event)
             batch_results = search.get("results_by_query") or {}
             for query, result in batch_results.items():
                 existing = aggregated_results.get(query)

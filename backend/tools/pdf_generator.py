@@ -26,6 +26,8 @@ _UNICODE_MAP = {
     "û": "u",
     "ü": "u",
     "ç": "c",
+    "€": "EUR",  # outside Latin-1 -- was silently replaced with "?" in generated PDFs
+    "₹": "INR",  # e.g. "€2M pre-money" -> "?2M" (£/¥ happen to be in Latin-1 and survive)
 }
 
 

@@ -120,27 +120,53 @@ def _tune_headroom_pipeline_once() -> None:
 
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
-    "research":              {"run_research_pipeline"},
-    "r_market":              {"run_research_pipeline"},
-    "r_competitors":         {"run_research_pipeline"},
-    "r_customers":           {"run_research_pipeline"},
-    "r_gtm":                 {"run_research_pipeline"},
-    "research_competitors":  {"run_research_pipeline"},
-    "research_customers":    {"run_research_pipeline"},
-    "research_gtm":          {"run_research_pipeline"},
+    "research":              {"run_research_pipeline", "deep_research"},
+    "r_market":              {"run_research_pipeline", "deep_research"},
+    "r_competitors":         {"run_research_pipeline", "deep_research"},
+    "r_customers":           {"deep_research"},
+    "r_gtm":                 {"deep_research"},
+    "research_competitors":  {"run_research_pipeline", "deep_research"},
+    "research_customers":    {"deep_research"},
+    "research_gtm":          {"deep_research"},
+    # These four had NO entry at all until this fix -- _required_tools_for_completion's
+    # .get(agent_name, set()) fallback silently gave them zero required tools and
+    # _min_calls_for_completion's .get(agent_name, 1) gave a min of 1, so a model could
+    # call e.g. news_search once and `done`, never touching deep_research despite every
+    # one of these prompts calling it "MANDATORY" (confirmed live: no completion gate
+    # was actually enforcing it). research_market has no run_research_pipeline tool at
+    # all (see research_market.py's tools dict) so only deep_research is required there;
+    # research_financial/research_regulatory explicitly require generate_pdf too since
+    # adding them here removes the generic "not in _REQUIRED_BY_AGENT" PDF fallback
+    # they were previously (accidentally) covered by.
+    "research_market":       {"deep_research"},
+    "research_financial":    {"deep_research", "generate_pdf"},
+    "research_regulatory":   {"deep_research", "generate_pdf"},
+    "research_execution":    {"run_research_pipeline", "deep_research"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
     "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
     "sales":             {"find_leads", "build_outreach_sequence", "build_crm_contact"},
     "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
-    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo_brief"},
+    # generate_logo_brief was required here but design.py's own 12-step MANDATORY
+    # WORKFLOW never calls it -- it calls generate_logo (steps 5-6, from
+    # backend/tools/_llm.py) to produce the actual logo_wordmark/logo_icon image
+    # assets the prompt's own done-output spec requires. The agent was forced to
+    # improvise an undocumented call to a tool its own prompt never explains.
+    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo"},
     "sales_enablement":  {"generate_pdf", "obsidian_log"},
     "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
     "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
     "marketing_seo":     {"web_search", "generate_pdf", "obsidian_log"},
     "marketing_paid":    {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-    "web":               {"github_create_repo", "run_mvp_loop", "obsidian_log"},
+    # github_create_repo was required unconditionally, but web.py's own prompt says
+    # to SKIP it when step 1's obsidian_read finds a prior repo_url -- github_create_repo
+    # has no idempotency (always appends a random suffix and creates a brand-new repo),
+    # so the gate forced creation of a genuinely new, orphaned, duplicate repo on every
+    # resumed/continued run. run_mvp_loop already can't do anything without a real
+    # repo_url (from either path), so it alone is enough to enforce real progress here --
+    # matches "technical"'s existing (correct) required set below.
+    "web":               {"run_mvp_loop", "obsidian_log"},
     "technical":         {"run_mvp_loop", "obsidian_log"},
     "technical_infra":   {"web_search", "generate_pdf", "obsidian_log"},
     "technical_data":    {"generate_pdf", "obsidian_log"},
@@ -149,9 +175,10 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "ops":               {"generate_pdf", "obsidian_log"},
 }
 _MIN_CALLS_BY_AGENT: dict[str, int] = {
-    "research": 1, "r_market": 1, "r_competitors": 1,
-    "r_customers": 1, "r_gtm": 1,
-    "research_competitors": 1, "research_customers": 1, "research_gtm": 1,
+    "research": 3, "r_market": 3, "r_competitors": 2,
+    "r_customers": 2, "r_gtm": 2,
+    "research_competitors": 2, "research_customers": 2, "research_gtm": 2,
+    "research_market": 2, "research_financial": 2, "research_regulatory": 2, "research_execution": 2,
     "sales": 3, "marketing_outreach": 3,
     "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
     "design": 3, "marketing_content": 3,
@@ -161,6 +188,26 @@ _RESEARCH_AGENT_NAMES = {
     "research", "research_competitors", "research_customers", "research_gtm",
     "research_market", "research_financial", "research_regulatory", "research_execution",
 }
+
+# Must stay in sync with backend/specialists/marketing_content.py's Mode A-E trigger
+# phrases. _REQUIRED_BY_AGENT["marketing_content"] only fits Mode F (Social Content
+# Package) -- for every other mode (blog post, press kit, lead magnet, case study,
+# roadmap) the prompt itself only calls generate_pdf/obsidian_log, but the static
+# required-tool set forced the model to also generate 3 Reel scripts, 2 TikTok
+# packages, and 3 Meta ad variants for e.g. a plain blog-post request. Real bug,
+# confirmed live: goal="write a blog post..." still got the full social-package gate.
+_MARKETING_CONTENT_OTHER_MODE_TRIGGERS = (
+    "blog post", "article", "write a post", "publish a post",
+    "press kit", "media kit", "founder bio", "press release",
+    "lead magnet", "template", "guide", "checklist", "ebook",
+    "case study", "customer story", "success story", "testimonial",
+    "roadmap", "changelog", "what's coming", "product update",
+)
+
+
+def _is_marketing_content_social_mode(goal: str) -> bool:
+    low = (goal or "").lower()
+    return not any(trigger in low for trigger in _MARKETING_CONTENT_OTHER_MODE_TRIGGERS)
 
 
 def _normalized_tool_names(tool_names: set[str]) -> set[str]:
@@ -187,7 +234,10 @@ def _latest_research_pipeline_ready(tool_results: list[tuple[str, dict[str, Any]
 def _required_tools_for_completion(
     agent_name: str,
     tool_results: list[tuple[str, dict[str, Any]]],
+    goal: str = "",
 ) -> set[str]:
+    if agent_name == "marketing_content" and not _is_marketing_content_social_mode(goal):
+        return {"generate_pdf", "obsidian_log"}
     required = set(_REQUIRED_BY_AGENT.get(agent_name, set()))
     if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
         required.discard("deep_research")
@@ -199,7 +249,10 @@ def _required_tools_for_completion(
 def _min_calls_for_completion(
     agent_name: str,
     tool_results: list[tuple[str, dict[str, Any]]],
+    goal: str = "",
 ) -> int:
+    if agent_name == "marketing_content" and not _is_marketing_content_social_mode(goal):
+        return 1
     if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
         return 1
     return _MIN_CALLS_BY_AGENT.get(agent_name, 1)
@@ -312,7 +365,7 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     # confirmed live in production (research lanes stuck at max_iterations_reached,
     # zero real tool calls succeeding). Only skip normalization when there's
     # nothing dict-shaped left to unwrap.
-    if parsed.get("action") is not None and isinstance(parsed.get("tool"), str) and parsed.get("tool").strip():
+    if parsed.get("action") is not None and not isinstance(parsed.get("tool"), dict):
         return parsed
 
     def _coerce_args(value: Any) -> dict[str, Any]:
@@ -1778,9 +1831,9 @@ class Agent:
                 _consecutive_unknown = 0
 
             if action == "done":
-                required_tools = _required_tools_for_completion(self.name, _tool_results)
+                required_tools = _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                 normalized_called_tools = _normalized_tool_names(_called_tools)
-                min_calls_needed = _min_calls_for_completion(self.name, _tool_results)
+                min_calls_needed = _min_calls_for_completion(self.name, _tool_results, ctx.goal)
                 actual_calls = len(normalized_called_tools - {"obsidian_log"})
                 if actual_calls < min_calls_needed:
                     # min_calls_needed can exceed len(required_tools) (e.g. "research"
@@ -1817,7 +1870,7 @@ class Agent:
                 output = parsed.get("output", {})
                 if isinstance(output, dict):
                     output = self._normalize_done_output(output, _tool_results)
-                    missing_output = self._missing_required_output(output, _attempted_tools)
+                    missing_output = self._missing_required_output(output, _attempted_tools, ctx.goal)
                     if missing_output:
                         messages.append({"role": "user", "content": (
                             "You cannot call done yet. Output is missing required fields: "
@@ -1968,12 +2021,6 @@ class Agent:
 
             elif action == "tool":
                 tool_name = tool_field
-                if not tool_name:
-                    available = ", ".join(sorted(self.tools.keys()))
-                    _schedule_error_backoff("missing tool selector")
-                    await self._emit(ctx, "tool_unavailable", tool="", available=available[:1000], reason="model omitted tool selector")
-                    messages.append({"role": "user", "content": f"Your tool request omitted the tool name. Choose exactly one registered tool: {available}. Return JSON with action=tool and a non-empty tool field."})
-                    continue
                 args = parsed.get("args", {})
                 # Some models wrap args under "arguments" key instead of "args"
                 if not args and "arguments" in parsed:
@@ -2009,7 +2056,7 @@ class Agent:
                         # Ling from spending the remaining budget rephrasing reads.
                         if (
                             self.name in _RESEARCH_AGENT_NAMES
-                            and _required_tools_for_completion(self.name, _tool_results)
+                            and _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                             <= _normalized_tool_names(_called_tools)
                         ):
                             logger.info("[%s] required research evidence complete; forcing synthesis after blocked %s", self.name, tool_name)
@@ -2266,11 +2313,11 @@ class Agent:
                 output = self._normalize_done_output(output, _tool_results)
                 if isinstance(output, dict):
                     # Apply same quality checks as normal done path — can't re-prompt, just flag
-                    _synth_required_tools = _required_tools_for_completion(self.name, _tool_results)
+                    _synth_required_tools = _required_tools_for_completion(self.name, _tool_results, ctx.goal)
                     _synth_called_tools = _normalized_tool_names(_called_tools)
                     _synth_missing_tools = sorted(_synth_required_tools - _synth_called_tools)
-                    _synth_missing_output = self._missing_required_output(output, _attempted_tools)
-                    _synth_min = _min_calls_for_completion(self.name, _tool_results)
+                    _synth_missing_output = self._missing_required_output(output, _attempted_tools, ctx.goal)
+                    _synth_min = _min_calls_for_completion(self.name, _tool_results, ctx.goal)
                     _synth_actual = len(_synth_called_tools - {"obsidian_log"})
                     if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
                         quality_flags = {
@@ -2318,7 +2365,7 @@ class Agent:
             logger.warning("%s forced synthesis failed: %s", self.name, e)
         return {"status": "max_iterations_reached", "agent": self.name}
 
-    def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None) -> list[str]:
+    def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None, goal: str = "") -> list[str]:
         """Require key preview artifacts per role before accepting done."""
         if self.manifest and self.manifest.output_schema:
             missing = self.manifest.missing_output_fields(output)
@@ -2344,6 +2391,12 @@ class Agent:
                 missing.append("outreach_status")
             return missing
         if self.name == "marketing_content":
+            if not _is_marketing_content_social_mode(goal):
+                # Modes A-E (blog/press kit/lead magnet/case study/roadmap) never
+                # produce reel/tiktok/meta-ad output -- only Mode F does. This was
+                # unconditional before, so even a plain blog-post goal was rejected
+                # for missing reel_scripts/tiktok_packages/meta_ads/content_calendar_pdf.
+                return []
             missing: list[str] = []
             reel_scripts = output.get("reel_scripts")
             tiktok_packages = output.get("tiktok_packages")
@@ -2990,23 +3043,29 @@ class Agent:
             # path or text. Previously the model's raw (often malformed) documents array
             # seeded index 0, so _missing_required_output's documents[0] check failed
             # forever → legal re-generated everything each loop → 10min timeout.
+            # tool_batch lets the model issue multiple format_legal_document calls
+            # in one turn before any generate_pdf -- this previously assumed strict
+            # 1:1 alternation via a single current_doc slot, so a 2nd draft silently
+            # overwrote (and lost) the 1st, and the next generate_pdf then paired its
+            # path with the WRONG document's text. A FIFO queue of pending drafts
+            # handles both the normal alternating case and the batched case: each
+            # generate_pdf claims the OLDEST still-unpaired draft.
             tool_docs: list[dict[str, Any]] = []
-            current_doc: dict[str, Any] | None = None
+            pending_drafts: list[dict[str, Any]] = []
             for tool_name, result in tool_results:
                 if tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    tool_docs.append(current_doc)
-                    current_doc = None
-            if current_doc is not None and current_doc.get("text"):
-                tool_docs.append(current_doc)
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    tool_docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    tool_docs.append(doc)
             model_docs = [
                 d for d in (out.get("documents") or [])
                 if isinstance(d, dict) and (d.get("path") or d.get("text"))
@@ -3091,14 +3150,21 @@ class Agent:
                 if tool_name == "github_create_repo" and result.get("repo_url") and not out.get("repo_url"):
                     out["repo_url"] = result.get("repo_url")
                 elif tool_name == "run_mvp_loop":
-                    out.setdefault("repo_url", result.get("repo_url"))
-                    out.setdefault("deploy_url", result.get("deploy_url"))
-                    out.setdefault("url", result.get("deploy_url"))
-                    out.setdefault("files_in_repo", result.get("files_in_repo"))
-                    out.setdefault("success", result.get("success"))
-                    out.setdefault("build_passes", result.get("build_passes"))
+                    # Direct assignment (not setdefault): tool_results is chronological,
+                    # so this deliberately lets the LATEST run_mvp_loop call win. A model
+                    # that calls run_mvp_loop again to add a feature after an earlier
+                    # successful call can break the build on that second call --
+                    # setdefault previously locked in the FIRST call's success/
+                    # build_passes=True forever, silently discarding a real later build
+                    # failure and reporting a broken repo as a passing, deployed success.
+                    out["repo_url"] = result.get("repo_url") or out.get("repo_url")
+                    out["deploy_url"] = result.get("deploy_url") or out.get("deploy_url")
+                    out["url"] = result.get("deploy_url") or out.get("url")
+                    out["files_in_repo"] = result.get("files_in_repo") if result.get("files_in_repo") is not None else out.get("files_in_repo")
+                    out["success"] = result.get("success")
+                    out["build_passes"] = result.get("build_passes")
                     if result.get("files_preview"):
-                        out.setdefault("files_preview", result.get("files_preview"))
+                        out["files_preview"] = result.get("files_preview")
         elif self.name == "technical_infra":
             for tool_name, result in tool_results:
                 if tool_name == "generate_pdf":
@@ -3110,20 +3176,24 @@ class Agent:
         elif self.name == "legal_entity":
             filing = next((result for tool_name, result in tool_results if tool_name == "file_llc_live"), None)
             docs = out.get("documents") if isinstance(out.get("documents"), list) else []
-            current_doc: dict[str, Any] | None = None
+            # FIFO queue -- see the legal/legal_docs block above for why a single
+            # current_doc slot loses drafts when tool_batch issues multiple
+            # format_legal_document calls before any generate_pdf.
+            pending_drafts: list[dict[str, Any]] = []
             for tool_name, result in tool_results:
                 if tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    docs.append(current_doc)
-                    current_doc = None
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    docs.append(doc)
             if filing:
                 out.setdefault("entity_type", filing.get("entity_type"))
                 # The real filer (llc_filing.file_llc_live) returns confirmation_url;
@@ -3135,23 +3205,27 @@ class Agent:
                 out["documents"] = docs
         elif self.name == "legal_ip":
             docs = out.get("documents") if isinstance(out.get("documents"), list) else []
-            current_doc: dict[str, Any] | None = None
+            # FIFO queue -- see the legal/legal_docs block above for why a single
+            # current_doc slot loses drafts when tool_batch issues multiple
+            # format_legal_document calls before any generate_pdf.
+            pending_drafts: list[dict[str, Any]] = []
             patent_summaries = []
             for tool_name, result in tool_results:
                 if tool_name == "patent_search":
                     patent_summaries.append(result)
                 elif tool_name == "format_legal_document":
-                    current_doc = {
+                    pending_drafts.append({
                         "doc_type": result.get("doc_type"),
                         "title": result.get("doc_type", "document"),
                         "text": result.get("formatted_text", ""),
-                    }
+                    })
                 elif tool_name == "generate_pdf":
-                    if current_doc is None:
-                        current_doc = {"doc_type": "document", "title": "document"}
-                    current_doc["path"] = result.get("path") or result.get("filename")
-                    docs.append(current_doc)
-                    current_doc = None
+                    doc = pending_drafts.pop(0) if pending_drafts else {"doc_type": "document", "title": "document"}
+                    doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(doc)
+            for doc in pending_drafts:
+                if doc.get("text"):
+                    docs.append(doc)
             if docs:
                 out["documents"] = docs
             if patent_summaries and "recommended_filings" not in out:

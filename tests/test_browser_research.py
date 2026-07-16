@@ -213,6 +213,7 @@ def test_sonar_research_tolerates_dict_shaped_followup_queries(monkeypatch):
     def fake_research_llm_json(prompt, max_tokens=900):
         return next(synth_outputs)
 
+    monkeypatch.setattr(settings, "native_research_enabled", False)  # exercise the crw fallback path directly
     monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
     monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
 
@@ -257,6 +258,7 @@ def test_deep_research_uses_single_round_for_large_long_query_sets(monkeypatch):
     def fake_research_llm_json(prompt, max_tokens=900):
         return next(llm_outputs)
 
+    monkeypatch.setattr(settings, "native_research_enabled", False)  # exercise the crw fallback path directly
     monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
     monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
 
@@ -270,6 +272,49 @@ def test_deep_research_uses_single_round_for_large_long_query_sets(monkeypatch):
     assert len(batch_calls) == 1
     assert batch_calls[0][1] == 5
     assert result["queries_run"] == 6
+
+
+def test_deep_research_uses_native_pass_when_enabled(monkeypatch):
+    """native_research_enabled=True (the default as of this fix) routes
+    deep_research through the provider-grounded search pass instead of
+    crw+searxng+lightpanda -- crw has no chrome/JS-renderer tier deployed, so
+    anti-bot-heavy pages routinely timed out under concurrent multi-lane
+    research (confirmed live). _crw_batch_search must not be called at all."""
+    crw_calls = []
+
+    def fake_crw_batch_search(*args, **kwargs):
+        crw_calls.append((args, kwargs))
+        raise AssertionError("crw should not be called when native_research_enabled")
+
+    native_calls = []
+
+    def fake_native_pass(topic, focus, queries, cancellation_fence=None):
+        native_calls.append((topic, focus, list(queries)))
+        return {
+            "queries_run": len(queries),
+            "results_by_query": {
+                query: {"total": 1, "formatted": f"Query: {query}\nAnswer", "sources": [{"title": "S", "url": f"https://example.com/{i}"}]}
+                for i, query in enumerate(queries)
+            },
+            "sources": [{"title": "S", "url": "https://example.com/0"}],
+            "combined_formatted": "\n".join(queries),
+        }
+
+    synth_outputs = iter([
+        {"learnings": ["finding"], "directions": [], "summary": "s"},
+        {"answers": [{"query": "AI sales copilot market size", "answer": "Answer", "support": ["a"]}]},
+    ])
+
+    monkeypatch.setattr(settings, "native_research_enabled", True)
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_crw_batch_search)
+    monkeypatch.setattr(browser_research, "_native_research_pass", fake_native_pass)
+    monkeypatch.setattr(browser_research, "_research_llm_json", lambda prompt, max_tokens=900: next(synth_outputs))
+
+    result = browser_research.deep_research(["AI sales copilot market size"])
+
+    assert not crw_calls
+    assert native_calls
+    assert result["queries_run"] == 1
 
 
 def test_build_research_queries_market_focus():
@@ -459,6 +504,7 @@ def test_sonar_research_preserves_contract_with_recursive_synthesis(monkeypatch)
     def fake_research_llm_json(prompt, max_tokens=900):
         return next(synth_outputs)
 
+    monkeypatch.setattr(settings, "native_research_enabled", False)  # exercise the crw fallback path directly
     monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
     monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
 

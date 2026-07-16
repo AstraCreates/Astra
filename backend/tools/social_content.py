@@ -3,12 +3,80 @@ Social content tool — generates platform-optimized content packages via LLM.
 Actual posting requires founder OAuth tokens.
 When tokens are present in settings, posts immediately. Otherwise queues for founder review.
 """
+import asyncio
+import hashlib
 import logging
+import threading
+from typing import Any, Callable
+
 import requests
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── Durable idempotency for the live Meta ad creation POST ──────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." _create_meta_ad_draft
+# has no idempotency key field in its payload and Meta's Graph API has no
+# native dedup for it, so a retried/re-called generate_meta_ad previously
+# created a second real (paused) ad object on the live account every time.
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _create_meta_ad_with_idempotency(
+    *, run_id: str, step_id: str, args: dict[str, Any], create_call: Callable[[], dict],
+) -> dict:
+    if not run_id:
+        return create_call()
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        canonicalize_tool_args,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::generate_meta_ad::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, _idempotency_key: str) -> dict:
+        return create_call()
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or "generate_meta_ad",
+            action_id=action_id,
+            tool="generate_meta_ad",
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    return dict(result.provider_result or {})
 
 # Keyword → hashtag sets for audience/category-based hashtag selection
 _HASHTAG_MAP = {
@@ -267,6 +335,7 @@ def generate_meta_ad(
     cta: str,
     target_audience_description: str,
     budget_usd_per_day: float = 10.0,
+    session_id: str = "",
 ) -> dict:
     """Generate Meta ad copy. Args: company_name, headline, body (ad text), cta (call-to-action text), target_audience_description (string), budget_usd_per_day (float, optional)."""
     prompt = f"""Write high-converting Meta (Facebook/Instagram) ad copy for {company_name}.
@@ -330,7 +399,12 @@ BEST PRIMARY TEXT: <primary text>"""
 
     if ad_account_id and meta_token:
         try:
-            result = _create_meta_ad_draft(meta_token, ad_account_id, ad_spec)
+            result = _create_meta_ad_with_idempotency(
+                run_id=session_id,
+                step_id=f"generate_meta_ad:{ad_spec['ad_name']}",
+                args={"ad_name": ad_spec["ad_name"], "headline": best_headline, "body": best_body},
+                create_call=lambda: _create_meta_ad_draft(meta_token, ad_account_id, ad_spec),
+            )
             ad_spec.update(result)
         except Exception as e:
             logger.error("meta_ad creation failed: %s", e)

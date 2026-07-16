@@ -1,6 +1,11 @@
+import asyncio
 import base64
+import hashlib
 import logging
+import threading
 import uuid
+from typing import Any, Callable
+
 import requests
 
 from backend.config import settings
@@ -8,6 +13,74 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 _GH_API = "https://api.github.com"
+
+
+# ── Durable idempotency for repo creation ────────────────────────────────────
+# PLAN.md invariant: "Every external side effect has an idempotency key and
+# durable receipt before Temporal retries are enabled." github_create_repo
+# always appends a random uuid suffix to guarantee a unique name, which means
+# a Temporal retry of this step previously created a genuinely new, orphaned,
+# duplicate repo every time (the exact opposite of idempotent) -- there is no
+# native GitHub idempotency-key mechanism to fall back on, so Astra's own
+# durable action/receipt layer is the only protection available, and only
+# when session_id (this codebase's run_id) is provided.
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    box: dict = {}
+
+    def _runner() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the caller's thread below
+            box["error"] = exc
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _create_repo_with_idempotency(
+    *, run_id: str, step_id: str, args: dict[str, Any], create_call: Callable[[], dict],
+) -> dict:
+    if not run_id:
+        return create_call()
+
+    from backend.control_plane.action_executor import (
+        ExternalActionRequest,
+        canonicalize_tool_args,
+        execute_external_action,
+        get_default_repo_bundle,
+    )
+
+    canonical_args = canonicalize_tool_args(args)
+    action_id = hashlib.sha256(f"{run_id}::{step_id}::github_create_repo::{canonical_args}".encode("utf-8")).hexdigest()
+    bundle = get_default_repo_bundle()
+
+    async def _effect(_effect_args: dict, _idempotency_key: str) -> dict:
+        return create_call()
+
+    result = _run_async(execute_external_action(
+        ExternalActionRequest(
+            run_id=run_id,
+            step_id=step_id or "github_create_repo",
+            action_id=action_id,
+            tool="github_create_repo",
+            args=args,
+        ),
+        action_repo=bundle.action_repo,
+        receipt_repo=bundle.receipt_repo,
+        approval_repo=bundle.approval_repo,
+        execute_effect=_effect,
+    ))
+    out = dict(result.provider_result or {})
+    out["_replayed"] = bool(result.replayed)
+    return out
 
 
 def github_create_repo(
@@ -18,6 +91,7 @@ def github_create_repo(
     private: bool = True,
     name: str = "",
     founder_id: str = "",
+    session_id: str = "",
     **kwargs,
 ) -> dict:
     repo_name = repo_name or name
@@ -54,18 +128,43 @@ def github_create_repo(
         user_resp.raise_for_status()
         username = user_resp.json()["login"]
 
-        # Create repo — append short suffix to avoid name collisions
-        unique_name = f"{repo_name}-{uuid.uuid4().hex[:6]}"
-        repo_resp = requests.post(
-            f"{_GH_API}/user/repos",
-            headers=headers,
-            json={"name": unique_name, "description": description, "private": private, "auto_init": True},
-            timeout=15,
+        # Create repo — append short suffix to avoid name collisions. Wrapped so a
+        # Temporal retry of this step replays the durable receipt (same repo_url)
+        # instead of creating a genuinely new, orphaned, duplicate repo.
+        def _do_create() -> dict:
+            unique_name = f"{repo_name}-{uuid.uuid4().hex[:6]}"
+            resp = requests.post(
+                f"{_GH_API}/user/repos",
+                headers=headers,
+                json={"name": unique_name, "description": description, "private": private, "auto_init": True},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {"repo_name": unique_name, "repo_url": data["html_url"]}
+
+        create_result = _create_repo_with_idempotency(
+            run_id=session_id,
+            step_id="github_create_repo",
+            args={"repo_name": repo_name, "description": description, "private": private},
+            create_call=_do_create,
         )
-        repo_resp.raise_for_status()
-        repo_name = unique_name
-        repo_data = repo_resp.json()
-        repo_url = repo_data["html_url"]
+        repo_name = create_result["repo_name"]
+        repo_url = create_result["repo_url"]
+        was_replayed = bool(create_result.get("_replayed", False))
+
+        # A replayed receipt means an earlier attempt already created this repo AND
+        # pushed its scaffold -- re-pushing would hit GitHub's "sha required to
+        # update an existing file" error on every file.
+        if was_replayed:
+            return {
+                "created": True,
+                "repo_url": repo_url,
+                "repo_name": repo_name,
+                "owner": username,
+                "files_pushed": [],
+                "replayed": True,
+            }
 
         # Push scaffold files
         scaffold = _generate_scaffold(repo_name, description, stack, mvp_features)
