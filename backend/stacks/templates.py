@@ -110,8 +110,31 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
                 "category, pricing references, and early wedge. Produce specific research "
                 "that downstream agents can use directly."
             ),
-            artifacts=["market_brief", "icp_brief", "pricing_hypothesis"],
+            artifacts=["research_findings"],
             phase="diagnose",
+        ),
+        StackTaskTemplate(
+            id="t_research_docs",
+            agent="research_docs",
+            title="Research write-up",
+            instruction=(
+                "Synthesize the research lanes' findings (already in your task brief) into "
+                "the market brief, ICP brief, and pricing hypothesis documents."
+            ),
+            # depends_on the research lane task id, which the orchestrator expands to every
+            # actual research lane it dispatched (market/competitors/customers/gtm) -- same
+            # mechanism t_design relies on below. phase="design" (not "diagnose") on purpose:
+            # the orchestrator's phase gate blocks the NEXT phase on every task sharing the
+            # CURRENT phase's tasks all completing, so putting this in "diagnose" alongside
+            # the research lanes would make design/web/marketing/etc wait on it too --
+            # exactly the blocking this task exists to avoid. "design" means it launches the
+            # instant the diagnose->design gate clears (same moment as t_design), genuinely in
+            # parallel, at the cost of technically being one of the tasks the design->deploy
+            # gate waits on -- a real but small tradeoff since writing 3 PDFs from
+            # already-gathered data should finish well before design's own workflow does.
+            depends_on=["t_research"],
+            artifacts=["market_brief", "icp_brief", "pricing_hypothesis"],
+            phase="design",
         ),
         StackTaskTemplate(
             id="t_design",
@@ -199,15 +222,16 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
                 "weekly milestones, priorities, decision log, investor memo outline, and "
                 "next actions for the founder."
             ),
-            depends_on=["t_research", "t_web", "t_technical", "t_marketing", "t_sales", "t_legal"],
+            depends_on=["t_research", "t_research_docs", "t_web", "t_technical", "t_marketing", "t_sales", "t_legal"],
             artifacts=["thirty_day_plan", "investor_memo", "founder_next_actions"],
             phase="operate",
         ),
     ],
     artifacts=[
-        StackArtifact("market_brief", "Market brief", "research", "Market size, category, trends, and validation signals."),
-        StackArtifact("icp_brief", "ICP brief", "research", "Target customer, pain, trigger, objections, and buying process."),
-        StackArtifact("pricing_hypothesis", "Pricing hypothesis", "research", "Initial packaging and pricing rationale."),
+        StackArtifact("research_findings", "Research findings", "research", "Raw market, competitor, customer, and GTM findings, stored for downstream agents and the research write-up to use directly."),
+        StackArtifact("market_brief", "Market brief", "research_docs", "Market size, category, trends, and validation signals."),
+        StackArtifact("icp_brief", "ICP brief", "research_docs", "Target customer, pain, trigger, objections, and buying process."),
+        StackArtifact("pricing_hypothesis", "Pricing hypothesis", "research_docs", "Initial packaging and pricing rationale."),
         StackArtifact("brand_direction", "Brand direction", "design", "Visual and verbal design system for launch."),
         StackArtifact("landing_page", "Landing page", "web", "Public launch surface or deployable page output."),
         StackArtifact("website_copy", "Website copy", "web", "Hero, sections, CTA, FAQ, and conversion copy."),

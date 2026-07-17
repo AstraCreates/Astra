@@ -215,7 +215,7 @@ const PHASE_PLANS: Record<string, { name: string; groups: string[] }[]> = {
 };
 
 const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
-  research:  { n: "Research",  ic: "◉", ags: ["research", "research_competitors", "research_market", "research_execution", "research_customers", "research_gtm", "research_financial", "research_regulatory"] },
+  research:  { n: "Research",  ic: "◉", ags: ["research", "research_competitors", "research_market", "research_execution", "research_customers", "research_gtm", "research_financial", "research_regulatory", "research_docs"] },
   design:    { n: "Design",    ic: "◈", ags: ["design"] },
   technical: { n: "Technical", ic: "⊞", ags: ["technical", "technical_scaffold", "technical_infra", "technical_data", "web", "web_navigator"] },
   marketing: { n: "Marketing", ic: "◎", ags: ["marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid"] },

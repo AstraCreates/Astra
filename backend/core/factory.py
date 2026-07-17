@@ -16,6 +16,7 @@ from backend.specialists.design import build_design_agent
 from backend.specialists.research_market import build_research_market_agent
 from backend.specialists.research_financial import build_research_financial_agent
 from backend.specialists.research_regulatory import build_research_regulatory_agent
+from backend.specialists.research_docs import build_research_docs_agent
 from backend.specialists.legal_docs import build_legal_docs_agent
 from backend.specialists.legal_entity import build_legal_entity_agent
 from backend.specialists.legal_ip import build_legal_ip_agent
@@ -102,6 +103,7 @@ def get_orchestrator() -> Orchestrator:
             "research_execution": build_research_agent(agent_name="research_execution", use_computer=True, **_small_kwargs),
             "research_customers": build_research_agent(agent_name="research_customers", use_computer=True, **_small_kwargs),
             "research_gtm": build_research_agent(agent_name="research_gtm", use_computer=True, **_small_kwargs),
+            "research_docs": build_research_docs_agent(use_computer=False, **_small_kwargs),
             "research_market": build_research_market_agent(use_computer=True, **_small_kwargs),
             "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),

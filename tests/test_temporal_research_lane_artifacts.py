@@ -16,7 +16,15 @@ def test_fanned_research_lanes_have_no_individual_artifact_requirement():
     meta = {"goal": "Build a cap table SaaS for startups", "stack_id": "idea_to_revenue"}
 
     specs = _derive_step_specs_from_stack(meta)
-    research_specs = {tid: spec for tid, spec in specs.items() if str(spec.get("agent", "")).startswith("research")}
+    # research_docs is a real, separate task (writes market_brief/icp_brief/pricing_hypothesis
+    # from what the fanned lanes already gathered) added after this test was written -- it
+    # legitimately DOES have its own artifacts, unlike the fanned research/research_market/
+    # research_competitors/research_customers/research_gtm lanes this test guards. Exclude it
+    # rather than widen the assertion this test exists to enforce.
+    research_specs = {
+        tid: spec for tid, spec in specs.items()
+        if str(spec.get("agent", "")).startswith("research") and spec.get("agent") != "research_docs"
+    }
 
     assert research_specs, "expected at least one fanned research lane"
     for tid, spec in research_specs.items():

@@ -147,6 +147,7 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "research_financial":    {"deep_research", "generate_pdf"},
     "research_regulatory":   {"deep_research", "generate_pdf"},
     "research_execution":    {"run_research_pipeline"},
+    "research_docs":         {"generate_pdf", "obsidian_log"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
