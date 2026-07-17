@@ -24,7 +24,7 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
   const bs = badge ? BADGE_STYLE[badge.color] : null;
 
   return (
-    <div style={{
+    <div className="astra-page-header" style={{
       background: "#001AFF",
       borderBottom: "1px solid rgba(255,255,255,0.10)",
       padding: "22px 24px 18px",
@@ -95,7 +95,7 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
 
 export function HeaderPrimaryBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} className="m-tap" style={{
+    <button onClick={onClick} disabled={disabled} className="m-tap header-primary-btn" style={{
       padding: "8px 18px", fontSize: 12, fontWeight: 600,
       color: "#002EFF", background: "#fff", border: "none",
       cursor: disabled ? "not-allowed" : "pointer",
@@ -108,7 +108,7 @@ export function HeaderPrimaryBtn({ label, onClick, disabled }: { label: string; 
 
 export function HeaderSecondaryBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} className="m-tap" style={{
+    <button onClick={onClick} disabled={disabled} className="m-tap header-secondary-btn" style={{
       padding: "8px 14px", fontSize: 12,
       color: "rgba(255,255,255,0.88)",
       background: "rgba(255,255,255,0.13)",

@@ -1258,3 +1258,215 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
     font-size: 24px;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   TACTILE CONTROL ROOM
+   A restrained material layer shared by every Astra surface. These rules are
+   intentionally token-first so older inline layouts inherit the same chassis.
+   ════════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --chassis: #05070d;
+  --rail: #090c14;
+  --panel: #0d111b;
+  --panel-raised: #121725;
+  --well: #070a11;
+  --edge-hi: rgba(255,255,255,.105);
+  --edge-lo: rgba(0,0,0,.72);
+  --control-hi: rgba(255,255,255,.08);
+  --control-lo: rgba(0,0,0,.52);
+  --tactile-raised: inset 0 1px 0 var(--edge-hi), inset 0 -1px 0 var(--edge-lo), 0 10px 24px rgba(0,0,0,.22);
+  --tactile-well: inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.025);
+  --tactile-press: inset 0 2px 5px rgba(0,0,0,.56), inset 0 0 0 1px rgba(255,255,255,.035);
+  --panel-radius: 8px;
+}
+
+body {
+  background-color: var(--chassis, var(--bg));
+}
+
+/* Shared material primitives */
+.astra-panel, .sc, .dept-card, .dashboard-calm-header,
+.copilot-activity-panel, .copilot-context-rail, .copilot-artifact-rail,
+.dv-goal-col, .sbar, .phasebar, .art-pre, .nav-panel, .site-card {
+  border-color: var(--edge-hi) !important;
+  border-radius: var(--panel-radius) !important;
+  background: var(--panel, var(--surface)) !important;
+  box-shadow: var(--tactile-raised) !important;
+  backdrop-filter: none !important;
+}
+
+.astra-well, .f-seg, .astra-composer-shell, .copilot-activity-feed,
+.session-copilot-thread, .copilot-image-grid, .dv-goal-title,
+.terminal-pane, pre, code, textarea, input:not([type="checkbox"]):not([type="radio"]), select {
+  background: var(--well, var(--bg-sunken)) !important;
+  border-color: rgba(255,255,255,.075) !important;
+  box-shadow: var(--tactile-well) !important;
+}
+
+.btn, .site-btn, .astra-composer-tools > button, .astra-composer-submit,
+.dashboard-calm-header button, .dashboard-copilot-prompts button,
+.copilot-workbench-link, .copilot-rail-agents button, .f-seg-opt,
+.astra-modal-close, .astra-choice-card {
+  border-color: var(--edge-hi) !important;
+  background: var(--panel-raised, var(--surface)) !important;
+  box-shadow: inset 0 1px 0 var(--control-hi), inset 0 -1px 0 var(--control-lo), 0 4px 10px rgba(0,0,0,.20) !important;
+}
+
+.btn.pri, .btn.primary, .site-btn-primary, .sidebar-new-run, .header-primary-btn,
+.astra-composer-submit {
+  background: #163cff !important;
+  border-color: #4b65ff !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -2px 0 rgba(0,0,0,.26), 0 6px 15px rgba(0,46,255,.25) !important;
+}
+
+button:not(:disabled):active, .btn:active, .site-btn:active, .sidebar-new-run:active,
+.astra-choice-card:active, .copilot-workbench-link:active {
+  transform: translateY(1px) !important;
+  box-shadow: var(--tactile-press) !important;
+}
+
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible,
+select:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid #8da0ff;
+  outline-offset: 2px;
+}
+
+/* Dense, scannable operations surfaces */
+.page-fade { background: transparent; }
+.topbar-title, .f-label, .form-label, .sec-label, .copilot-rail-kicker,
+.copilot-panel-heading > span { letter-spacing: .09em !important; }
+.dashboard-calm-header { background: var(--rail) !important; border-bottom: 1px solid var(--edge-hi) !important; }
+.dashboard-copilot-home, .session-copilot-home { padding-bottom: 28px; }
+.dashboard-secondary-links, .copilot-panel-heading { border-bottom: 1px solid rgba(255,255,255,.06); }
+
+.copilot-activity-item, .copilot-image-card, .session-chat-bubble,
+.copilot-action-card, .copilot-rail-section, .copilot-rail-agents button {
+  border: 1px solid rgba(255,255,255,.075);
+  background: var(--panel-raised);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 5px 13px rgba(0,0,0,.16);
+}
+.copilot-image-card img { border-bottom: 1px solid rgba(255,255,255,.08); }
+.copilot-activity-feed, .session-copilot-thread, .dv-goal-title { scrollbar-color: rgba(125,143,255,.64) transparent; }
+
+.session-copilot-workspace { gap: 14px; }
+.copilot-context-rail, .copilot-artifact-rail {
+  align-self: stretch;
+  padding: 14px !important;
+  border: 1px solid var(--edge-hi) !important;
+  min-height: 0;
+}
+.copilot-context-rail { display: flex; flex-direction: column; }
+.copilot-artifact-rail { max-height: calc(100vh - 178px); }
+.copilot-workbench-link { margin-top: auto; padding: 9px 10px; border: 1px solid var(--edge-hi); border-radius: 6px; }
+.session-copilot-intro { padding: 6px 2px; }
+.session-agent-pulse button, .session-copilot-starters button, .copilot-image-card button {
+  background: var(--panel-raised) !important;
+  border-color: rgba(255,255,255,.09) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.16);
+}
+
+.tactile-dashboard { background: var(--chassis) !important; }
+.tactile-dashboard .tactile-dashboard-hero {
+  height: 218px !important;
+  border-bottom: 1px solid var(--edge-hi);
+  box-shadow: inset 0 -1px 0 var(--edge-lo);
+}
+.tactile-dashboard .tactile-dashboard-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 1px;
+  background: rgba(255,255,255,.08);
+}
+.tactile-dashboard .tactile-dashboard-body { max-width: 1440px; width: 100%; margin-inline: auto; }
+.tactile-dashboard .tactile-dashboard-panel,
+.tactile-dashboard .tactile-dashboard-automation,
+.tactile-dashboard .tactile-dashboard-composer {
+  background: var(--panel) !important;
+  border-color: var(--edge-hi) !important;
+  border-radius: var(--panel-radius) !important;
+  box-shadow: var(--tactile-raised) !important;
+}
+.tactile-dashboard .tactile-dashboard-metric {
+  background: var(--well) !important;
+  border-color: rgba(255,255,255,.075) !important;
+  box-shadow: var(--tactile-well) !important;
+}
+.tactile-dashboard .tactile-dashboard-composer { border-radius: 8px !important; }
+
+@media (max-width: 700px) {
+  .session-copilot-workspace { gap: 10px; }
+  .copilot-context-rail, .copilot-artifact-rail { padding: 10px !important; }
+  .copilot-artifact-rail { max-height: none; }
+  .tactile-dashboard .tactile-dashboard-hero { height: 196px !important; }
+  .tactile-dashboard .tactile-dashboard-body { padding-inline: 16px !important; }
+}
+
+/* Existing pages with inline layouts retain their content but gain a common frame. */
+.site-shell, .payments-page, .credits-page, .settings-page, .integrations-page,
+.outreach-page, .library-panel, .company-brain-page, .checklist-page,
+.automations-page { max-width: 1440px; margin-inline: auto; }
+table { border: 1px solid rgba(255,255,255,.08); border-radius: var(--panel-radius); overflow: hidden; }
+th { background: var(--well) !important; }
+tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
+
+.astra-modal-backdrop { background: rgba(2,4,9,.72); backdrop-filter: blur(9px); }
+.astra-modal-shell, [data-theme="dark"] .astra-modal-shell {
+  border-radius: 10px;
+  background: var(--panel-raised);
+  box-shadow: 0 28px 76px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(0,0,0,.8);
+}
+.astra-modal-header, [data-theme="dark"] .astra-modal-header { background: var(--panel) !important; }
+.astra-modal-card, .astra-choice-card, [data-theme="dark"] .astra-modal-card,
+[data-theme="dark"] .astra-choice-card { border-radius: 8px; background: var(--well) !important; }
+
+/* Shared shell components with legacy inline declarations. */
+.astra-sidebar {
+  background: var(--rail) !important;
+  border-right-color: var(--edge-hi) !important;
+  box-shadow: inset -1px 0 0 var(--edge-lo), 12px 0 28px rgba(0,0,0,.16);
+}
+.astra-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 1px;
+  background: rgba(255,255,255,.035);
+  pointer-events: none;
+}
+.sidebar-new-run {
+  border: 1px solid #4b65ff !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -2px 0 rgba(0,0,0,.25), 0 6px 14px rgba(0,46,255,.24);
+}
+.sidebar-credit-well {
+  background: var(--well) !important;
+  border-color: rgba(255,255,255,.075) !important;
+  box-shadow: var(--tactile-well);
+}
+.astra-page-header {
+  background: var(--panel-raised) !important;
+  border-bottom-color: var(--edge-hi) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -1px 0 rgba(0,0,0,.46), 0 7px 20px rgba(0,0,0,.17);
+}
+.header-secondary-btn {
+  background: var(--panel) !important;
+  border-color: var(--edge-hi) !important;
+  box-shadow: inset 0 1px 0 var(--control-hi), inset 0 -1px 0 var(--control-lo), 0 4px 10px rgba(0,0,0,.16);
+}
+.astra-auth-shell { background: var(--chassis) !important; }
+.astra-auth-panel {
+  border-radius: 10px !important;
+  background: var(--panel-raised) !important;
+  border-color: var(--edge-hi) !important;
+  box-shadow: 0 26px 60px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -1px 0 rgba(0,0,0,.72) !important;
+}
+
+@media (max-width: 860px) {
+  .session-copilot-home { width: min(100% - 28px, 1200px); }
+  .dashboard-copilot-home { width: min(100% - 28px, 820px); }
+  .astra-panel, .sc, .dept-card, .copilot-context-rail, .copilot-artifact-rail { border-radius: 7px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

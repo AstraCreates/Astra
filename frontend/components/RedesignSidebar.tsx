@@ -56,12 +56,12 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     : { width: 214, flexShrink: 0, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100vh", position: "sticky", top: 0 };
 
   return (
-    <nav onClick={e => { if (mobile && (e.target as HTMLElement).closest("a")) onClose?.(); }} style={sidebarStyle}>
+    <nav className={`astra-sidebar${mobile ? " is-mobile" : ""}`} onClick={e => { if (mobile && (e.target as HTMLElement).closest("a")) onClose?.(); }} style={sidebarStyle}>
       <style>{`
         @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.35} }
-        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px 'Hanken Grotesk',system-ui,sans-serif;color:#8A93AD;border-left:2px solid transparent;transition:background .12s,color .12s; }
-        .sb-link:hover { background:rgba(255,255,255,.04);color:#EDF1FB; }
-        .sb-link.active { font-weight:600;color:#fff;background:rgba(255,255,255,.06);border-left-color:${accentColor}; }
+        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px var(--font-instrument),system-ui,sans-serif;color:#8A93AD;border:1px solid transparent;transition:background .12s,color .12s,border-color .12s,box-shadow .12s; }
+        .sb-link:hover { background:rgba(255,255,255,.045);color:#EDF1FB;border-color:rgba(255,255,255,.06); }
+        .sb-link.active { font-weight:600;color:#fff;background:#101624;border-color:rgba(255,255,255,.10);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 3px 0 0 ${accentColor},0 4px 12px rgba(0,0,0,.18); }
       `}</style>
 
       {/* Logo */}
@@ -78,7 +78,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
 
       {/* New run */}
       <div style={{ padding: "0 16px 16px" }}>
-        <Link data-tour="new-goal-btn" href="/dashboard?new=1"
+        <Link data-tour="new-goal-btn" href="/dashboard?new=1" className="sidebar-new-run"
           style={{ display: "block", width: "100%", background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: 11, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 600, fontSize: 13, cursor: "pointer", textAlign: "center", textDecoration: "none" }}>
           + New run
         </Link>
@@ -114,7 +114,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         </a>
 
         {/* Credits */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, background: "rgba(255,255,255,.03)" }}>
+        <div className="sidebar-credit-well" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, background: "rgba(255,255,255,.03)" }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB" }}>{credits !== null ? credits.toLocaleString() : "—"}</span>
           <span style={{ fontSize: 10, letterSpacing: ".04em", color: "#6f7b98" }}>credits</span>
         </div>
