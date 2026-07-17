@@ -1265,19 +1265,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
    intentionally token-first so older inline layouts inherit the same chassis.
    ════════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --chassis: #05070d;
-  --rail: #090c14;
-  --panel: #0d111b;
-  --panel-raised: #121725;
-  --well: #070a11;
-  --edge-hi: rgba(255,255,255,.105);
-  --edge-lo: rgba(0,0,0,.72);
-  --control-hi: rgba(255,255,255,.08);
-  --control-lo: rgba(0,0,0,.52);
-  --tactile-raised: inset 0 1px 0 var(--edge-hi), inset 0 -1px 0 var(--edge-lo), 0 10px 24px rgba(0,0,0,.22);
-  --tactile-well: inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.025);
-  --tactile-press: inset 0 2px 5px rgba(0,0,0,.56), inset 0 0 0 1px rgba(255,255,255,.035);
-  --panel-radius: 8px;
+  --chassis: #03050a;
+  --rail: #0a0e18;
+  --panel: #111725;
+  --panel-raised: #182033;
+  --well: #050811;
+  --edge-hi: rgba(255,255,255,.17);
+  --edge-lo: rgba(0,0,0,.92);
+  --control-hi: rgba(255,255,255,.16);
+  --control-lo: rgba(0,0,0,.72);
+  --tactile-raised: inset 0 1px 0 var(--edge-hi), inset 0 -2px 0 var(--edge-lo), inset 1px 0 0 rgba(255,255,255,.035), inset -1px 0 0 rgba(0,0,0,.5), 0 2px 0 rgba(0,0,0,.72), 0 13px 26px rgba(0,0,0,.40);
+  --tactile-well: inset 0 3px 8px rgba(0,0,0,.82), inset 0 0 0 1px rgba(255,255,255,.028), 0 1px 0 rgba(255,255,255,.05);
+  --tactile-press: inset 0 3px 8px rgba(0,0,0,.78), inset 0 0 0 1px rgba(255,255,255,.035), 0 1px 0 rgba(255,255,255,.04);
+  --panel-radius: 7px;
 }
 
 body {
@@ -1292,6 +1292,8 @@ body {
   border-radius: var(--panel-radius) !important;
   background: var(--panel, var(--surface)) !important;
   box-shadow: var(--tactile-raised) !important;
+  outline: 1px solid rgba(0,0,0,.54);
+  outline-offset: -2px;
   backdrop-filter: none !important;
 }
 
@@ -1309,19 +1311,19 @@ body {
 .astra-modal-close, .astra-choice-card {
   border-color: var(--edge-hi) !important;
   background: var(--panel-raised, var(--surface)) !important;
-  box-shadow: inset 0 1px 0 var(--control-hi), inset 0 -1px 0 var(--control-lo), 0 4px 10px rgba(0,0,0,.20) !important;
+  box-shadow: inset 0 1px 0 var(--control-hi), inset 0 -2px 0 var(--control-lo), 0 3px 0 rgba(0,0,0,.72), 0 7px 13px rgba(0,0,0,.27) !important;
 }
 
 .btn.pri, .btn.primary, .site-btn-primary, .sidebar-new-run, .header-primary-btn,
 .astra-composer-submit {
   background: #163cff !important;
   border-color: #4b65ff !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -2px 0 rgba(0,0,0,.26), 0 6px 15px rgba(0,46,255,.25) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.38), inset 0 -3px 0 rgba(0,0,0,.30), 0 3px 0 #09143f, 0 9px 18px rgba(0,46,255,.30) !important;
 }
 
 button:not(:disabled):active, .btn:active, .site-btn:active, .sidebar-new-run:active,
 .astra-choice-card:active, .copilot-workbench-link:active {
-  transform: translateY(1px) !important;
+  transform: translateY(3px) !important;
   box-shadow: var(--tactile-press) !important;
 }
 
@@ -1343,7 +1345,7 @@ select:focus-visible, [role="button"]:focus-visible {
 .copilot-action-card, .copilot-rail-section, .copilot-rail-agents button {
   border: 1px solid rgba(255,255,255,.075);
   background: var(--panel-raised);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 5px 13px rgba(0,0,0,.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.46), 0 3px 0 rgba(0,0,0,.45), 0 7px 13px rgba(0,0,0,.22);
 }
 .copilot-image-card img { border-bottom: 1px solid rgba(255,255,255,.08); }
 .copilot-activity-feed, .session-copilot-thread, .dv-goal-title { scrollbar-color: rgba(125,143,255,.64) transparent; }
@@ -1362,7 +1364,7 @@ select:focus-visible, [role="button"]:focus-visible {
 .session-agent-pulse button, .session-copilot-starters button, .copilot-image-card button {
   background: var(--panel-raised) !important;
   border-color: rgba(255,255,255,.09) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.52), 0 2px 0 rgba(0,0,0,.58), 0 5px 10px rgba(0,0,0,.20);
 }
 
 .tactile-dashboard { background: var(--chassis) !important; }
@@ -1386,6 +1388,8 @@ select:focus-visible, [role="button"]:focus-visible {
   border-color: var(--edge-hi) !important;
   border-radius: var(--panel-radius) !important;
   box-shadow: var(--tactile-raised) !important;
+  outline: 1px solid rgba(0,0,0,.54);
+  outline-offset: -2px;
 }
 .tactile-dashboard .tactile-dashboard-metric {
   background: var(--well) !important;
@@ -1424,7 +1428,7 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
 .astra-sidebar {
   background: var(--rail) !important;
   border-right-color: var(--edge-hi) !important;
-  box-shadow: inset -1px 0 0 var(--edge-lo), 12px 0 28px rgba(0,0,0,.16);
+  box-shadow: inset -1px 0 0 var(--edge-lo), inset 1px 0 0 rgba(255,255,255,.055), 10px 0 0 rgba(0,0,0,.22), 16px 0 30px rgba(0,0,0,.28);
 }
 .astra-sidebar::after {
   content: "";
@@ -1443,6 +1447,8 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
   border-color: rgba(255,255,255,.075) !important;
   box-shadow: var(--tactile-well);
 }
+.astra-sidebar .sb-link { min-height: 39px; }
+.astra-sidebar .sb-link.active { box-shadow: inset 0 1px 0 rgba(255,255,255,.11), inset 3px 0 0 #7d8fff, inset 0 -2px 0 rgba(0,0,0,.5), 0 3px 0 rgba(0,0,0,.48), 0 7px 13px rgba(0,0,0,.20) !important; }
 .astra-page-header {
   background: var(--panel-raised) !important;
   border-bottom-color: var(--edge-hi) !important;
