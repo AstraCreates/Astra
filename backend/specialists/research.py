@@ -339,9 +339,24 @@ def _research_max_iterations(plan: str, requested: int | None = None, depth_over
 
 
 def _research_tool_call_caps(agent_name: str, is_deep: bool) -> dict[str, int]:
-    """Keep tool limits aligned with the fast/deep instructions in the role."""
+    """Keep tool limits aligned with the fast/deep instructions in the role.
+
+    Every lane's own prompt tells it to re-call run_research_pipeline with
+    refined queries when coverage.ready comes back false ("fill gaps with
+    one targeted search") -- capping this at 1 for narrow lanes (research_gtm,
+    research_customers, research_market, etc.) directly contradicted that
+    instruction. The model would try the retry its own prompt told it to
+    make, get BLOCKED by the cap, and burn the rest of its iteration budget
+    stuck instead of finishing -- confirmed production failure
+    (research_gtm hit max_iterations_reached after run_research_pipeline
+    returned incomplete coverage on its one and only allowed call). Give
+    every lane room for the one legitimate refinement call its prompt
+    promises; "research" (the comprehensive lane covering 4 areas) gets one
+    more on top of that in deep mode.
+    """
     deep_calls = 4 if agent_name == "research" else 2
-    return {"run_research_pipeline": 2 if is_deep and agent_name == "research" else 1, "deep_research": deep_calls if is_deep else 1, "search_and_fetch": 1, "fetch_and_read": 2 if agent_name in {"research", "research_competitors"} else 1, "obsidian_read": 1, "obsidian_log": 1}
+    pipeline_calls = 3 if is_deep and agent_name == "research" else 2
+    return {"run_research_pipeline": pipeline_calls, "deep_research": deep_calls if is_deep else 1, "search_and_fetch": 1, "fetch_and_read": 2 if agent_name in {"research", "research_competitors"} else 1, "obsidian_read": 1, "obsidian_log": 1}
 
 
 def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_override: str | None = None) -> str:
@@ -354,18 +369,23 @@ def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_
         + "\nTOOLS:\n"
         "- run_research_pipeline(topic, focus) — your PRIMARY and only real research tool. Plans queries and runs "
         "them through provider-native grounded search (real live web evidence, not a shallow snippet pass) in one "
-        "call. Call it more than once with different/refined queries when coverage gaps remain — there is no "
+        "call. You get exactly ONE refinement call beyond the first if coverage gaps remain — there is no "
         "separate 'deep_research' escalation tool anymore, this same call handles both first-pass and deep passes.\n"
         "  STOP RULE: check the returned coverage.ready and next_step fields. If coverage.ready is true or "
         "next_step says 'Synthesize findings', DO NOT call run_research_pipeline again — you already have enough. "
-        "Move straight to writing your findings and calling obsidian_log. Calling it again wastes time and it will eventually be BLOCKED.\n"
+        "Move straight to writing your findings and calling obsidian_log.\n"
+        "  IF BLOCKED: if a tool result ever starts with 'BLOCKED', you have used your calls to that tool — do not "
+        "retry it, do not call build_research_queries again hoping for a different result. Immediately write your "
+        "findings with whatever evidence you already have (clearly marking any gaps as unconfirmed) and call "
+        "obsidian_log to finish. A brief with an honestly marked gap is far better than never finishing.\n"
         "- build_research_queries(topic, focus) — generates a high-coverage query plan when you need more targeted "
         "queries than the topic alone gives run_research_pipeline.\n"
         "- obsidian_log — FINAL step only after ALL research is complete.\n\n"
         "RESEARCH QUALITY RULES:\n"
         "- Generate specific, source-seeking queries. Avoid vague searches like just the product category.\n"
         "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
-        "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted search or clearly mark uncertainty.\n"
+        "- Check run_research_pipeline.coverage. If coverage.ready is false, use your one refinement call with a "
+        "sharper query, then write up with what you have and clearly mark uncertainty — never spin past that.\n"
         "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
         "- Be critical, not promotional. Try to DISPROVE the current idea, wedge, pricing, and ICP before you endorse them.\n"
         "- Surface the strongest bear case, the most fragile assumption, and the most promising pivot or narrowing option.\n"
