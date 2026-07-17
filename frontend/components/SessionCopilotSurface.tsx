@@ -3,7 +3,6 @@
 import { Check, CircleAlert, FileText, Image as ImageIcon, LoaderCircle, Play, RotateCcw, Wrench } from "lucide-react";
 import AstraCopilotComposer, { type CopilotAgentOption } from "@/components/AstraCopilotComposer";
 import type { SessionImages } from "@/lib/api";
-import { goalTitle, parseGoalFields } from "@/lib/utils";
 
 export type SessionActivityItem = {
   id: string;
@@ -57,19 +56,7 @@ export default function SessionCopilotSurface({
       <aside className="copilot-context-rail" aria-label="Session context">
         <div className="copilot-rail-kicker">Current run</div>
         <div className="copilot-run-status"><span className={status === "running" || status === "loading" ? "live-dot" : "is-done"} />{status === "running" || status === "loading" ? "In progress" : status === "done" ? "Complete" : status}</div>
-        <div className="copilot-rail-section">
-          <span>Goal</span>
-          {goal ? (
-            <dl className="copilot-goal-fields">
-              {parseGoalFields(goal).map((f, i) => (
-                <div className="copilot-goal-field" key={i}>
-                  {f.label && <dt>{f.label}</dt>}
-                  <dd>{f.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : <p>Setting up the workspace...</p>}
-        </div>
+        <div className="copilot-rail-section"><span>Goal</span><p>{goal || "Setting up the workspace..."}</p></div>
         <div className="copilot-rail-section"><span>Working now</span><div className="copilot-rail-agents">{running.length ? running.slice(0, 5).map((agent) => <button key={agent.id} type="button" onClick={() => onInput(`@${agent.id} `)}>{agent.label}<small>{agent.status}</small></button>) : <p className="copilot-muted">No agents are running.</p>}</div></div>
         <button type="button" className="copilot-workbench-link" onClick={onOpenWorkbench}>Open full Workbench <span>↗</span></button>
       </aside>
@@ -77,7 +64,8 @@ export default function SessionCopilotSurface({
       <section className="copilot-main-column">
         <div className="session-copilot-intro">
           <img src="/astra-copilot.png" alt="Astra" />
-          <div><span>{status === "running" || status === "loading" ? "Astra is working" : "Astra copilot"}</span><h1>{goalTitle(goal) || "Your Astra workspace"}</h1><p>Ask for a readout, redirect work, or mention the exact agent you want to hear from.</p></div>
+          <div><span>{status === "running" || status === "loading" ? "Astra is working" : "Astra copilot"}</span><h1>{goal || "Your Astra workspace"}</h1><p>Ask for a readout, redirect work, or mention the exact agent you want to hear from.</p></div>
+          <button type="button" onClick={onOpenWorkbench}>Workbench</button>
         </div>
 
         <div className="copilot-activity-panel">

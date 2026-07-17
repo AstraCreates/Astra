@@ -380,15 +380,6 @@ button:not(:disabled):active { transform: scale(0.97); }
 .dc-what{font-size:10px;color:var(--fd);line-height:1.55;font-family:var(--font-code),monospace}
 .dc-prog{height:1px;background:rgba(0,0,0,.06);overflow:hidden}.dc-bar{height:100%;width:100%;transform-origin:left;transition:transform .9s cubic-bezier(.22,1,.36,1)}
 
-/* Depts still waiting collapse into one pill row instead of N near-identical
-   "Queued / Waiting to start" cards — same click target, far less repetition. */
-.depts-queued{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding-left:4px;border-left:1px solid var(--bd)}
-.depts-queued-label{font-family:var(--font-code),monospace;font-size:9px;color:var(--fm);text-transform:uppercase;letter-spacing:.08em;flex-shrink:0}
-.dq{display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--bd);border-radius:999px;background:var(--surface);color:var(--fd);font-size:10.5px;font-weight:600;white-space:nowrap;cursor:pointer;opacity:.75;transition:opacity .14s,border-color .14s}
-.dq:hover{opacity:1;border-color:var(--bd2)}
-.dq.sel{opacity:1;border-color:rgba(0,46,255,.35);color:var(--fg);background-image:linear-gradient(180deg,rgba(0,46,255,.04) 0%,transparent 60%)}
-.dq-ico{font-size:12px}
-
 /* Session — workspace split */
 .sess-ws{flex:1;display:flex;overflow:hidden;min-height:0}
 .vault{width:155px;flex-shrink:0;border-right:1px solid var(--bd);background:var(--surface);overflow-y:auto;padding:10px 6px;display:flex;flex-direction:column}
@@ -1274,18 +1265,18 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
    intentionally token-first so older inline layouts inherit the same chassis.
    ════════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --chassis: #02040a;
-  --rail: #080c16;
-  --panel: #121a2a;
-  --panel-raised: #1a263b;
-  --well: #040710;
-  --edge-hi: rgba(145,174,255,.28);
-  --edge-lo: rgba(0,0,0,.92);
-  --control-hi: rgba(255,255,255,.16);
-  --control-lo: rgba(0,0,0,.72);
-  --tactile-raised: inset 0 2px 0 rgba(190,210,255,.20), inset 0 0 0 1px rgba(122,151,230,.13), inset 0 -3px 0 rgba(0,0,0,.88), inset 2px 0 0 rgba(255,255,255,.035), inset -2px 0 0 rgba(0,0,0,.58), 0 3px 0 #010207, 0 16px 30px rgba(0,0,0,.48);
-  --tactile-well: inset 0 4px 12px rgba(0,0,0,.95), inset 0 0 0 1px rgba(0,0,0,.72), inset 0 1px 0 rgba(150,178,255,.10), 0 1px 0 rgba(255,255,255,.07);
-  --tactile-press: inset 0 5px 12px rgba(0,0,0,.90), inset 0 0 0 1px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.05);
+  --chassis: #05070d;
+  --rail: #090c14;
+  --panel: #0d111b;
+  --panel-raised: #121725;
+  --well: #070a11;
+  --edge-hi: rgba(255,255,255,.105);
+  --edge-lo: rgba(0,0,0,.72);
+  --control-hi: rgba(255,255,255,.08);
+  --control-lo: rgba(0,0,0,.52);
+  --tactile-raised: inset 0 1px 0 var(--edge-hi), inset 0 -1px 0 var(--edge-lo), 0 10px 24px rgba(0,0,0,.22);
+  --tactile-well: inset 0 2px 5px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.025);
+  --tactile-press: inset 0 2px 5px rgba(0,0,0,.56), inset 0 0 0 1px rgba(255,255,255,.035);
   --panel-radius: 8px;
 }
 
@@ -1301,8 +1292,6 @@ body {
   border-radius: var(--panel-radius) !important;
   background: var(--panel, var(--surface)) !important;
   box-shadow: var(--tactile-raised) !important;
-  outline: 1px solid rgba(0,0,0,.78);
-  outline-offset: -2px;
   backdrop-filter: none !important;
 }
 
@@ -1320,19 +1309,19 @@ body {
 .astra-modal-close, .astra-choice-card {
   border-color: var(--edge-hi) !important;
   background: var(--panel-raised, var(--surface)) !important;
-  box-shadow: inset 0 2px 0 var(--control-hi), inset 0 0 0 1px rgba(125,155,235,.12), inset 0 -3px 0 var(--control-lo), 0 3px 0 #010207, 0 9px 16px rgba(0,0,0,.34) !important;
+  box-shadow: inset 0 1px 0 var(--control-hi), inset 0 -1px 0 var(--control-lo), 0 4px 10px rgba(0,0,0,.20) !important;
 }
 
 .btn.pri, .btn.primary, .site-btn-primary, .sidebar-new-run, .header-primary-btn,
 .astra-composer-submit {
   background: #163cff !important;
   border-color: #4b65ff !important;
-  box-shadow: inset 0 2px 0 rgba(255,255,255,.46), inset 0 0 0 1px rgba(150,175,255,.28), inset 0 -4px 0 rgba(0,0,0,.38), 0 4px 0 #060d2e, 0 10px 20px rgba(0,46,255,.38) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -2px 0 rgba(0,0,0,.26), 0 6px 15px rgba(0,46,255,.25) !important;
 }
 
 button:not(:disabled):active, .btn:active, .site-btn:active, .sidebar-new-run:active,
 .astra-choice-card:active, .copilot-workbench-link:active {
-  transform: translateY(3px) !important;
+  transform: translateY(1px) !important;
   box-shadow: var(--tactile-press) !important;
 }
 
@@ -1354,32 +1343,7 @@ select:focus-visible, [role="button"]:focus-visible {
 .copilot-action-card, .copilot-rail-section, .copilot-rail-agents button {
   border: 1px solid rgba(255,255,255,.075);
   background: var(--panel-raised);
-  box-shadow: inset 0 2px 0 rgba(180,205,255,.13), inset 0 0 0 1px rgba(115,145,220,.10), inset 0 -3px 0 rgba(0,0,0,.68), 0 3px 0 rgba(0,0,0,.62), 0 9px 16px rgba(0,0,0,.28);
-}
-
-/* Hardware-like controls: a visible bezel and a recessed indicator surface. */
-.astra-composer-submit, .sidebar-new-run, .header-primary-btn, .btn.pri, .btn.primary {
-  position: relative;
-  isolation: isolate;
-}
-.astra-composer-submit::before, .sidebar-new-run::before, .header-primary-btn::before,
-.btn.pri::before, .btn.primary::before {
-  content: "";
-  position: absolute;
-  inset: 3px;
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 5px;
-  pointer-events: none;
-  opacity: .9;
-}
-.astra-sidebar .sb-link.active, .copilot-rail-agents button[aria-pressed="true"],
-.f-seg-opt[aria-selected="true"] {
-  background: #0a1225 !important;
-  border-color: rgba(125,157,255,.44) !important;
-  box-shadow: inset 0 4px 10px rgba(0,0,0,.82), inset 0 1px 0 rgba(160,185,255,.16), inset 3px 0 0 #7d8fff, 0 1px 0 rgba(255,255,255,.05) !important;
-}
-.status-dot, .status-light, [class*="status"] .dot {
-  filter: drop-shadow(0 0 5px currentColor);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 5px 13px rgba(0,0,0,.16);
 }
 .copilot-image-card img { border-bottom: 1px solid rgba(255,255,255,.08); }
 .copilot-activity-feed, .session-copilot-thread, .dv-goal-title { scrollbar-color: rgba(125,143,255,.64) transparent; }
@@ -1398,7 +1362,7 @@ select:focus-visible, [role="button"]:focus-visible {
 .session-agent-pulse button, .session-copilot-starters button, .copilot-image-card button {
   background: var(--panel-raised) !important;
   border-color: rgba(255,255,255,.09) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.52), 0 2px 0 rgba(0,0,0,.58), 0 5px 10px rgba(0,0,0,.20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 3px 8px rgba(0,0,0,.16);
 }
 
 .tactile-dashboard { background: var(--chassis) !important; }
@@ -1422,8 +1386,6 @@ select:focus-visible, [role="button"]:focus-visible {
   border-color: var(--edge-hi) !important;
   border-radius: var(--panel-radius) !important;
   box-shadow: var(--tactile-raised) !important;
-  outline: 1px solid rgba(0,0,0,.54);
-  outline-offset: -2px;
 }
 .tactile-dashboard .tactile-dashboard-metric {
   background: var(--well) !important;
@@ -1462,7 +1424,7 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
 .astra-sidebar {
   background: var(--rail) !important;
   border-right-color: var(--edge-hi) !important;
-  box-shadow: inset -1px 0 0 var(--edge-lo), inset 1px 0 0 rgba(255,255,255,.055), 10px 0 0 rgba(0,0,0,.22), 16px 0 30px rgba(0,0,0,.28);
+  box-shadow: inset -1px 0 0 var(--edge-lo), 12px 0 28px rgba(0,0,0,.16);
 }
 .astra-sidebar::after {
   content: "";
@@ -1481,8 +1443,6 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
   border-color: rgba(255,255,255,.075) !important;
   box-shadow: var(--tactile-well);
 }
-.astra-sidebar .sb-link { min-height: 39px; }
-.astra-sidebar .sb-link.active { box-shadow: inset 0 1px 0 rgba(255,255,255,.11), inset 3px 0 0 #7d8fff, inset 0 -2px 0 rgba(0,0,0,.5), 0 3px 0 rgba(0,0,0,.48), 0 7px 13px rgba(0,0,0,.20) !important; }
 .astra-page-header {
   background: var(--panel-raised) !important;
   border-bottom-color: var(--edge-hi) !important;
@@ -1507,184 +1467,6 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
   .astra-panel, .sc, .dept-card, .copilot-context-rail, .copilot-artifact-rail { border-radius: 7px !important; }
 }
 
-/* ════════════════════════════════════════════════════════════════
-   SKEUOMORPHIC HARDWARE CONTROLS
-   One shared control material (body gradient + rim + specular +
-   bezel) used identically by every knob-like element, so the toggle,
-   segmented pads, and transport buttons read as one console instead
-   of separate widgets. Only the accent glow varies, and only within
-   a narrow, restrained hue set — same discipline as the reference.
-   ════════════════════════════════════════════════════════════════ */
-[data-theme="dark"] {
-  --ctrl-body: radial-gradient(120% 140% at 30% 18%, #303c58 0%, #232c46 28%, #161d33 58%, #0a0e1c 100%);
-  --ctrl-rim: rgba(160, 180, 255, .16);
-  --ctrl-shadow:
-    inset 0 1px 0 rgba(255,255,255,.07),
-    inset 0 -14px 18px -10px rgba(0,0,0,.9),
-    inset 0 0 0 1px rgba(0,0,0,.55),
-    0 1px 0 rgba(255,255,255,.04),
-    0 10px 22px -8px rgba(0,0,0,.6);
-  --ctrl-shadow-press: inset 0 5px 10px rgba(0,0,0,.85), inset 0 0 0 1px rgba(0,0,0,.6);
-  /* restrained accent set — pulled straight from the reference photo */
-  --acc-violet: #a9a3ff;
-  --acc-mint:   #52e0b8;
-  --acc-pink:   #ef7fc4;
-  --acc-amber:  #e8c777;
-  --acc-red:    #ef5b5b;
-}
-
-/* Shared specular highlight + bezel, applied once, reused by every control. */
-.f-toggle-track, .f-seg-opt, .ctrl-pad {
-  position: relative;
-  background: var(--ctrl-body) !important;
-  box-shadow: var(--ctrl-shadow) !important;
-  transition: box-shadow .18s, background .18s, transform .12s;
-}
-.f-toggle-track::before, .f-seg-opt::before, .ctrl-pad::before {
-  content: '';
-  position: absolute; inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.16), transparent 55%);
-  pointer-events: none;
-}
-
-/* Toggle switch — pill capsule, one small accent LED floating above. */
-.f-toggle { padding-top: 12px; }
-.f-toggle-track {
-  width: 38px; height: 21px; border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.6) !important;
-}
-.f-toggle-track::after {
-  content: '';
-  position: absolute; top: 2px; left: 2px;
-  width: 15px; height: 15px; border-radius: 50%;
-  background: radial-gradient(circle at 34% 28%, #fefeff, #cdd4e4 70%, #a7afc7 100%) !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,.5), inset 0 -1px 1px rgba(0,0,0,.15) !important;
-  transition: transform .2s var(--ease-out-quint, ease);
-}
-.led-dot {
-  position: absolute; left: 50%; top: -9px;
-  width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
-  background: #333c52;
-  box-shadow: none;
-  transition: background .2s, box-shadow .2s;
-}
-.f-toggle-in:checked + .f-toggle-track {
-  box-shadow: var(--ctrl-shadow), inset 0 0 8px rgba(82,224,184,.18) !important;
-}
-.f-toggle-in:checked + .f-toggle-track::after { transform: translateX(17px); }
-.f-toggle-in:checked + .f-toggle-track .led-dot {
-  background: var(--acc-mint);
-  box-shadow: 0 0 5px 1px var(--acc-mint), 0 0 12px 3px rgba(82,224,184,.5);
-}
-.f-toggle-in:focus-visible + .f-toggle-track { outline: 2px solid var(--acc-violet); outline-offset: 3px; }
-
-/* Segmented control — a row of pressed pads sharing the same well as the track. */
-.f-seg {
-  background: var(--well, var(--bg-sunken)) !important;
-  border: 1px solid rgba(0,0,0,.6) !important;
-  border-radius: 12px !important;
-  box-shadow: var(--tactile-well, inset 0 3px 8px rgba(0,0,0,.7)) !important;
-  padding: 4px !important; gap: 4px !important;
-}
-.f-seg-opt {
-  border-radius: 8px !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--fm) !important;
-}
-.f-seg-opt::before { opacity: 0; transition: opacity .18s; }
-.f-seg-opt.active {
-  color: #eef2ff !important;
-  box-shadow: var(--ctrl-shadow), 0 0 10px rgba(169,163,255,.16) !important;
-}
-.f-seg-opt.active::before { opacity: 1; }
-
-/* Run-transport pads — same shared material as the toggle/segmented
-   control above, mapped onto the existing buttons by aria-label so
-   no markup changes are needed. Fixed footprint so icon-only and
-   text buttons read as one matched row, not mismatched widgets. */
-[data-theme="dark"] button[aria-label="Pause run"],
-[data-theme="dark"] button[aria-label="Resume run"],
-[data-theme="dark"] button[aria-label="Stop run"],
-[data-theme="dark"] button[aria-label="Restart run"],
-[data-theme="dark"] button[aria-label="Cancel restart"],
-[data-theme="dark"] button[aria-label="Confirm restart run"] {
-  background: var(--ctrl-body) !important;
-  border: 1px solid rgba(0,0,0,.6) !important;
-  border-radius: 8px !important;
-  box-shadow: var(--ctrl-shadow) !important;
-  min-width: 40px; height: 30px;
-  display: inline-flex; align-items: center; justify-content: center;
-  text-shadow: 0 1px 2px rgba(0,0,0,.6);
-  position: relative;
-}
-[data-theme="dark"] button[aria-label="Pause run"]::before,
-[data-theme="dark"] button[aria-label="Resume run"]::before,
-[data-theme="dark"] button[aria-label="Stop run"]::before,
-[data-theme="dark"] button[aria-label="Restart run"]::before,
-[data-theme="dark"] button[aria-label="Cancel restart"]::before,
-[data-theme="dark"] button[aria-label="Confirm restart run"]::before {
-  content: ''; position: absolute; inset: 0; border-radius: inherit;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 55%);
-  pointer-events: none;
-}
-[data-theme="dark"] button[aria-label="Pause run"] { color: var(--acc-amber) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(232,199,119,.16) !important; }
-[data-theme="dark"] button[aria-label="Resume run"] { color: var(--acc-mint) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(82,224,184,.18) !important; }
-[data-theme="dark"] button[aria-label="Stop run"] { color: var(--acc-mint) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(82,224,184,.14) !important; }
-[data-theme="dark"] button[aria-label="Confirm restart run"] { color: var(--acc-red) !important; box-shadow: var(--ctrl-shadow), 0 0 10px rgba(239,91,91,.22) !important; }
-[data-theme="dark"] button[aria-label="Restart run"],
-[data-theme="dark"] button[aria-label="Cancel restart"] { color: var(--acc-violet) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(169,163,255,.16) !important; }
-[data-theme="dark"] button[aria-label="Pause run"]:active,
-[data-theme="dark"] button[aria-label="Resume run"]:active,
-[data-theme="dark"] button[aria-label="Stop run"]:active,
-[data-theme="dark"] button[aria-label="Restart run"]:active,
-[data-theme="dark"] button[aria-label="Cancel restart"]:active,
-[data-theme="dark"] button[aria-label="Confirm restart run"]:active {
-  transform: translateY(2px) !important;
-  box-shadow: var(--ctrl-shadow-press) !important;
-}
-
-/* Status/presence LEDs — same restrained accent set, real bloom. */
-.v-dot {
-  border-radius: 50% !important;
-  box-shadow: 0 0 0 2px rgba(0,0,0,.5) !important;
-}
-.v-dot.ready { background: var(--acc-mint) !important; box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 6px 1px rgba(82,224,184,.65) !important; }
-.v-dot.live { background: var(--acc-amber) !important; box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 7px 2px rgba(232,199,119,.7) !important; }
-.v-dot.pend { box-shadow: 0 0 0 2px rgba(0,0,0,.5) !important; opacity: .5; }
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-}
-
-/* Keep the persistent copilot composer a deliberate instrument, not a generic
-   panel. Explicit dimensions prevent loading and disabled states from
-   collapsing the text field into a thin toolbar. */
-.session-copilot-dock {
-  width: min(1200px, calc(100% - 80px));
-  min-height: 150px;
-  margin: 10px auto 20px;
-  padding: 10px;
-  border: 1px solid rgba(145,174,255,.30);
-  border-radius: 10px !important;
-  background: #080d18;
-  box-shadow: inset 0 2px 0 rgba(180,205,255,.14), inset 0 -4px 0 rgba(0,0,0,.82), 0 4px 0 #010207, 0 18px 30px rgba(0,0,0,.40);
-}
-.session-copilot-dock .astra-composer-shell {
-  min-height: 126px;
-  border: 1px solid rgba(145,174,255,.30) !important;
-  border-radius: 7px !important;
-  background: #111a2b !important;
-  box-shadow: inset 0 4px 12px rgba(0,0,0,.85), inset 0 1px 0 rgba(190,210,255,.18), inset 0 0 0 1px rgba(0,0,0,.68), 0 2px 0 #020307 !important;
-}
-.session-copilot-dock .astra-composer-shell textarea {
-  min-height: 74px;
-  padding: 16px 16px 8px;
-}
-.session-copilot-dock .astra-composer-footer { min-height: 42px; }
-.session-copilot-dock .copilot-attachment-tray { padding: 8px 2px 0; }
-
-@media (max-width: 860px) {
-  .session-copilot-dock { width: calc(100% - 24px); min-height: 140px; margin-bottom: 10px; }
 }

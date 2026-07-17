@@ -8,7 +8,6 @@ import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
 import AstraCopilotComposer, { extractAgentMentions, type CopilotAgentOption } from "./AstraCopilotComposer";
 import { getRunSnapshot } from "@/lib/control-plane-api";
-import { goalTitle } from "@/lib/utils";
 
 function sessionStatusFromRunStatus(status: string): SessionIndexEntry["status"] {
   const map: Record<string, SessionIndexEntry["status"]> = {
@@ -32,7 +31,7 @@ const GREETINGS = [
 ];
 
 function extractGoalTitle(raw: string): string {
-  const stripped = raw
+  return raw
     .replace(/^FOLLOW-UP RUN for GOAL:\s*/i, "")
     .replace(/^GOAL:\s*/i, "")
     .replace(/\s*An earlier run already completed[\s\S]*$/i, "")
@@ -40,10 +39,6 @@ function extractGoalTitle(raw: string): string {
     .replace(/\s*Each agent: deliver[\s\S]*$/i, "")
     .replace(/\s*Finish ONLY the \d+[\s\S]*$/i, "")
     .trim() || raw;
-  // Quiz-built goals are still "Label: value" lines glued together at this
-  // point (see BusinessQuizModal) — pull out the project name / first field
-  // instead of showing the whole run-on string.
-  return goalTitle(stripped, 90);
 }
 
 function ago(ts: string | undefined): string {
@@ -368,6 +363,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-44%)} 50%{transform:translateY(calc(-44% - 5px))} }
       `}</style>
 
       <div className="tactile-dashboard" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
@@ -602,7 +598,7 @@ export default function DashboardView() {
               {copilot.map((message, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: message.role === "founder" ? "flex-end" : "flex-start" }}>
                   {message.role !== "founder" && (
-                    <img src="/astra-copilot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 6, flexShrink: 0 }} />
+                    <img src="/astra-mascot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 4, imageRendering: "pixelated", flexShrink: 0 }} />
                   )}
                   <div style={{ maxWidth: "85%", padding: "8px 10px", borderRadius: 10, background: message.role === "founder" ? "#002EFF" : "rgba(255,255,255,0.06)", color: "#EDF1FB", fontSize: 11, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                     {message.content}
@@ -616,7 +612,7 @@ export default function DashboardView() {
               ))}
               {copilotBusy && (
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <img src="/astra-copilot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 6, flexShrink: 0 }} />
+                  <img src="/astra-mascot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 4, imageRendering: "pixelated", flexShrink: 0 }} />
                   <div style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.06)" }}>
                     {[0, 120, 240].map(d => <span key={d} style={{ width: 5, height: 5, borderRadius: "50%", background: "rgb(125,143,255)", opacity: 0.4, animation: `sc-shimmer 1s ease-in-out ${d}ms infinite` }} />)}
                   </div>
@@ -625,12 +621,16 @@ export default function DashboardView() {
             </div>
           )}
 
-          {/* Copilot bar — full-width pill */}
+          {/* Copilot bar — full-width pill, oversized mascot floats over left edge */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "auto" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative" }}>
-              <div className="tactile-dashboard-composer" style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 9px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
-                <img src="/astra-copilot.png" alt="" style={{ width: 30, height: 30, objectFit: "contain", borderRadius: 8, flexShrink: 0 }} />
+              {/* Mascot: 130px, body covers left pill edge and overflows above */}
+              <div style={{ position: "absolute", left: -34, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
+                <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
+              </div>
+              {/* Pill spans full width; padding clears visible astronaut body */}
+              <div className="tactile-dashboard-composer" style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
