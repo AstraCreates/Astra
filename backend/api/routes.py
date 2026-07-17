@@ -695,24 +695,63 @@ async def cancel_run_route(run_id: str, request: Request):
     from backend.control_plane.supabase_repositories import SupabaseRunRepository
     from backend.core.session_store import get_session_meta, merge_session_meta
 
+    # A run that already reached a terminal state has no live task left to
+    # cancel -- unconditionally overwriting its status to "cancelling" here
+    # orphans it there forever, since nothing will ever transition it further
+    # (the run() coroutine that would normally do that has already returned).
+    # Confirmed production bug: Restart on an already-finished run got stuck
+    # polling for a status change that could never arrive, reporting
+    # "Restart failed: Could not stop the original run."
+    try:
+        run_repo = SupabaseRunRepository()
+        existing = await asyncio.to_thread(run_repo.get, run_id)
+        if existing is not None and existing.status in ("succeeded", "failed", "cancelled"):
+            return {"ok": True, "run_id": run_id, "status": existing.status}
+    except Exception:
+        pass
+
     meta = get_session_meta(run_id) or {}
     cancelled = await _cancel_temporal_session_if_needed(run_id, meta)
+    # For a legacy-engine run, request_kill()'s return value tells us whether it
+    # actually found and cancelled a live asyncio task. That return value was
+    # previously discarded -- "cancelling" got set unconditionally regardless of
+    # whether anything was really going to transition the run out of it.
+    # Confirmed production bug: whenever the task wasn't tracked under this
+    # exact run_id (a mismatch, a race, or it had already finished), the run
+    # sat at "cancelling" forever with nothing left to move it forward, and
+    # the frontend's 30s poll for a terminal status always timed out, reporting
+    # "Restart failed." If we know nothing is going to happen, resolve to a
+    # terminal state immediately instead of lying that a cancellation is
+    # in flight.
+    task_was_live = cancelled
     if not cancelled:
         try:
             from backend.core import cancellation
 
-            cancellation.request_kill(run_id)
+            task_was_live = cancellation.request_kill(run_id)
         except Exception:
-            pass
-    try:
-        await asyncio.to_thread(SupabaseRunRepository().update_status, run_id, "cancelling")
-    except Exception:
-        pass
+            task_was_live = False
     try:
         merge_session_meta(run_id, cancellation_requested_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     except Exception:
         pass
-    return {"ok": True, "run_id": run_id, "status": "cancelling"}
+    if task_was_live:
+        try:
+            await asyncio.to_thread(SupabaseRunRepository().update_status, run_id, "cancelling")
+        except Exception:
+            pass
+        return {"ok": True, "run_id": run_id, "status": "cancelling"}
+    # Nothing live to cancel -- reconcile any agents still shown as running/
+    # waiting so the UI stops spinning, and resolve straight to "cancelled".
+    await _reconcile_orphaned_agents(run_id, "Run stopped by user.")
+    try:
+        await asyncio.to_thread(
+            SupabaseRunRepository().update_fields, run_id,
+            {"status": "cancelled", "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+        )
+    except Exception:
+        pass
+    return {"ok": True, "run_id": run_id, "status": "cancelled"}
 
 
 @router.get("/sessions")
