@@ -107,7 +107,13 @@ _DEFAULT_RUBRIC = (
 #   min_specifics   — minimum count of concrete signals (numbers, proper nouns) for
 #                     research-style deliverables; 0 disables the check
 _AGENT_SHAPE: dict[str, dict[str, Any]] = {
-    "research":  {"text_fields": ["findings", "report", "key_findings", "summary", "output_summary", "formatted_text"], "min_text_chars": 400, "min_specifics": 4},
+    # research_findings added when research split its data-gathering from
+    # document-writing (research_docs) -- the model reasonably names its
+    # output field to match the artifact key shown in its task brief
+    # (expected_artifacts: ["research_findings"]), but verification here
+    # didn't recognize that name, reading the field as "0 chars" and
+    # blocking every research lane despite substantial real content.
+    "research":  {"text_fields": ["research_findings", "findings", "report", "key_findings", "summary", "output_summary", "formatted_text"], "min_text_chars": 400, "min_specifics": 4},
     "web":       {"url_fields": ["deploy_url", "url", "preview_url", "live_url"], "html_fields": ["html"], "min_text_chars": 0, "min_specifics": 0},
     "technical": {"url_fields": ["repo_url", "deploy_url", "url"], "text_fields": ["summary", "report"], "min_text_chars": 120, "min_specifics": 0},
     "legal":     {"text_fields": ["document", "documents", "report", "formatted_text", "summary", "markdown"], "min_text_chars": 600, "min_specifics": 0},
@@ -115,6 +121,7 @@ _AGENT_SHAPE: dict[str, dict[str, Any]] = {
     "ops":       {"text_fields": ["report", "summary", "formatted_text", "output_summary"], "min_text_chars": 300, "min_specifics": 2},
     "sales":     {"text_fields": ["leads", "report", "summary", "outreach", "formatted_text"], "min_text_chars": 200, "min_specifics": 2},
     "design":    {"text_fields": ["brand_direction", "formatted_text", "spec", "report", "summary", "design_spec"], "min_text_chars": 200, "min_specifics": 0},
+    "research_docs": {"text_fields": ["market_brief", "icp_brief", "pricing_hypothesis", "summary", "report"], "min_text_chars": 200, "min_specifics": 0},
 }
 
 # Rubric the LLM judge applies, per agent. Keep concrete and falsifiable.
@@ -127,6 +134,7 @@ _AGENT_RUBRIC: dict[str, str] = {
     "sales": "Leads/outreach must be concrete and plausibly real, personalized, and grounded in the product. Reject obviously fabricated or generic blasts.",
     "design": "Specs must be concrete and implementable: real tokens, layouts, states. Reject vague mood-board prose.",
     "web": "Copy and structure must be specific to the product with real sections and concrete value props. Reject template/placeholder copy.",
+    "research_docs": "Market brief, ICP brief, and pricing hypothesis must be grounded in the research lanes' actual findings — real numbers, named companies, cited evidence. Reject generic filler or claims the research never supported.",
 }
 
 
