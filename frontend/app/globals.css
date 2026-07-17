@@ -236,6 +236,11 @@
 .copilot-rail-section { margin: 0 0 18px; }
 .copilot-rail-section > span { color: var(--fm); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .copilot-rail-section p { margin: 6px 0 0; color: var(--fg); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.copilot-goal-fields { margin: 8px 0 0; display: flex; flex-direction: column; gap: 7px; }
+.copilot-goal-field { display: flex; flex-direction: column; gap: 1px; }
+.copilot-goal-field dt { margin: 0; color: var(--fm); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+.copilot-goal-field dd { margin: 0; color: var(--fg); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.copilot-goal-field:first-child dd { font-weight: 650; font-size: 12.5px; }
 .copilot-rail-agents { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
 .copilot-rail-agents button { display: flex; justify-content: space-between; gap: 8px; padding: 6px 7px; border: 1px solid var(--bd); border-radius: 5px; background: rgba(255,255,255,.025); color: var(--fg); font-size: 10px; text-align: left; cursor: pointer; }
 .copilot-rail-agents small { color: #7cffc6; font-size: 8px; text-transform: uppercase; }
@@ -243,10 +248,10 @@
 .copilot-workbench-link { width: 100%; display: flex; justify-content: space-between; margin-top: auto; padding: 8px 0; border: 0; background: none; color: var(--blue); font-size: 10px; cursor: pointer; text-align: left; }
 .copilot-main-column { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 11px; }
 .copilot-main-column .session-copilot-intro { flex-shrink: 0; }
-.copilot-activity-panel { min-height: 0; border: 1px solid var(--bd); border-radius: 8px; background: rgba(255,255,255,.018); overflow: hidden; }
-.copilot-panel-heading { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--bd); color: var(--fg); font-size: 10px; font-weight: 700; }
+.copilot-activity-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--bd); border-radius: 8px; background: rgba(255,255,255,.018); overflow: hidden; }
+.copilot-panel-heading { flex-shrink: 0; display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--bd); color: var(--fg); font-size: 10px; font-weight: 700; }
 .copilot-panel-heading small { color: var(--fm); font-weight: 500; }
-.copilot-activity-feed { max-height: 230px; overflow-y: auto; padding: 7px 12px; }
+.copilot-activity-feed { flex: 1; min-height: 0; overflow-y: auto; padding: 7px 12px; }
 .copilot-activity-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--fd); }
 .copilot-activity-item:last-child { border-bottom: 0; }
 .copilot-activity-item svg { flex-shrink: 0; margin-top: 2px; color: var(--blue); }
@@ -276,7 +281,7 @@
 .session-agent-pulse b { align-self: end; font-size: 10.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .session-agent-pulse small { align-self: start; color: var(--fm); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .session-copilot-thread { flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 4px 4px; }
-.session-copilot-thread.is-empty { justify-content: flex-end; }
+.session-copilot-thread.is-empty { flex: 0 0 auto; min-height: 0; justify-content: flex-start; }
 .session-copilot-starters { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding-bottom: 16px; }
 .session-copilot-starters button { min-height: 34px; padding: 0 12px; border: 1px solid var(--bd); border-radius: 7px; background: rgba(255,255,255,0.025); color: var(--fd); font-size: 11px; cursor: pointer; }
 .session-chat-row { display: flex; align-items: flex-start; gap: 9px; }

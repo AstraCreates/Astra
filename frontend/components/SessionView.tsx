@@ -21,6 +21,36 @@ import RunStatusBadge from "@/components/RunStatusBadge";
 import RunTraceLink from "@/components/RunTraceLink";
 import { decideApproval as decideDurableApproval, getRunEvents, getRunSnapshot, type RunEvent, type RunSnapshot } from "@/lib/control-plane-api";
 import type { RunStatus } from "@/lib/run-status";
+import { goalTitle } from "@/lib/utils";
+
+// Tool log entries arrive as "tool_name: {\"arguments\":{...raw JSON...}}" —
+// reformatted into a human sentence everywhere a tool call is shown (the
+// Updates tab and the copilot's Live Session feed both need this; a raw
+// JSON dump reads as a leaked debug log, not a founder-facing update).
+const TOOL_VERBS: Record<string, string> = {
+  web_search: "Searching", search: "Searching", google_search: "Searching",
+  read_url: "Reading", fetch_url: "Reading", browse: "Reading", get_url: "Reading",
+  analyze: "Analyzing", analyze_market: "Analyzing market",
+  obsidian_log: "Saving notes", write_note: "Saving notes",
+  create_file: "Creating file", write_file: "Writing file", save_file: "Saving file",
+  generate_pdf: "Generating PDF", create_pdf: "Generating PDF",
+  send_email: "Sending email", draft_email: "Drafting email",
+  find_leads: "Finding leads", enrich_lead: "Enriching lead",
+  claude_code: "Building", deploy: "Deploying", git_push: "Pushing code",
+  create_repo: "Creating repo", create_design: "Creating design",
+};
+function fmtTool(text: string): string {
+  const ci = text.indexOf(": ");
+  const name = ci > 0 ? text.slice(0, ci) : text;
+  const argsRaw = ci > 0 ? text.slice(ci + 2) : "";
+  const verb = TOOL_VERBS[name] || `Using ${name.replace(/_/g, " ")}`;
+  try {
+    const args = JSON.parse(argsRaw);
+    const q = args.query || args.url || args.path || args.topic || args.subject || args.keyword || args.name || "";
+    if (q && typeof q === "string") return `${verb}: ${q.slice(0, 90)}`;
+  } catch {}
+  return verb;
+}
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -1099,7 +1129,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       for (const entry of agent.log || []) {
         const label = AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
         const kind = entry.type === "start" ? "start" : entry.type === "done" ? "done" : entry.type === "error" ? "error" : entry.type === "tool" ? "action" : "action";
-        const detail = entry.text && entry.text !== "Started" && entry.text !== "Agent finished" ? entry.text : undefined;
+        const detail = entry.text && entry.text !== "Started" && entry.text !== "Agent finished"
+          ? (entry.type === "tool" ? fmtTool(entry.text) : entry.text)
+          : undefined;
         items.push({ id: `${agent.key}-${entry.ts}-${entry.type}-${entry.text.slice(0, 12)}`, ts: entry.ts, agent: agent.key, label: kind === "start" ? `${label} started` : kind === "done" ? `${label} completed` : kind === "error" ? `${label} needs attention` : label, detail, kind });
       }
     }
@@ -1129,7 +1161,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         kind: "action",
       });
     }
-    if (st.goal) items.unshift({ id: "goal", ts: st.startedAt || 0, label: "Goal active", detail: st.goal, kind: "goal" });
+    if (st.goal) items.unshift({ id: "goal", ts: st.startedAt || 0, label: "Goal active", detail: goalTitle(st.goal, 140), kind: "goal" });
     return items
       .sort((a, b) => a.ts - b.ts)
       .filter((item, index, arr) => index === 0 || item.id !== arr[index - 1].id);
@@ -1323,7 +1355,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   })();
 
   const displayName = st.projectName || st.company || "";
-  const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
+  const shortGoal = st.goal ? goalTitle(st.goal, 70) : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
   const LABELS: Record<string, string> = { think: "Thinking", tool: "Searching", result: "Found", done: "Done", error: "Error", start: "Started" };
 
@@ -1678,24 +1710,43 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
-      {/* dept cards */}
+      {/* dept cards — full cards for depts that have started or need attention;
+          depts still waiting in the queue collapse into one compact pill row
+          instead of N near-identical "Queued / Waiting to start" cards. */}
       <div data-tour="session-depts" className="depts">
         {activeDepts.length === 0 ? <div style={{ padding: 6, fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>Waiting for agents… Astra is getting the team in motion, so you do not need to do anything yet.</div>
-        : activeDepts.map(([dk, d]) => {
-          const s = deptSt(d.inS);
-          const prog = d.inS.length ? Math.round(d.inS.filter((a) => st.agents[a].status === "done").length / d.inS.length * 100) : 0;
-          const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
-          const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
-          return (
-            <button key={dk} type="button"
-              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} aria-pressed={st.selDept === dk} onClick={() => sel(dk, null)}
-              style={{ border: "none", padding: 0, textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>
-              <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
-              <div className="dc-what">{deptWhat(d.inS)}</div>
-              <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
-            </button>
-          );
-        })}
+        : <>
+          {activeDepts.filter(([, d]) => deptSt(d.inS) !== "que").map(([dk, d]) => {
+            const s = deptSt(d.inS);
+            const prog = d.inS.length ? Math.round(d.inS.filter((a) => st.agents[a].status === "done").length / d.inS.length * 100) : 0;
+            const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
+            const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
+            return (
+              <button key={dk} type="button"
+                className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} aria-pressed={st.selDept === dk} onClick={() => sel(dk, null)}
+                style={{ border: "none", padding: 0, textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>
+                <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
+                <div className="dc-what">{deptWhat(d.inS)}</div>
+                <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
+              </button>
+            );
+          })}
+          {(() => {
+            const queued = activeDepts.filter(([, d]) => deptSt(d.inS) === "que");
+            if (!queued.length) return null;
+            return (
+              <div className="depts-queued" role="group" aria-label="Departments waiting to start">
+                <span className="depts-queued-label">Queued</span>
+                {queued.map(([dk, d]) => (
+                  <button key={dk} type="button" className={`dq${st.selDept === dk ? " sel" : ""}`}
+                    aria-label={`${d.n} department — Queued`} aria-pressed={st.selDept === dk} onClick={() => sel(dk, null)}>
+                    <span className="dq-ico">{d.ic}</span>{d.n}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </>}
       </div>
 
       {/* workspace: vault | detail */}
@@ -2095,31 +2146,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               const agentTag = (agent: string): string =>
                 (AGENT_LABELS as Record<string, string>)[agent] || agent.replace(/_/g, " ");
 
-              // Reformat a tool log entry into a human-readable action string
-              const TOOL_VERBS: Record<string, string> = {
-                web_search: "Searching", search: "Searching", google_search: "Searching",
-                read_url: "Reading", fetch_url: "Reading", browse: "Reading", get_url: "Reading",
-                analyze: "Analyzing", analyze_market: "Analyzing market",
-                obsidian_log: "Saving notes", write_note: "Saving notes",
-                create_file: "Creating file", write_file: "Writing file", save_file: "Saving file",
-                generate_pdf: "Generating PDF", create_pdf: "Generating PDF",
-                send_email: "Sending email", draft_email: "Drafting email",
-                find_leads: "Finding leads", enrich_lead: "Enriching lead",
-                claude_code: "Building", deploy: "Deploying", git_push: "Pushing code",
-                create_repo: "Creating repo", create_design: "Creating design",
-              };
-              const fmtTool = (text: string): string => {
-                const ci = text.indexOf(": ");
-                const name = ci > 0 ? text.slice(0, ci) : text;
-                const argsRaw = ci > 0 ? text.slice(ci + 2) : "";
-                const verb = TOOL_VERBS[name] || `Using ${name.replace(/_/g, " ")}`;
-                try {
-                  const args = JSON.parse(argsRaw);
-                  const q = args.query || args.url || args.path || args.topic || args.subject || args.keyword || args.name || "";
-                  if (q && typeof q === "string") return `${verb}: ${q.slice(0, 90)}`;
-                } catch {}
-                return verb;
-              };
+              // fmtTool/TOOL_VERBS are hoisted to module scope (also used by
+              // the copilot's Live Session feed) — reused here as-is.
 
               // First sentence from think text
               const thinkSnippet = (raw: string): string => {
