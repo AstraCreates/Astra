@@ -354,7 +354,7 @@ function AgentModal({
                 checked={scheduleOn}
                 onChange={(e) => setScheduleOn(e.target.checked)}
               />
-              <span className="f-toggle-track" />
+              <span className="f-toggle-track"><span className="led-dot" /></span>
               <span style={{ fontSize: 13, color: "var(--fd)", fontWeight: 500 }}>
                 Run automatically on a schedule
               </span>

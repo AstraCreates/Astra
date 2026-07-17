@@ -1500,59 +1500,77 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
 
 /* ════════════════════════════════════════════════════════════════
    SKEUOMORPHIC HARDWARE CONTROLS
-   Real dial/pad/switch material — radial-gradient bodies, specular
-   highlight, deep bezel, floating LED glow. Replaces the flat toggle
-   and segmented-control styles above with an actual control-surface
-   finish instead of a generic box-shadow tint.
+   One shared control material (body gradient + rim + specular +
+   bezel) used identically by every knob-like element, so the toggle,
+   segmented pads, and transport buttons read as one console instead
+   of separate widgets. Only the accent glow varies, and only within
+   a narrow, restrained hue set — same discipline as the reference.
    ════════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
-  --knob-body: radial-gradient(circle at 32% 26%, #313d59 0%, #212b45 32%, #141b30 62%, #0a0e1c 100%);
-  --knob-body-lit: radial-gradient(circle at 32% 26%, #3a4870 0%, #26325a 32%, #161f3a 62%, #0a0e1c 100%);
-  --knob-rim-hi: rgba(168, 190, 255, .55);
-  --knob-rim-lo: rgba(0, 0, 0, .9);
+  --ctrl-body: radial-gradient(120% 140% at 30% 18%, #303c58 0%, #232c46 28%, #161d33 58%, #0a0e1c 100%);
+  --ctrl-rim: rgba(160, 180, 255, .16);
+  --ctrl-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -14px 18px -10px rgba(0,0,0,.9),
+    inset 0 0 0 1px rgba(0,0,0,.55),
+    0 1px 0 rgba(255,255,255,.04),
+    0 10px 22px -8px rgba(0,0,0,.6);
+  --ctrl-shadow-press: inset 0 5px 10px rgba(0,0,0,.85), inset 0 0 0 1px rgba(0,0,0,.6);
+  /* restrained accent set — pulled straight from the reference photo */
+  --acc-violet: #a9a3ff;
+  --acc-mint:   #52e0b8;
+  --acc-pink:   #ef7fc4;
+  --acc-amber:  #e8c777;
+  --acc-red:    #ef5b5b;
 }
 
-/* Toggle switch — pill capsule body with a floating LED above it. */
-.f-toggle { padding-top: 11px; }
-.f-toggle-track {
-  width: 40px; height: 22px; border-radius: 999px;
-  background: var(--knob-body, var(--bd2)) !important;
-  border: 1px solid rgba(0,0,0,.55) !important;
-  box-shadow:
-    inset 0 2px 4px rgba(0,0,0,.85),
-    inset 0 -1px 0 var(--knob-rim-hi, rgba(255,255,255,.1)),
-    inset 0 0 0 1px rgba(0,0,0,.4),
-    0 1px 0 rgba(255,255,255,.05) !important;
-  transition: background .2s, box-shadow .2s;
+/* Shared specular highlight + bezel, applied once, reused by every control. */
+.f-toggle-track, .f-seg-opt, .ctrl-pad {
+  position: relative;
+  background: var(--ctrl-body) !important;
+  box-shadow: var(--ctrl-shadow) !important;
+  transition: box-shadow .18s, background .18s, transform .12s;
 }
-.f-toggle-track::before {
-  content: ''; position: absolute; left: 50%; top: -10px;
-  width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
-  background: #3a4257; box-shadow: none;
-  transition: background .2s, box-shadow .2s;
+.f-toggle-track::before, .f-seg-opt::before, .ctrl-pad::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.16), transparent 55%);
+  pointer-events: none;
+}
+
+/* Toggle switch — pill capsule, one small accent LED floating above. */
+.f-toggle { padding-top: 12px; }
+.f-toggle-track {
+  width: 38px; height: 21px; border-radius: 999px;
+  border: 1px solid rgba(0,0,0,.6) !important;
 }
 .f-toggle-track::after {
-  width: 16px; height: 16px; top: 2px; left: 2px;
-  background: radial-gradient(circle at 34% 28%, #fefeff, #cfd6e6 70%, #aab2c9 100%) !important;
+  content: '';
+  position: absolute; top: 2px; left: 2px;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #fefeff, #cdd4e4 70%, #a7afc7 100%) !important;
   box-shadow: 0 1px 2px rgba(0,0,0,.5), inset 0 -1px 1px rgba(0,0,0,.15) !important;
+  transition: transform .2s var(--ease-out-quint, ease);
+}
+.led-dot {
+  position: absolute; left: 50%; top: -9px;
+  width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  background: #333c52;
+  box-shadow: none;
+  transition: background .2s, box-shadow .2s;
 }
 .f-toggle-in:checked + .f-toggle-track {
-  background: var(--knob-body-lit, var(--blue)) !important;
-  border-color: rgba(125,143,255,.5) !important;
-  box-shadow:
-    inset 0 2px 4px rgba(0,0,0,.7),
-    inset 0 -1px 0 rgba(140,165,255,.35),
-    inset 0 0 10px rgba(90,130,255,.35),
-    0 0 14px rgba(60,100,255,.28) !important;
+  box-shadow: var(--ctrl-shadow), inset 0 0 8px rgba(82,224,184,.18) !important;
 }
-.f-toggle-in:checked + .f-toggle-track::before {
-  background: #7ef2c2;
-  box-shadow: 0 0 5px 1px #7ef2c2, 0 0 12px 3px rgba(126,242,194,.5);
+.f-toggle-in:checked + .f-toggle-track::after { transform: translateX(17px); }
+.f-toggle-in:checked + .f-toggle-track .led-dot {
+  background: var(--acc-mint);
+  box-shadow: 0 0 5px 1px var(--acc-mint), 0 0 12px 3px rgba(82,224,184,.5);
 }
-.f-toggle-in:checked + .f-toggle-track::after { transform: translateX(18px); }
-.f-toggle-in:focus-visible + .f-toggle-track { outline: 2px solid #8da0ff; outline-offset: 3px; }
+.f-toggle-in:focus-visible + .f-toggle-track { outline: 2px solid var(--acc-violet); outline-offset: 3px; }
 
-/* Segmented control — a row of pressed metal pads, not flat pill tabs. */
+/* Segmented control — a row of pressed pads sharing the same well as the track. */
 .f-seg {
   background: var(--well, var(--bg-sunken)) !important;
   border: 1px solid rgba(0,0,0,.6) !important;
@@ -1563,49 +1581,51 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
 .f-seg-opt {
   border-radius: 8px !important;
   background: transparent !important;
+  box-shadow: none !important;
   color: var(--fm) !important;
-  position: relative;
 }
+.f-seg-opt::before { opacity: 0; transition: opacity .18s; }
 .f-seg-opt.active {
-  background: var(--knob-body, var(--surface)) !important;
-  color: #eaf0ff !important;
-  box-shadow:
-    inset 0 1px 0 var(--knob-rim-hi, rgba(255,255,255,.2)),
-    inset 0 -2px 4px rgba(0,0,0,.65),
-    inset 0 0 0 1px rgba(0,0,0,.5),
-    0 0 10px rgba(70,110,255,.22) !important;
+  color: #eef2ff !important;
+  box-shadow: var(--ctrl-shadow), 0 0 10px rgba(169,163,255,.16) !important;
 }
-[data-theme="dark"] .f-seg-opt.active { box-shadow:
-    inset 0 1px 0 var(--knob-rim-hi),
-    inset 0 -2px 4px rgba(0,0,0,.65),
-    inset 0 0 0 1px rgba(0,0,0,.5),
-    0 0 10px rgba(70,110,255,.22) !important;
-}
+.f-seg-opt.active::before { opacity: 1; }
 
-/* Run-transport pads (SessionView pause/resume/stop/restart) — the
-   reference photo's colored icon-pad row, mapped onto the existing
-   text buttons by aria-label so no markup changes are needed. */
+/* Run-transport pads — same shared material as the toggle/segmented
+   control above, mapped onto the existing buttons by aria-label so
+   no markup changes are needed. Fixed footprint so icon-only and
+   text buttons read as one matched row, not mismatched widgets. */
 [data-theme="dark"] button[aria-label="Pause run"],
 [data-theme="dark"] button[aria-label="Resume run"],
 [data-theme="dark"] button[aria-label="Stop run"],
 [data-theme="dark"] button[aria-label="Restart run"],
 [data-theme="dark"] button[aria-label="Cancel restart"],
 [data-theme="dark"] button[aria-label="Confirm restart run"] {
-  background: var(--knob-body) !important;
+  background: var(--ctrl-body) !important;
   border: 1px solid rgba(0,0,0,.6) !important;
   border-radius: 8px !important;
-  box-shadow:
-    inset 0 1px 0 var(--knob-rim-hi),
-    inset 0 -3px 0 rgba(0,0,0,.7),
-    0 2px 0 rgba(0,0,0,.6),
-    0 6px 12px rgba(0,0,0,.3) !important;
+  box-shadow: var(--ctrl-shadow) !important;
+  min-width: 40px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
   text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  position: relative;
 }
-[data-theme="dark"] button[aria-label="Pause run"] { color: #f5c463 !important; box-shadow: inset 0 1px 0 var(--knob-rim-hi), inset 0 -3px 0 rgba(0,0,0,.7), 0 2px 0 rgba(0,0,0,.6), 0 0 12px rgba(245,196,99,.22) !important; }
-[data-theme="dark"] button[aria-label="Resume run"] { color: #7ef2c2 !important; box-shadow: inset 0 1px 0 var(--knob-rim-hi), inset 0 -3px 0 rgba(0,0,0,.7), 0 2px 0 rgba(0,0,0,.6), 0 0 12px rgba(126,242,194,.22) !important; }
-[data-theme="dark"] button[aria-label="Stop run"],
-[data-theme="dark"] button[aria-label="Confirm restart run"] { color: #ff8a8a !important; box-shadow: inset 0 1px 0 var(--knob-rim-hi), inset 0 -3px 0 rgba(0,0,0,.7), 0 2px 0 rgba(0,0,0,.6), 0 0 12px rgba(255,90,90,.24) !important; }
-[data-theme="dark"] button[aria-label="Restart run"] { color: #b9a6ff !important; box-shadow: inset 0 1px 0 var(--knob-rim-hi), inset 0 -3px 0 rgba(0,0,0,.7), 0 2px 0 rgba(0,0,0,.6), 0 0 12px rgba(160,130,255,.22) !important; }
+[data-theme="dark"] button[aria-label="Pause run"]::before,
+[data-theme="dark"] button[aria-label="Resume run"]::before,
+[data-theme="dark"] button[aria-label="Stop run"]::before,
+[data-theme="dark"] button[aria-label="Restart run"]::before,
+[data-theme="dark"] button[aria-label="Cancel restart"]::before,
+[data-theme="dark"] button[aria-label="Confirm restart run"]::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 55%);
+  pointer-events: none;
+}
+[data-theme="dark"] button[aria-label="Pause run"] { color: var(--acc-amber) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(232,199,119,.16) !important; }
+[data-theme="dark"] button[aria-label="Resume run"] { color: var(--acc-mint) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(82,224,184,.18) !important; }
+[data-theme="dark"] button[aria-label="Stop run"] { color: var(--acc-mint) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(82,224,184,.14) !important; }
+[data-theme="dark"] button[aria-label="Confirm restart run"] { color: var(--acc-red) !important; box-shadow: var(--ctrl-shadow), 0 0 10px rgba(239,91,91,.22) !important; }
+[data-theme="dark"] button[aria-label="Restart run"],
+[data-theme="dark"] button[aria-label="Cancel restart"] { color: var(--acc-violet) !important; box-shadow: var(--ctrl-shadow), 0 0 9px rgba(169,163,255,.16) !important; }
 [data-theme="dark"] button[aria-label="Pause run"]:active,
 [data-theme="dark"] button[aria-label="Resume run"]:active,
 [data-theme="dark"] button[aria-label="Stop run"]:active,
@@ -1613,16 +1633,16 @@ tr:nth-child(even) { background: rgba(255,255,255,.018) !important; }
 [data-theme="dark"] button[aria-label="Cancel restart"]:active,
 [data-theme="dark"] button[aria-label="Confirm restart run"]:active {
   transform: translateY(2px) !important;
-  box-shadow: inset 0 3px 6px rgba(0,0,0,.8) !important;
+  box-shadow: var(--ctrl-shadow-press) !important;
 }
 
-/* Status/presence LEDs get real bloom instead of a flat filter. */
+/* Status/presence LEDs — same restrained accent set, real bloom. */
 .v-dot {
   border-radius: 50% !important;
   box-shadow: 0 0 0 2px rgba(0,0,0,.5) !important;
 }
-.v-dot.ready { box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 6px 1px rgba(34,197,94,.7) !important; }
-.v-dot.live { box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 7px 2px rgba(245,158,11,.75) !important; }
+.v-dot.ready { background: var(--acc-mint) !important; box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 6px 1px rgba(82,224,184,.65) !important; }
+.v-dot.live { background: var(--acc-amber) !important; box-shadow: 0 0 0 2px rgba(0,0,0,.5), 0 0 7px 2px rgba(232,199,119,.7) !important; }
 .v-dot.pend { box-shadow: 0 0 0 2px rgba(0,0,0,.5) !important; opacity: .5; }
 
 @media (prefers-reduced-motion: reduce) {
