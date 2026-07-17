@@ -525,7 +525,11 @@ async def start_continue_run(
                 continue_kwargs["exclude_agents"] = exclude_agents
             if research_depth:
                 continue_kwargs["research_depth"] = research_depth
-            await orch.continue_run(**continue_kwargs)
+            _continue_result = await orch.continue_run(**continue_kwargs)
+            # Same fix as the fresh-run path below: continue_run() never raises
+            # for an incomplete run, it just publishes goal_error internally.
+            if isinstance(_continue_result, dict) and _continue_result.get("ok") is False:
+                final_status = "error"
         except asyncio.CancelledError:
             final_status = "killed"
             try:
@@ -901,12 +905,19 @@ async def start_run(
 
             final_status = "done"
             try:
-                await orch.run(
+                _run_result = await orch.run(
                     goal=goal_instruction,
                     founder_id=body.founder_id,
                     constraints=constraints,
                     session_id=resolved_run_id,
                 )
+                # orch.run() never raises for an incomplete run -- failures are
+                # handled internally via a goal_error event, not an exception --
+                # so "no exception" alone is not "succeeded". Confirmed
+                # production bug: a run where every non-research agent got
+                # orphaned still wrote astra_runs.status=succeeded.
+                if isinstance(_run_result, dict) and _run_result.get("ok") is False:
+                    final_status = "error"
             except asyncio.CancelledError:
                 final_status = "killed"
                 logger.info("goal run killed session=%s", resolved_run_id)

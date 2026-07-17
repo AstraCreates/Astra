@@ -1577,13 +1577,17 @@ class Orchestrator:
                     await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": tid, "error": err_msg})
 
             await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
-            await publish(session_id, {"type": "goal_done", "session_id": session_id})
+            _bypass_ok = all(not isinstance(completed.get(t["id"]), dict) or "error" not in completed[t["id"]] for t in bypass_tasks)
+            if _bypass_ok:
+                await publish(session_id, {"type": "goal_done", "session_id": session_id})
+            else:
+                await publish(session_id, {"type": "goal_error", "error": "One or more agents failed.", "results": completed})
             asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
             asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
             if _original_models:
                 for _name, _orig in _original_models.items():
                     self.specialists[_name].model = _orig
-            return {"session_id": session_id, "results": completed}
+            return {"session_id": session_id, "results": completed, "ok": _bypass_ok}
 
         # Run only configured research specialists in parallel.
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
@@ -2653,6 +2657,14 @@ class Orchestrator:
             })
         else:
             await publish(session_id, {"type": "goal_done", "results": completed})
+        # start_run.py sets astra_runs.status purely on whether orch.run() raised
+        # -- it never raises for an incomplete run (failures are handled here via
+        # the goal_error event above, not an exception), so without this flag a
+        # run with every agent orphaned still gets written to the DB as
+        # "succeeded". Confirmed production bug: a run where research failed and
+        # every other agent got "run halted before this agent completed" still
+        # showed status=succeeded / "Run complete" in the UI.
+        run_ok = not bool(completion_failures)
         # Transition into continuous operation on BOTH paths. A partially-successful
         # run (some agents failed) is exactly when the founder needs the system to keep
         # working the open tasks — gating this on a zero-failure run means it almost
@@ -2744,7 +2756,7 @@ class Orchestrator:
             except Exception as _pe:
                 logger.warning("Proprietary engine post_run failed: %s", _pe)
 
-        return {"session_id": session_id, "results": completed, "shared": shared}
+        return {"session_id": session_id, "results": completed, "shared": shared, "ok": run_ok}
 
     async def continue_run(
         self,
@@ -3098,7 +3110,11 @@ class Orchestrator:
                 await _run_task_guarded(task)
 
         await asyncio.gather(*[_run_task_with_limit(t, agent_semaphore) for t in tasks])
-        await publish(session_id, {"type": "goal_done", "results": completed})
+        _continue_ok = all(not isinstance(v, dict) or "error" not in v for v in completed.values())
+        if _continue_ok:
+            await publish(session_id, {"type": "goal_done", "results": completed})
+        else:
+            await publish(session_id, {"type": "goal_error", "error": "One or more agents failed.", "results": completed})
         asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, instruction))
         asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
         try:
@@ -3114,4 +3130,4 @@ class Orchestrator:
             )
         except Exception as _bl:
             logger.warning("Continuation backend log failed: %s", _bl)
-        return {"session_id": session_id, "results": completed}
+        return {"session_id": session_id, "results": completed, "ok": _continue_ok}
