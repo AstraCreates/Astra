@@ -2693,7 +2693,28 @@ class Orchestrator:
             if not _task.done():
                 _task.cancel()
         if background_tasks:
-            await asyncio.gather(*background_tasks, return_exceptions=True)
+            # cancel() only requests cancellation -- it does not guarantee the
+            # task actually unwinds promptly. Confirmed production bug: a
+            # background task (e.g. _bg_replan, which can legitimately poll
+            # for up to 10 minutes waiting on research completion) that spawns
+            # ANOTHER background task of its own right as cancellation lands
+            # can dodge it, leaving this gather() to wait out the full
+            # original timeout instead of the handful of seconds cancellation
+            # should take -- hanging the entire run. These are all best-effort
+            # background enrichment (replan, detailed plan, deliverable sync),
+            # never something the founder-facing run should block on, so give
+            # cleanup a bounded grace period and move on regardless.
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*background_tasks, return_exceptions=True),
+                    timeout=20,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Background tasks did not finish within 20s of cancellation for session %s "
+                    "-- proceeding without waiting further (best-effort work only).",
+                    session_id,
+                )
         try:
             from backend.tools.obsidian_logger import obsidian_session_index, obsidian_backend_log
             from backend.core.events import _event_log
