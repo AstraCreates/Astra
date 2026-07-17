@@ -366,10 +366,10 @@ export default function DashboardView() {
         @keyframes mascot-float { 0%,100%{transform:translateY(-44%)} 50%{transform:translateY(calc(-44% - 5px))} }
       `}</style>
 
-      <div className="tactile-dashboard" style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
         {/* ── Hero — exact from reference HTML ── */}
-        <div className="tactile-dashboard-hero" style={{ position: "relative", height: 240, flexShrink: 0, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
+        <div style={{ position: "relative", height: 240, flexShrink: 0, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
           <img src="/hero-lineart.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(5,7,14,0.82) 0%, rgba(5,7,14,0.44) 42%, transparent 72%)" }} />
           <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -399,7 +399,7 @@ export default function DashboardView() {
         )}
 
         {/* ── Body — exact padding from reference ── */}
-        <div className="tactile-dashboard-body" style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22, flex: 1 }}>
+        <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22, flex: 1 }}>
 
           {/* TODAY */}
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
@@ -408,7 +408,7 @@ export default function DashboardView() {
           <div style={{ display: "flex", gap: 18, alignItems: "stretch", minHeight: 260 }}>
 
             {/* Active Goal — exact from reference */}
-            <div className="tactile-dashboard-panel" style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
+            <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Active goal</div>
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
@@ -472,7 +472,7 @@ export default function DashboardView() {
             </div>
 
             {/* Recent Runs */}
-            <div className="tactile-dashboard-panel" style={{ flex: 1, minWidth: 0, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
+            <div style={{ flex: 1, minWidth: 0, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                 <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Recent runs</div>
                 <button onClick={() => setViewMode(v => v === "populated" ? "first-run" : "populated")}
@@ -518,7 +518,7 @@ export default function DashboardView() {
                         })(),
                       },
                     ].map(({ label, value }) => (
-                      <div key={label} className="tactile-dashboard-metric" style={{ background: "rgb(7,9,17)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 9, padding: 12 }}>
+                      <div key={label} style={{ background: "rgb(7,9,17)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 9, padding: 12 }}>
                         <div style={{ fontSize: 10.5, color: "rgb(111,123,152)" }}>{label}</div>
                         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 5 }}>{value}</div>
                       </div>
@@ -577,7 +577,7 @@ export default function DashboardView() {
           </div>
 
           {/* Automations — exact from reference */}
-          <div className="tactile-dashboard-automation" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>
             <div>
               <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Automations</div>
               <div style={{ fontSize: 13, color: "rgb(195,203,224)", marginTop: 6 }}>
@@ -630,7 +630,7 @@ export default function DashboardView() {
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width; padding clears visible astronaut body */}
-              <div className="tactile-dashboard-composer" style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}

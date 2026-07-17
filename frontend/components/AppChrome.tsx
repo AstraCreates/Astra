@@ -36,14 +36,14 @@ function SignInScreen() {
   };
 
   return (
-    <div className="astra-auth-shell" style={{
+    <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
       background: "var(--bg)",
       backgroundImage: "radial-gradient(circle at 18% 14%, rgba(0,46,255,0.14), transparent 0 22%), radial-gradient(circle at 82% 16%, rgba(124,255,198,0.12), transparent 0 18%), linear-gradient(180deg, rgba(255,255,255,0.06), transparent 32%)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
     }}>
-      <div className="astra-auth-panel" style={{
+      <div style={{
         background: "linear-gradient(180deg, var(--surface), var(--s2))",
         border: "1px solid var(--bd2)",
         borderRadius: 24,
