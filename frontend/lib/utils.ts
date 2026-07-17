@@ -17,7 +17,9 @@ export function parseGoalFields(goal: string): GoalField[] {
   return (goal || "")
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean)
+    // Drop blank lines and separator artifacts ("---") some goal strings
+    // carry between sections — they're not a field, just noise.
+    .filter((line) => line && /[a-z0-9]/i.test(line))
     .map((line) => {
       const i = line.indexOf(": ");
       return i > 0 ? { label: line.slice(0, i), value: line.slice(i + 2) } : { label: "", value: line };

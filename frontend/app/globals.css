@@ -236,11 +236,11 @@
 .copilot-rail-section { margin: 0 0 18px; }
 .copilot-rail-section > span { color: var(--fm); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .copilot-rail-section p { margin: 6px 0 0; color: var(--fg); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
-.copilot-goal-fields { margin: 8px 0 0; display: flex; flex-direction: column; gap: 7px; }
-.copilot-goal-field { display: flex; flex-direction: column; gap: 1px; }
-.copilot-goal-field dt { margin: 0; color: var(--fm); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
-.copilot-goal-field dd { margin: 0; color: var(--fg); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
-.copilot-goal-field:first-child dd { font-weight: 650; font-size: 12.5px; }
+.copilot-goal-fields { margin: 10px 0 0; display: flex; flex-direction: column; gap: 14px; }
+.copilot-goal-field { display: flex; flex-direction: column; gap: 4px; }
+.copilot-goal-field dt { margin: 0; color: var(--fm); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+.copilot-goal-field dd { margin: 0; color: var(--fg); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.copilot-goal-field:first-child dd { font-weight: 650; font-size: 13px; margin-bottom: 2px; }
 .copilot-rail-agents { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
 .copilot-rail-agents button { display: flex; justify-content: space-between; gap: 8px; padding: 6px 7px; border: 1px solid var(--bd); border-radius: 5px; background: rgba(255,255,255,.025); color: var(--fg); font-size: 10px; text-align: left; cursor: pointer; }
 .copilot-rail-agents small { color: #7cffc6; font-size: 8px; text-transform: uppercase; }
