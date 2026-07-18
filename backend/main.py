@@ -3,6 +3,7 @@ import logging
 import os
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from backend.api.routes import router
@@ -34,6 +35,31 @@ logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
 
 app = FastAPI(title="Astra API", version="1.0.0")
+
+# Phase 3 hard cutover: legacy runs and sessions are no longer a compatibility
+# surface. Keep this gate above all routers so none of their handlers can read
+# a legacy store, even if a stale client still knows an old URL.
+_REMOVED_LEGACY_EXACT = {"/goal", "/runs", "/sessions"}
+_REMOVED_LEGACY_PREFIXES = (
+    "/stream/", "/runs/", "/sessions/", "/steer/", "/copilot/",
+    "/input/", "/web-navigator/",
+)
+
+
+@app.middleware("http")
+async def reject_legacy_run_session_routes(request: Request, call_next):
+    path = request.url.path
+    if path in _REMOVED_LEGACY_EXACT or any(path.startswith(prefix) for prefix in _REMOVED_LEGACY_PREFIXES):
+        return JSONResponse(
+            status_code=410,
+            content={
+                "error": "legacy_run_session_removed",
+                "message": "Runs and sessions were removed. Use Company Home and the permanent Copilot conversation.",
+                "company_home": "/dashboard",
+            },
+            headers={"Sunset": "true"},
+        )
+    return await call_next(request)
 
 from backend.config import settings as _settings
 # Explicit allow-list only — never "*". Header-based auth (x-astra-user-id) means a
@@ -124,38 +150,6 @@ async def startup_background_jobs():
         _settings.tooluse_model_name,
         _settings.chat_model_name,
     )
-    # Reconcile sessions left "running"/"queued" by a prior process crash/restart.
-    # This is a durable-store sweep and must not block readiness on a large store.
-    async def _reconcile_sessions_in_background() -> None:
-        try:
-            from backend.core.session_store import reconcile_orphaned_sessions
-            reconciled = await asyncio.to_thread(reconcile_orphaned_sessions)
-            if reconciled:
-                logger.info("startup session reconciliation: marked %d orphaned session(s) as error: %s", len(reconciled), reconciled)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("startup session reconciliation failed: %s", exc)
-
-    _background_tasks.append(asyncio.create_task(_reconcile_sessions_in_background()))
-
-    # Copilot turns may intentionally outlive their original HTTP request. Their
-    # queued state lives in session metadata, so reconnect them after a restart.
-    # Recovery scans durable session metadata and must not block readiness: on a
-    # large store that scan can outlive the container health-check window.
-    async def _recover_copilot_turns_in_background() -> None:
-        try:
-            from backend.copilot import recover_pending_copilot_turns
-            recovered = await recover_pending_copilot_turns()
-            if recovered:
-                logger.info("startup copilot recovery: resumed %d pending turn(s)", recovered)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("startup copilot recovery failed: %s", exc)
-
-    _background_tasks.append(asyncio.create_task(_recover_copilot_turns_in_background()))
-
     async def _recover_company_os_work_in_background() -> None:
         try:
             from backend.company_os_runner import recover_pending_missions
@@ -167,23 +161,15 @@ async def startup_background_jobs():
         except Exception as exc:
             logger.warning("startup Company OS recovery failed: %s", exc)
 
-    _background_tasks.append(asyncio.create_task(_recover_company_os_work_in_background()))
-
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.company_os_phase1_scheduler import start_company_os_phase_1_scheduler
     start_company_os_phase_1_scheduler(interval_seconds=3600)
-    from backend.missions.scheduler import start_missions_scheduler
-    # Goal loop is event-driven (agent_done → tasks; complete goal → auto-chain).
-    # This scheduler is only a 30-min safety net to recover stalled goals.
-    await start_missions_scheduler(interval_seconds=1800)
-    from backend.custom_agents.scheduler import start_custom_agents_scheduler
-    # Recurring custom agents — checks for due agents every 15 min.
-    await start_custom_agents_scheduler(interval_seconds=900)
     from backend.monitoring.scheduler import start_monitoring_scheduler
     # Live company: re-verify shipped artifacts hourly (content weekly) + auto-heal.
     await start_monitoring_scheduler(interval_seconds=3600)
     _background_tasks[:] = [
+        asyncio.create_task(_recover_company_os_work_in_background()),
         asyncio.create_task(_platform_alert_loop()),
         asyncio.create_task(_pii_purge_loop()),
         asyncio.create_task(_budget_reservation_reaper_loop()),
@@ -272,11 +258,7 @@ async def shutdown_background_jobs():
     _background_tasks.clear()
     from backend.tools.company_brain_scheduler import stop_company_brain_scheduler
     await stop_company_brain_scheduler()
-    from backend.missions.scheduler import stop_missions_scheduler
-    from backend.custom_agents.scheduler import stop_custom_agents_scheduler
     from backend.monitoring.scheduler import stop_monitoring_scheduler
-    await stop_missions_scheduler()
-    await stop_custom_agents_scheduler()
     await stop_monitoring_scheduler()
 
 

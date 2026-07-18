@@ -410,10 +410,10 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     setOutputOpen(true);
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle" as const, output: undefined } })));
     try {
-      const res = await apiFetch(`${BASE}/automations/flows/${id}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ founder_id: userId }) });
+      const res = await apiFetch(`${BASE}/automations/flows/${id}/attempt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ founder_id: userId }) });
       if (!res.ok) throw new Error(String(res.status));
-      const { run_id } = await res.json();
-      pollRun(run_id);
+      const { attempt_id } = await res.json();
+      pollRun(attempt_id);
     } catch {
       setRunError("Failed to start run.");
       setRunning(false);
@@ -463,7 +463,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     if (pollRef.current) window.clearInterval(pollRef.current);
     pollRef.current = window.setInterval(async () => {
       try {
-        const res = await apiFetch(`${BASE}/automations/runs/${runId}?founder_id=${encodeURIComponent(userId)}`);
+        const res = await apiFetch(`${BASE}/automations/attempts/${runId}?founder_id=${encodeURIComponent(userId)}`);
         if (!res.ok) return;
         const run = await res.json();
         const results = run.node_results || {};

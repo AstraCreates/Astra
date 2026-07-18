@@ -10,7 +10,7 @@ import { desktopDownloadHref } from "@/lib/desktop-download";
 const LINKS: { href: string; label: string; match: (p: string) => boolean; svg: string }[] = [
   { href: "/dashboard",    label: "Dashboard",     match: p => p.startsWith("/dashboard"),
     svg: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
-  { href: "/goals",        label: "Checklist",     match: p => p.startsWith("/goals"),
+  { href: "/dashboard#initiatives", label: "Initiatives", match: p => p.startsWith("/dashboard"),
     svg: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>' },
   { href: "/outreach",     label: "Outreach",      match: p => p.startsWith("/outreach"),
     svg: '<path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z"/>' },
@@ -76,11 +76,11 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         </div>
       </div>
 
-      {/* New run */}
+      {/* Permanent Copilot entry point */}
       <div style={{ padding: "0 16px 16px" }}>
-        <Link data-tour="new-goal-btn" href="/dashboard?new=1"
+        <Link data-tour="ask-copilot-btn" href="/dashboard#copilot"
           style={{ display: "block", width: "100%", background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: 11, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 600, fontSize: 13, cursor: "pointer", textAlign: "center", textDecoration: "none" }}>
-          + New run
+          Ask Copilot
         </Link>
       </div>
 

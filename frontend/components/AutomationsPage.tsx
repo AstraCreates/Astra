@@ -189,14 +189,14 @@ export default function AutomationsPage() {
   async function doRunFlow(flowId: string) {
     setRunningFlow(flowId);
     try {
-      const res = await apiFetch(`${BASE}/automations/flows/${encodeURIComponent(flowId)}/run`, {
+      const res = await apiFetch(`${BASE}/automations/flows/${encodeURIComponent(flowId)}/attempt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ founder_id: userId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || String(res.status));
-      showFlash("success", `Flow started (${data?.run_id || "queued"}).`);
+      showFlash("success", `Automation started (${data?.attempt_id || "queued"}).`);
     } catch (e) {
       showFlash("error", e instanceof Error ? e.message : "Could not start flow.");
     } finally { setRunningFlow(""); }

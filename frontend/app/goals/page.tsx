@@ -1,5 +1,5 @@
-import ChecklistPage from "@/components/ChecklistPage";
+import { redirect } from "next/navigation";
 
 export default function GoalsPage() {
-  return <ChecklistPage />;
+  redirect("/dashboard#initiatives");
 }

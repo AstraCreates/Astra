@@ -406,8 +406,8 @@ async def automations_delete_flow(flow_id: str, founder_id: str, request: Reques
     return {"ok": True}
 
 
-@router.post("/automations/flows/{flow_id}/run")
-async def automations_run_flow(flow_id: str, body: AutomationFlowRunRequest, request: Request):
+@router.post("/automations/flows/{flow_id}/attempt")
+async def automations_start_attempt(flow_id: str, body: AutomationFlowRunRequest, request: Request):
     require_founder_access(request, body.founder_id, min_role="editor")
     from backend.core import automation_store
     if not automation_store.get_flow(body.founder_id, flow_id):
@@ -418,7 +418,12 @@ async def automations_run_flow(flow_id: str, body: AutomationFlowRunRequest, req
 
     run = automation_store.create_run(body.founder_id, flow_id)
     asyncio.create_task(run_automation_flow(body.founder_id, flow_id, run["run_id"]))
-    return {"ok": True, "run_id": run["run_id"], "status": "running"}
+    return {"ok": True, "attempt_id": run["run_id"], "status": "working"}
+
+
+@router.post("/automations/flows/{flow_id}/run", status_code=410)
+async def automations_legacy_start_removed(flow_id: str):
+    return {"error": "legacy_run_removed", "message": "Start the automation through its Company OS task attempt instead."}
 
 
 @router.post("/automations/hooks/{token}")
@@ -448,24 +453,34 @@ async def automations_webhook_trigger(token: str, request: Request):
 
     run = automation_store.create_run(founder_id, flow_id)
     asyncio.create_task(run_automation_flow(founder_id, flow_id, run["run_id"], trigger_payload=payload))
-    return {"ok": True, "run_id": run["run_id"], "status": "running"}
+    return {"ok": True, "attempt_id": run["run_id"], "status": "working"}
 
 
-@router.get("/automations/flows/{flow_id}/runs")
-async def automations_list_runs(flow_id: str, founder_id: str, request: Request, limit: int = 20):
+@router.get("/automations/flows/{flow_id}/attempts")
+async def automations_list_attempts(flow_id: str, founder_id: str, request: Request, limit: int = 20):
     require_founder_access(request, founder_id, min_role="viewer")
     from backend.core import automation_store
-    return {"runs": automation_store.list_runs(founder_id, flow_id=flow_id, limit=limit)}
+    return {"attempts": automation_store.list_runs(founder_id, flow_id=flow_id, limit=limit)}
 
 
-@router.get("/automations/runs/{run_id}")
-async def automations_get_run(run_id: str, founder_id: str, request: Request):
+@router.get("/automations/attempts/{attempt_id}")
+async def automations_get_attempt(attempt_id: str, founder_id: str, request: Request):
     require_founder_access(request, founder_id, min_role="viewer")
     from backend.core import automation_store
-    run = automation_store.get_run(founder_id, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return run
+    attempt = automation_store.get_run(founder_id, attempt_id)
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    return attempt
+
+
+@router.get("/automations/flows/{flow_id}/runs", status_code=410)
+async def automations_legacy_runs_removed(flow_id: str):
+    return {"error": "legacy_run_removed", "message": "Automation runs were replaced by Company OS task attempts."}
+
+
+@router.get("/automations/runs/{run_id}", status_code=410)
+async def automations_legacy_run_removed(run_id: str):
+    return {"error": "legacy_run_removed", "message": "Automation runs were replaced by Company OS task attempts."}
 
 
 @router.get("/stacks")

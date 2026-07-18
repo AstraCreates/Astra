@@ -220,7 +220,7 @@ export default function CompanyHome() {
           matching the width of the thread above it -- not a small floating
           box mid-page. */}
       <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", padding: "14px 20px" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+        <div id="copilot" style={{ maxWidth: 760, margin: "0 auto" }}>
           <AstraCopilotComposer
             value={message}
             onChange={setMessage}

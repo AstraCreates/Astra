@@ -1,68 +1,15 @@
-import { Suspense } from "react";
-import SessionView from "@/components/SessionView";
-import CustomAgentSessionView from "@/components/CustomAgentSessionView";
-import SessionRoute from "@/components/SessionRoute";
+import Link from "next/link";
 
-// Server-side: use the internal Docker service URL so the fetch works from
-// inside the frontend container without going through the public network.
-const BACKEND = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-async function fetchSessionMeta(sessionId: string) {
-  try {
-    const res = await fetch(`${BACKEND}/sessions/${encodeURIComponent(sessionId)}/meta`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    return res.json() as Promise<{
-      stack_id: string;
-      company_name: string;
-      goal: string;
-      status: string;
-      founder_id: string;
-    }>;
-  } catch {
-    return null;
-  }
-}
-
-export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const meta = await fetchSessionMeta(id);
-
-  if (meta?.stack_id === "custom") {
-    const rawStatus = meta.status ?? "running";
-    const initialStatus =
-      rawStatus === "done" || rawStatus === "completed" ? "done"
-      : rawStatus === "error" || rawStatus === "failed" ? "error"
-      : "running";
-
-    return (
-      <Suspense>
-        <CustomAgentSessionView
-          sessionId={id}
-          agentName={meta.company_name ?? ""}
-          goal={meta.goal ?? ""}
-          initialStatus={initialStatus}
-          founderId={meta.founder_id ?? ""}
-        />
-      </Suspense>
-    );
-  }
-
-  if (meta !== null) {
-    // SSR fetch succeeded and it's a regular session
-    return (
-      <Suspense>
-        <SessionView key={id} sessionId={id} />
-      </Suspense>
-    );
-  }
-
-  // SSR fetch failed (auth gated in this environment) — fall back to
-  // client-side detection so custom sessions still get their dedicated view.
+/** Phase 3 removal response. This route intentionally never reads session data. */
+export default function RemovedSessionPage() {
   return (
-    <Suspense>
-      <SessionRoute sessionId={id} />
-    </Suspense>
+    <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "var(--bg)" }}>
+      <section style={{ maxWidth: 520, padding: 32, border: "1px solid var(--border)", borderRadius: 16, background: "var(--bg-surface)", textAlign: "center" }}>
+        <p style={{ margin: "0 0 10px", color: "var(--accent)", fontSize: 12, fontWeight: 700, letterSpacing: ".12em" }}>REMOVED</p>
+        <h1 style={{ margin: "0 0 12px" }}>Runs and sessions no longer exist</h1>
+        <p style={{ margin: "0 0 24px", color: "var(--text-muted)", lineHeight: 1.6 }}>Astra now operates from one permanent Company Home conversation with named initiatives, squads, missions, and tasks.</p>
+        <Link href="/dashboard" style={{ display: "inline-block", padding: "11px 16px", borderRadius: 8, background: "var(--accent)", color: "white", fontWeight: 700, textDecoration: "none" }}>Open Company Home</Link>
+      </section>
+    </main>
   );
 }

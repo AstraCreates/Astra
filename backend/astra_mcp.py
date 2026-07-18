@@ -69,6 +69,8 @@ def reset_founder_override(token) -> None:
 def call_tool(name: str, arguments: dict, founder_id: str | None = None) -> Any:
     """Invoke an MCP tool by name in-process, as `founder_id`. Returns the raw
     handler payload (not MCP-wrapped). Raises on unknown tool."""
+    if name in _LEGACY_MCP_TOOLS:
+        raise ValueError("This MCP run/session tool was removed. Use Company OS tools instead.")
     fn = _DISPATCH.get(name)
     if fn is None:
         raise ValueError(f"Unknown tool: {name}")
@@ -347,6 +349,18 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
     },
 ]
+
+# The old MCP actions were session/run commands. Phase 3 keeps only tools that
+# operate on Company OS or bounded shared services; clients receive a removal
+# error rather than accidentally starting legacy work.
+_LEGACY_MCP_TOOLS = {
+    "astra_submit_goal", "astra_session_status", "astra_session_digest",
+    "astra_session_artifacts", "astra_chat_agent", "astra_steer",
+    "astra_message_agent", "astra_stop_agent", "astra_approve",
+    "astra_session_workboard", "astra_company_goal", "astra_approve_next_goal",
+    "astra_run_cycle",
+}
+TOOLS = [tool for tool in TOOLS if tool["name"] not in _LEGACY_MCP_TOOLS]
 
 # ── Tool implementations ──────────────────────────────────────────────────────
 
