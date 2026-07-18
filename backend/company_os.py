@@ -320,11 +320,15 @@ def _load_snapshot(directory: Path) -> dict[str, Any] | None:
     data = read_json(path, lambda: None)
     if not isinstance(data, dict) or "state" not in data or "last_sequence" not in data:
         raise ValueError(f"invalid Company OS snapshot: {path}")
+    if data.get("checksum") != _checksum(data):
+        raise ValueError(f"corrupt Company OS snapshot: {path}: checksum mismatch")
     return data
 
 
 def _write_snapshot(directory: Path, state: dict[str, Any], sequence: int) -> None:
-    write_json_atomic(_snapshot_path(directory), {"schema_version": 1, "last_sequence": sequence, "state": state}, sort_keys=True)
+    snapshot = {"schema_version": 1, "last_sequence": sequence, "state": state}
+    snapshot["checksum"] = _checksum(snapshot)
+    write_json_atomic(_snapshot_path(directory), snapshot, sort_keys=True)
 
 
 def _segments(directory: Path) -> list[Path]:

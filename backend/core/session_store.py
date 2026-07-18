@@ -253,8 +253,42 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
             _notify_run_done(session_id, success=False)
         elif etype == "stack_artifact":
             _increment_artifacts(session_id)
+        _maybe_phase_1_dual_write_legacy_event(session_id, event_id, event)
     except Exception as exc:
         logger.warning("session_store.append_event failed for %s: %s", session_id, exc)
+
+
+def _maybe_phase_1_dual_write_legacy_event(session_id: str, event_id: int, event: dict) -> None:
+    """Mirror every legacy event for an opted-in internal cohort, never customers."""
+    try:
+        from backend.company_os import create_company_os, get_company_os
+        from backend.company_os_integrity import record_phase_1_failure
+        from backend.company_os_phase1 import dual_write_legacy_activity, is_internal_test_cohort
+
+        meta = get_session_meta(session_id) or {}
+        company_id = str(meta.get("company_id") or meta.get("founder_id") or "")
+        if not company_id or not is_internal_test_cohort(company_id):
+            return
+        if get_company_os(company_id) is None:
+            create_company_os(company_id, str(meta.get("founder_id") or ""), str(meta.get("company_name") or "Company"))
+        payload = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        dual_write_legacy_activity(company_id, {
+            "type": "artifact.created",
+            "legacy_activity_id": f"legacy-event:{session_id}:{event_id}",
+            "artifact_id": f"legacy-event-{session_id}-{event_id}",
+            "name": f"Legacy event: {event.get('type', 'unknown')}",
+            "content": payload,
+            "legacy_session_id": session_id,
+            "legacy_event_id": event_id,
+            "legacy_event_type": event.get("type"),
+        })
+    except Exception as exc:
+        logger.warning("Company OS Phase 1 event dual-write failed for session=%s: %s", session_id, exc)
+        try:
+            if 'company_id' in locals() and company_id:
+                record_phase_1_failure(company_id, str(exc))
+        except Exception:
+            pass
 
 
 def _notify_run_done(session_id: str, success: bool) -> None:

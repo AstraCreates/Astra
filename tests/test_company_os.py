@@ -48,6 +48,17 @@ def test_events_validate_checksums_and_recover_only_torn_trailing_event(tmp_path
         company_os.replay_events("acme", root=root)
 
 
+def test_snapshot_checksum_rejects_tampering(tmp_path):
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "founder", "Acme", root=root)
+    snapshot = root / "acme" / "snapshot.json"
+    payload = json.loads(snapshot.read_text(encoding="utf-8"))
+    payload["state"]["name"] = "Tampered"
+    snapshot.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="snapshot.*checksum mismatch"):
+        company_os.get_company_os("acme", root=root)
+
+
 def test_snapshot_compaction_and_scope_validation(tmp_path):
     root = tmp_path / "company"
     company_os.create_company_os("acme", "f1", "Acme", root=root)

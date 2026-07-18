@@ -28,6 +28,7 @@ from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
 from backend.api.company_os_routes import router as company_os_router
+from backend.api.company_os_phase1_routes import router as company_os_phase1_router
 
 logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
@@ -69,6 +70,7 @@ app.include_router(outcomes_router)
 app.include_router(roadmap_router)
 app.include_router(company_router)
 app.include_router(company_os_router)
+app.include_router(company_os_phase1_router)
 app.include_router(team_map_router)
 app.include_router(connectors_router)
 app.include_router(notification_router)
@@ -155,6 +157,8 @@ async def startup_background_jobs():
 
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
+    from backend.company_os_phase1_scheduler import start_company_os_phase_1_scheduler
+    start_company_os_phase_1_scheduler(interval_seconds=3600)
     from backend.missions.scheduler import start_missions_scheduler
     # Goal loop is event-driven (agent_done → tasks; complete goal → auto-chain).
     # This scheduler is only a 30-min safety net to recover stalled goals.

@@ -7,6 +7,7 @@ import secrets
 import threading
 import time
 import uuid
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 # Short-TTL nonce store for OAuth state parameters.
@@ -620,6 +621,7 @@ async def submit_goal(body: GoalRequest, request: Request):
     from backend.control_plane.start_run import start_run as control_plane_start_run
 
     result = await control_plane_start_run(RunCreateRequest(**body.model_dump()), request)
+    await _maybe_phase_1_dual_write(body, result)
     response = result.to_response()
     response.pop("run_id", None)
     response.pop("workflow_id", None)
@@ -671,7 +673,60 @@ async def create_run(body: RunCreateRequest, request: Request):
     from backend.control_plane.start_run import start_run as control_plane_start_run
 
     result = await control_plane_start_run(body, request)
+    await _maybe_phase_1_dual_write(body, result)
     return result.to_response()
+
+
+async def _maybe_phase_1_dual_write(body: GoalRequest, result: Any) -> None:
+    """Shadow legacy submissions only for an explicitly enrolled internal company.
+
+    This is intentionally best-effort and never changes a legacy request's
+    response.  The durable Phase 1 receipt makes an outage observable through
+    parity evidence instead of silently blocking an internal cohort request.
+    """
+    company_id = str(getattr(result, "company_id", "") or body.company_id or body.founder_id)
+    try:
+        from backend.company_os import create_company_os, get_company_os
+        from backend.company_os_phase1 import assess_parity, dual_write_legacy_activity, is_internal_test_cohort
+        from backend.company_os_integrity import record_parity_evidence, run_recovery_drill
+        from backend.company_os_projection import rebuild_company_projections
+
+        if not company_id or not is_internal_test_cohort(company_id):
+            return
+        if get_company_os(company_id) is None:
+            create_company_os(company_id, body.founder_id, body.workspace_name or "Company")
+        activity = {
+            "type": "message.created",
+            "legacy_activity_id": f"legacy-run:{result.run_id}:submitted",
+            "id": f"legacy-run-{result.run_id}",
+            "message": body.instruction,
+            "author": "founder",
+            "scope": "company",
+            "legacy_run_id": result.run_id,
+            "legacy_event": "run_submitted",
+        }
+        fixture = {"fixture_id": f"legacy-run:{result.run_id}", "activities": [activity]}
+        await asyncio.to_thread(dual_write_legacy_activity, company_id, activity)
+        assessment = await asyncio.to_thread(assess_parity, company_id, fixture)
+        await asyncio.to_thread(
+            record_parity_evidence,
+            company_id,
+            source_event_count=assessment["event_count"]["expected"],
+            company_os_event_count=assessment["event_count"]["actual"],
+            source_artifacts={}, company_os_artifacts={}, source_task_states={}, company_os_task_states={},
+            cohort="internal-fixed",
+        )
+        await asyncio.to_thread(rebuild_company_projections, company_id)
+        await asyncio.to_thread(run_recovery_drill, company_id)
+    except Exception as exc:
+        logger.warning("Company OS Phase 1 dual-write failed for run=%s: %s", getattr(result, "run_id", ""), exc)
+        try:
+            from backend.company_os_phase1 import is_internal_test_cohort
+            from backend.company_os_integrity import record_phase_1_failure
+            if company_id and is_internal_test_cohort(company_id):
+                await asyncio.to_thread(record_phase_1_failure, company_id, str(exc))
+        except Exception as evidence_exc:
+            logger.error("Company OS Phase 1 failure evidence could not be recorded: %s", evidence_exc)
 
 
 @router.get("/runs/{run_id}")
