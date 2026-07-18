@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 # meta.json) is guarded by per-session locks so concurrent sessions don't
 # serialize their event writes through a single global lock — the main
 # contention point when many users run at once.
-_index_lock = threading.Lock()
+# list_sessions rebuilds then persists the shared index while holding this
+# lock. It intentionally re-enters through helpers, so a plain Lock deadlocks
+# every inventory/drain caller instead of returning an honest active-work list.
+_index_lock = threading.RLock()
 _session_locks: dict[str, threading.Lock] = {}
 _session_locks_guard = threading.Lock()
 
