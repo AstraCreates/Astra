@@ -27,6 +27,7 @@ from backend.api.preview_proxy import router as preview_proxy_router
 from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
+from backend.api.company_os_routes import router as company_os_router
 
 logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
@@ -67,6 +68,7 @@ app.include_router(genome_router)
 app.include_router(outcomes_router)
 app.include_router(roadmap_router)
 app.include_router(company_router)
+app.include_router(company_os_router)
 app.include_router(team_map_router)
 app.include_router(connectors_router)
 app.include_router(notification_router)

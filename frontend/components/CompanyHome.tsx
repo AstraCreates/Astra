@@ -1,0 +1,49 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Brain, ChevronDown, FileText, ShieldCheck, Sparkles, Users } from "lucide-react";
+import AstraCopilotComposer from "@/components/AstraCopilotComposer";
+import { useCompany } from "@/lib/company-context";
+import { getCompanyHomeData, sendCopilotMessage, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
+
+const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
+const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
+
+function SquadCard({ squad }: { squad: CompanyHomeSquad }) {
+  const [open, setOpen] = useState(false);
+  return <article style={{ border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)", overflow: "hidden" }}>
+    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ width: "100%", padding: "16px", border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "flex", gap: 12, alignItems: "center" }}>
+      <span style={{ width: 34, height: 34, borderRadius: "50%", display: "grid", placeItems: "center", color: "var(--accent)", background: "var(--accent-light)" }}><Users size={17} /></span>
+      <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 14 }}>{squad.name}</b><small style={{ display: "block", marginTop: 3, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{squad.activity}</small></span>
+      <span style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em" }}>{squad.lifecycle}</span><ChevronDown size={16} style={{ color: "var(--text-3)", transform: open ? "rotate(180deg)" : undefined, transition: "transform .18s" }} />
+    </button>
+    {open && <div style={{ padding: "0 16px 14px", borderTop: "1px solid var(--border)" }}>{squad.tasks.map(task => <div key={task.id} style={{ display: "flex", gap: 9, paddingTop: 12, fontSize: 12 }}><span style={{ width: 7, height: 7, flexShrink: 0, borderRadius: "50%", marginTop: 5, background: STATUS_COLOR[task.status] }} /><span style={{ color: "var(--text)", flex: 1 }}>{task.title}{task.note && <small style={{ display: "block", color: "var(--text-3)", marginTop: 2 }}>{task.note}</small>}</span><small style={{ color: "var(--text-3)" }}>{task.status}</small></div>)}</div>}
+  </article>;
+}
+
+export default function CompanyHome() {
+  const { founderId, companyId, activeCompany } = useCompany();
+  const [home, setHome] = useState(EMPTY);
+  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => { let live = true; void getCompanyHomeData({ founderId, companyId }).then(data => { if (live) setHome(data); }).catch(() => { if (live) setNotice("Company Home is ready while live data reconnects."); }); return () => { live = false; }; }, [founderId, companyId]);
+  const tasks = home.squads.flatMap(squad => squad.tasks);
+  const board = ["planned", "active", "waiting", "complete"] as const;
+
+  return <main style={{ minHeight: "100%", padding: "clamp(20px, 4vw, 48px)", background: "radial-gradient(circle at 88% 0%, var(--accent-light), transparent 28%), var(--bg)" }}>
+    <div style={{ maxWidth: 1440, margin: "0 auto" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start", flexWrap: "wrap", marginBottom: 28 }}><div><p style={{ margin: 0, color: "var(--accent)", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase" }}>Company Home</p><h1 style={{ margin: "7px 0", color: "var(--text)", fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-.045em" }}>{activeCompany?.name ?? home.companyName}</h1><p style={{ maxWidth: 640, margin: 0, color: "var(--text-3)", lineHeight: 1.55 }}>{home.northStar}</p></div><div style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text-3)", fontSize: 12 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#15803d" }} /> Company context connected</div></header>
+      {notice && <p style={{ color: "#9a3412", fontSize: 12 }}>{notice}</p>}
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.3fr) minmax(280px, .7fr)", gap: 18, marginBottom: 18 }}>
+        <div style={{ padding: 18, borderRadius: "var(--r-lg)", background: "var(--bg-ink)", color: "var(--text-invert)" }}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 13, fontSize: 13 }}><Sparkles size={16} /> Permanent Copilot</div>{home.conversation.length > 0 && <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto", marginBottom: 14 }}>{home.conversation.map(turn => <p key={turn.id} style={{ margin: 0, fontSize: 12, lineHeight: 1.45, color: turn.author === "copilot" ? "var(--text-invert)" : "var(--text-3)" }}><b>{turn.author === "copilot" ? "Copilot" : "You"}: </b>{turn.message}</p>)}</div>}<AstraCopilotComposer value={message} onChange={setMessage} disabled={sending} onSubmit={async (value) => { setSending(true); setNotice("Copilot is forming a squad and briefing the department lead..."); try { const result = await sendCopilotMessage({ founderId, companyId }, value); setHome(result.data); setNotice(result.message); setMessage(""); } catch { setNotice("Copilot could not reach Company OS. Your message was not lost locally."); } finally { setSending(false); } }} agents={home.squads.map(s => ({ id: s.id.replace(/[^a-z0-9_]/gi, "_").toLowerCase(), label: s.name, status: s.lifecycle.toLowerCase() }))} contextLabel={sending ? "Copilot is coordinating your squad" : "Grounded in Company Brain"} placeholder="Ask Astra to coordinate your company" /></div>
+        <aside style={{ padding: 18, border: "1px solid var(--border)", borderRadius: "var(--r-lg)", background: "var(--bg-surface)" }}><div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text)", fontWeight: 700 }}><Brain size={17} color="var(--accent)" /> Company Brain</div><p style={{ color: "var(--text-3)", fontSize: 12, lineHeight: 1.55 }}>{home.brain.summary}</p><div style={{ display: "flex", gap: 18, fontSize: 12 }}><span><b>{home.brain.recordCount}</b> records</span><span><b>{home.brain.sourceCount}</b> sources</span></div></aside>
+      </section>
+      <section style={{ marginBottom: 24 }}><h2 style={{ fontSize: 15, color: "var(--text)" }}>Initiatives</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>{home.initiatives.map(item => <article key={item.id} style={{ padding: 15, border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)" }}><b style={{ color: "var(--text)", fontSize: 13 }}>{item.title}</b><div style={{ height: 5, margin: "14px 0 8px", borderRadius: 8, background: "var(--bg-sunken)" }}><div style={{ width: `${item.progress}%`, height: "100%", borderRadius: 8, background: "var(--accent)" }} /></div><small style={{ color: "var(--text-3)" }}>{item.progress}% complete · {item.taskCount} tasks · {item.status}</small></article>)}</div></section>
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, .72fr)", gap: 18 }}><div><h2 style={{ fontSize: 15, color: "var(--text)" }}>Squad activity</h2><div style={{ display: "grid", gap: 10 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} />)}</div><h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Mission board</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 9, overflowX: "auto" }}>{board.map(status => <div key={status} style={{ minWidth: 150, padding: 10, borderRadius: "var(--r)", background: "var(--bg-sunken)" }}><b style={{ color: "var(--text-2)", fontSize: 11, textTransform: "capitalize" }}>{status}</b>{tasks.filter(task => task.status === status).map(task => <div key={task.id} style={{ marginTop: 9, padding: 9, borderRadius: 6, background: "var(--bg-surface)", color: "var(--text)", fontSize: 11 }}>{task.title}<small style={{ display: "block", color: "var(--text-3)", marginTop: 4 }}>{task.squad}</small></div>)}</div>)}</div></div>
+        <aside><h2 style={{ fontSize: 15, color: "var(--text)" }}>Approvals</h2><div style={{ display: "grid", gap: 10 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 14, border: "1px solid rgba(180,83,9,.35)", borderRadius: "var(--r)", background: "#fffaf0" }}><div style={{ display: "flex", gap: 8, color: "#92400e" }}><ShieldCheck size={16} /><b style={{ fontSize: 13 }}>{item.title}</b></div><p style={{ margin: "8px 0", fontSize: 12, color: "#78350f" }}>{item.detail}</p><small style={{ color: "#a16207" }}>{item.squad}</small></article>)}</div><h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Artifacts</h2><div style={{ display: "grid", gap: 8 }}>{home.brain.artifacts.map(item => <a key={item.id} href={item.url} target={item.url ? "_blank" : undefined} rel="noreferrer" style={{ display: "flex", gap: 9, padding: 11, color: "inherit", textDecoration: "none", border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)" }}><FileText size={16} color="var(--accent)" /><span style={{ minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</b><small style={{ color: "var(--text-3)" }}>{item.source} · {item.updatedAt}</small></span></a>)}</div></aside>
+      </section>
+    </div>
+  </main>;
+}

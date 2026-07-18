@@ -39,12 +39,12 @@ export default function Home() {
         </h1>
 
         <p className="sp-sub">
-          One goal. Twelve specialist agents. Research, legal, product, deploys,
-          and ops in a single coordinated run.
+          One permanent Copilot. Named squads coordinate research, product, design,
+          and operations around your company.
         </p>
 
         <button className="sp-cta" onClick={handleCta}>
-          {readySignedIn ? "Open dashboard" : "Start a run"} →
+          {readySignedIn ? "Open Company Home" : "Open your company"} →
         </button>
       </div>
     </AuroraBackground>

@@ -1,7 +1,7 @@
 "use client";
 
-import AppHome from "@/components/AppHome";
+import CompanyHome from "@/components/CompanyHome";
 
 export default function DashboardPage() {
-  return <AppHome />;
+  return <CompanyHome />;
 }
