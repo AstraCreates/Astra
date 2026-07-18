@@ -140,4 +140,14 @@ async def api_delete_file(
     deleted = delete_file(founder_id=founder_id, file_id=file_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="File not found")
+    # Keep the Company OS artifact projection in sync when the Library is the
+    # deletion entry point. Event history remains intact; the artifact is archived.
+    try:
+        from backend.company_os import list_company_os, update_artifact
+        for company in list_company_os(founder_id):
+            for artifact in company.get("artifacts", []):
+                if artifact.get("library_file_id") == file_id and artifact.get("state") != "archived":
+                    update_artifact(company["company_id"], artifact["artifact_id"], state="archived")
+    except Exception:
+        logger.warning("Library delete Company OS cascade failed file=%s", file_id, exc_info=True)
     return {"ok": True, "file_id": file_id, "deleted": True}

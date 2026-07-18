@@ -180,6 +180,17 @@ export async function deleteArtifact(scope: CompanyScope, artifactId: string, fe
   return normalizeCompanyOS(payload.company);
 }
 
+export async function editCompanyMessage(scope: CompanyScope, messageId: string, message: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(`${BASE}/companies/${encodeURIComponent(scope.companyId)}/os/messages/${encodeURIComponent(messageId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ founder_id: scope.founderId, message }) });
+  if (!response.ok) throw new Error(await response.text()); return normalizeCompanyOS(record(await response.json()).company);
+}
+
+export async function deleteCompanyMessage(scope: CompanyScope, messageId?: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const path = messageId ? `/messages/${encodeURIComponent(messageId)}` : "/messages";
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os${path}`, scope), { method: "DELETE" });
+  if (!response.ok) throw new Error(await response.text()); return normalizeCompanyOS(record(await response.json()).company);
+}
+
 export async function getCompanyArtifact(scope: CompanyScope, artifactId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyArtifactDetail> {
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope));
   if (!response.ok) throw new Error(await response.text());

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, PanelRightClose, PanelRightOpen, ShieldCheck, Sparkles, Trash2, Users } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { deleteArtifact, deleteInitiative, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
+import { deleteArtifact, deleteCompanyMessage, deleteInitiative, editCompanyMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -45,6 +45,7 @@ export default function CompanyHome() {
   const [artifactError, setArtifactError] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
+  const [editingMessage, setEditingMessage] = useState("");
   const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
@@ -130,6 +131,12 @@ export default function CompanyHome() {
     }
   };
 
+  const updateMessage = async (id: string, current: string) => {
+    const next = window.prompt("Edit message", current);
+    if (!next || next === current) return;
+    setEditingMessage(id); try { setHome(await editCompanyMessage({ founderId, companyId }, id, next)); } finally { setEditingMessage(""); }
+  };
+
   const tasks = home.squads.flatMap(squad => squad.tasks);
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
@@ -163,6 +170,7 @@ export default function CompanyHome() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--text-3)", fontSize: 11 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#15803d" }} /> Connected</span>
+          <button type="button" onClick={() => { if (window.confirm("Clear this conversation?")) void deleteCompanyMessage({ founderId, companyId }).then(setHome); }} style={{ border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-3)", padding: "7px 9px", cursor: "pointer", fontSize: 11 }}>Clear chat</button>
           <button type="button" aria-label={railOpen ? "Hide company status panel" : "Show company status panel"} onClick={() => setRailOpen(!railOpen)} className="company-home-rail-toggle" style={{ width: 32, height: 32, display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-3)", cursor: "pointer" }}>
             {railOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
           </button>
@@ -191,7 +199,7 @@ export default function CompanyHome() {
                 return (
                   <div key={turn.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>
                     {!isFounder && <span style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff" }}><Sparkles size={13} /></span>}
-                    <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--text)", border: isFounder ? "none" : "1px solid var(--border)" }}>{turn.message}</div>
+                    <div style={{ maxWidth: "84%" }}><div style={{ padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--text)", border: isFounder ? "none" : "1px solid var(--border)" }}>{turn.message}</div><div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 10 }}><button type="button" disabled={editingMessage === turn.id} onClick={() => void updateMessage(turn.id, turn.message)} style={{ border: 0, background: "transparent", color: "var(--text-3)", cursor: "pointer" }}>Edit</button><button type="button" onClick={() => void deleteCompanyMessage({ founderId, companyId }, turn.id).then(setHome)} style={{ border: 0, background: "transparent", color: "var(--text-3)", cursor: "pointer" }}>Delete</button></div></div>
                   </div>
                 );
               })}
