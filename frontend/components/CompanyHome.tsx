@@ -92,6 +92,8 @@ export default function CompanyHome() {
       .company-home-initiative-delete:focus-visible { opacity: 1; }
       .company-home-initiative-delete:hover { background: rgba(185, 28, 28, 0.1) !important; color: #b91c1c !important; }
       @media (hover: none) { .company-home-initiative-delete { opacity: 1; } }
+      .company-home-artifact-row { transition: border-color .14s, background .14s; }
+      .company-home-artifact-row:hover { border-color: var(--accent) !important; background: var(--accent-light) !important; }
     `}</style>
     <div style={{ maxWidth: 1440, margin: "0 auto" }}>
       <header style={{ display: "flex", justifyContent: "space-between", gap: 20, alignItems: "start", flexWrap: "wrap", marginBottom: 28 }}><div><p style={{ margin: 0, color: "var(--accent)", fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase" }}>Company Home</p><h1 style={{ margin: "7px 0", color: "var(--text)", fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-.045em" }}>{activeCompany?.name ?? home.companyName}</h1><p style={{ maxWidth: 640, margin: 0, color: "var(--text-3)", lineHeight: 1.55 }}>{home.northStar}</p></div><div style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--text-3)", fontSize: 12 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: "#15803d" }} /> Company context connected</div></header>
@@ -134,8 +136,46 @@ export default function CompanyHome() {
           </div>
         )}
       </section>
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, .72fr)", gap: 18 }}><div><h2 style={{ fontSize: 15, color: "var(--text)" }}>Squad activity</h2><div style={{ display: "grid", gap: 10 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} />)}</div><h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Mission board</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 9, overflowX: "auto" }}>{board.map(status => <div key={status} style={{ minWidth: 150, padding: 10, borderRadius: "var(--r)", background: "var(--bg-sunken)" }}><b style={{ color: "var(--text-2)", fontSize: 11, textTransform: "capitalize" }}>{status}</b>{tasks.filter(task => task.status === status).map(task => <div key={task.id} style={{ marginTop: 9, padding: 9, borderRadius: 6, background: "var(--bg-surface)", color: "var(--text)", fontSize: 11 }}>{task.title}<small style={{ display: "block", color: "var(--text-3)", marginTop: 4 }}>{task.squad}</small></div>)}</div>)}</div></div>
-        <aside><h2 style={{ fontSize: 15, color: "var(--text)" }}>Approvals</h2><div style={{ display: "grid", gap: 10 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 14, border: "1px solid rgba(180,83,9,.35)", borderRadius: "var(--r)", background: "#fffaf0" }}><div style={{ display: "flex", gap: 8, color: "#92400e" }}><ShieldCheck size={16} /><b style={{ fontSize: 13 }}>{item.title}</b></div><p style={{ margin: "8px 0", fontSize: 12, color: "#78350f" }}>{item.detail}</p><small style={{ color: "#a16207" }}>{item.squad}</small></article>)}</div><h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Artifacts</h2><div style={{ display: "grid", gap: 8 }}>{home.brain.artifacts.map(item => <button key={item.id} type="button" onClick={() => { setArtifactError(""); void getCompanyArtifact({ founderId, companyId }, item.id).then(setArtifact).catch(() => setArtifactError("This artifact could not be opened.")); }} style={{ display: "flex", gap: 9, padding: 11, color: "inherit", textAlign: "left", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)" }}><FileText size={16} color="var(--accent)" /><span style={{ minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</b><small style={{ color: "var(--text-3)" }}>{item.source} · {item.updatedAt}</small></span></button>)}</div></aside>
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, .72fr)", gap: 18 }}>
+        <div>
+          <h2 style={{ fontSize: 15, color: "var(--text)" }}>Squad activity</h2>
+          {home.squads.length === 0 ? (
+            <p style={{ margin: 0, padding: 16, border: "1px dashed var(--border)", borderRadius: "var(--r)", color: "var(--text-3)", fontSize: 12.5 }}>No squads formed yet. Copilot forms one the moment you give it a direction.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} />)}</div>
+          )}
+          <h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Mission board</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(150px, 1fr))", gap: 9, overflowX: "auto" }}>
+            {board.map(status => {
+              const columnTasks = tasks.filter(task => task.status === status);
+              return (
+                <div key={status} style={{ minWidth: 150, padding: 10, border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-sunken)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <b style={{ color: "var(--text-2)", fontSize: 11, textTransform: "capitalize" }}>{status}</b>
+                    <small style={{ color: "var(--text-3)" }}>{columnTasks.length}</small>
+                  </div>
+                  {columnTasks.length === 0
+                    ? <p style={{ margin: "14px 0 2px", color: "var(--text-3)", fontSize: 10.5, lineHeight: 1.5 }}>Nothing here yet.</p>
+                    : columnTasks.map(task => <div key={task.id} style={{ marginTop: 9, padding: 9, borderRadius: 6, background: "var(--bg-surface)", color: "var(--text)", fontSize: 11 }}>{task.title}<small style={{ display: "block", color: "var(--text-3)", marginTop: 4 }}>{task.squad}</small></div>)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <aside>
+          <h2 style={{ fontSize: 15, color: "var(--text)" }}>Approvals</h2>
+          {home.approvals.length === 0 ? (
+            <p style={{ margin: 0, padding: 16, border: "1px dashed var(--border)", borderRadius: "var(--r)", color: "var(--text-3)", fontSize: 12.5 }}>Nothing waiting on you right now.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 14, border: "1px solid var(--ab)", borderRadius: "var(--r)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 8, color: "var(--amber)" }}><ShieldCheck size={16} /><b style={{ fontSize: 13, color: "var(--text)" }}>{item.title}</b></div><p style={{ margin: "8px 0", fontSize: 12, color: "var(--text-2)" }}>{item.detail}</p><small style={{ color: "var(--amber)" }}>{item.squad}</small></article>)}</div>
+          )}
+          <h2 style={{ fontSize: 15, color: "var(--text)", marginTop: 24 }}>Artifacts</h2>
+          {home.brain.artifacts.length === 0 ? (
+            <p style={{ margin: 0, padding: 16, border: "1px dashed var(--border)", borderRadius: "var(--r)", color: "var(--text-3)", fontSize: 12.5 }}>Documents your squads produce will show up here.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>{home.brain.artifacts.map(item => <button key={item.id} type="button" onClick={() => { setArtifactError(""); void getCompanyArtifact({ founderId, companyId }, item.id).then(setArtifact).catch(() => setArtifactError("This artifact could not be opened.")); }} className="company-home-artifact-row" style={{ display: "flex", gap: 9, padding: 11, color: "inherit", textAlign: "left", cursor: "pointer", border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)" }}><FileText size={16} color="var(--accent)" /><span style={{ minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</b><small style={{ color: "var(--text-3)" }}>{item.source} · {item.updatedAt}</small></span></button>)}</div>
+          )}
+        </aside>
       </section>
     </div>
     {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--r-lg)", background: "var(--bg-surface)", border: "1px solid var(--border)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--text)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--text-3)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--text-3)", cursor: "pointer" }}>Close</button></div><pre style={{ margin: "20px 0", padding: 16, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderRadius: "var(--r)", background: "var(--bg-sunken)", color: "var(--text)", fontFamily: "inherit", fontSize: 13, lineHeight: 1.6 }}>{artifact.content || "This artifact has no previewable text."}</pre><button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "var(--text-invert)", cursor: "pointer" }}>Download artifact</button></> : <><p style={{ color: "var(--text)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}
