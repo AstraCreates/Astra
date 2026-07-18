@@ -17,6 +17,7 @@ export type CompanyHomeInitiative = { id: string; title: string; status: string;
 export type CompanyHomeSquad = { id: string; name: string; lifecycle: string; activity: string; tasks: CompanyHomeTask[] };
 export type CompanyHomeApproval = { id: string; title: string; squad: string; detail: string };
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string };
+export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
 export type CompanyHomeMessage = { id: string; author: string; message: string };
 
@@ -161,6 +162,13 @@ export async function sendCopilotMessage(scope: CompanyScope, message: string, f
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());
   return { message: text(payload.message), data: normalizeCompanyOS(payload.company) };
+}
+
+export async function getCompanyArtifact(scope: CompanyScope, artifactId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyArtifactDetail> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope));
+  if (!response.ok) throw new Error(await response.text());
+  const artifact = record(await response.json());
+  return { id: text(artifact.artifact_id, artifactId), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), content: text(artifact.content), sourceReferences: list(artifact.source_references) };
 }
 
 function normalizeCompanyOS(payload: unknown): CompanyHomeData {

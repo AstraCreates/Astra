@@ -48,12 +48,31 @@ def ensure_company_operations(company_id: str, *, root: str | Path | None = None
         raise KeyError(f"unknown company: {company_id}")
     existing = next((item for item in company["initiatives"] if item.get("system_key") == "company_operations"), None)
     if existing:
+        _ensure_operations_tasks(company_id, existing["initiative_id"], root=root)
         return existing
     initiative = create_initiative(company_id, "Company Operations", root=root, department="operations", system_key="company_operations")
     squad = create_squad(company_id, initiative["initiative_id"], "Company Operations Squad", root=root, department="operations", lifecycle="formed")
-    create_mission(company_id, initiative["initiative_id"], squad["squad_id"], "Maintain recurring company operations", root=root,
-                   department="operations", system_key="company_operations")
+    mission = create_mission(company_id, initiative["initiative_id"], squad["squad_id"], "Maintain recurring company operations", root=root,
+                             department="operations", system_key="company_operations")
+    _ensure_operations_tasks(company_id, initiative["initiative_id"], root=root, mission=mission, squad=squad)
     return initiative
+
+
+def _ensure_operations_tasks(company_id: str, initiative_id: str, *, root: str | Path | None,
+                             mission: dict[str, Any] | None = None, squad: dict[str, Any] | None = None) -> None:
+    state = get_company_os(company_id, root=root) or {}
+    mission = mission or next((item for item in state.get("missions", []) if item.get("initiative_id") == initiative_id and item.get("system_key") == "company_operations"), None)
+    squad = squad or next((item for item in state.get("squads", []) if item.get("initiative_id") == initiative_id), None)
+    if not mission or not squad:
+        return
+    present = {item.get("name") for item in state.get("tasks", []) if item.get("mission_id") == mission["mission_id"]}
+    # These are local, reversible standing checks. The scheduler can run them
+    # without creating external side effects, and the board is never a blank shell.
+    for name, cadence in (("Review company operating health", 86_400), ("Review pending approvals and blockers", 3_600)):
+        if name not in present:
+            create_task(company_id, initiative_id, squad["squad_id"], name, root=root,
+                        mission_id=mission["mission_id"], department="operations", operation="internal_analysis",
+                        cadence_seconds=cadence, state="scheduled", recurring=True)
 
 
 def get_company_os(company_id: str, *, root: str | Path | None = None) -> dict[str, Any] | None:

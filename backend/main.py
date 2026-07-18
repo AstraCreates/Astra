@@ -28,7 +28,7 @@ from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
 from backend.api.company_os_routes import router as company_os_router
-from backend.api.company_os_phase1_routes import router as company_os_phase1_router
+from backend.api.company_os_phase1_routes import phase2_router as company_os_phase2_router, router as company_os_phase1_router
 
 logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
@@ -71,6 +71,7 @@ app.include_router(roadmap_router)
 app.include_router(company_router)
 app.include_router(company_os_router)
 app.include_router(company_os_phase1_router)
+app.include_router(company_os_phase2_router)
 app.include_router(team_map_router)
 app.include_router(connectors_router)
 app.include_router(notification_router)

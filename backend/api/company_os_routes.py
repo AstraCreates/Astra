@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os
@@ -24,6 +25,14 @@ class CopilotMessageBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
     proposed_spend: float = Field(default=0, ge=0)
+
+
+def _artifact(company_id: str, artifact_id: str) -> dict[str, Any]:
+    company = get_company_os(company_id) or {}
+    artifact = next((item for item in company.get("artifacts", []) if item.get("artifact_id") == artifact_id), None)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return artifact
 
 
 def _company(request: Request, company_id: str, founder_id: str, *, operator: bool = False) -> dict[str, Any]:
@@ -52,6 +61,20 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
     return _company(request, company_id, founder_id)
+
+
+@router.get("/companies/{company_id}/os/artifacts/{artifact_id}")
+async def get_company_os_artifact(company_id: str, artifact_id: str, founder_id: str, request: Request):
+    _company(request, company_id, founder_id)
+    return _artifact(company_id, artifact_id)
+
+
+@router.get("/companies/{company_id}/os/artifacts/{artifact_id}/download")
+async def download_company_os_artifact(company_id: str, artifact_id: str, founder_id: str, request: Request):
+    _company(request, company_id, founder_id)
+    artifact = _artifact(company_id, artifact_id)
+    safe_name = "".join(char if char.isalnum() or char in " -_." else "_" for char in str(artifact.get("name") or "artifact"))
+    return PlainTextResponse(str(artifact.get("content") or ""), headers={"Content-Disposition": f'attachment; filename="{safe_name}.md"'})
 
 
 @router.post("/companies/{company_id}/os/copilot")

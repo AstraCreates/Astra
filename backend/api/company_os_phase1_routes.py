@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from backend.tenant_auth import require_platform_admin
 
 router = APIRouter(prefix="/admin/company-os/phase1", tags=["company-os-phase1"], dependencies=[Depends(require_platform_admin)])
+phase2_router = APIRouter(prefix="/admin/company-os/phase2", tags=["company-os-phase2"], dependencies=[Depends(require_platform_admin)])
 
 
 class CohortBody(BaseModel):
@@ -24,6 +25,10 @@ class FixtureBody(BaseModel):
 
 class CompanyBody(BaseModel):
     company_id: str
+
+
+class Phase2DrainBody(BaseModel):
+    confirmation: str
 
 
 @router.post("/cohort")
@@ -85,3 +90,19 @@ async def authorize_phase_2(company_id: str):
         return {"authorized": True, "gate": require_phase_1_gate(company_id)}
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@phase2_router.get("/inventory")
+async def phase_2_inventory():
+    from backend.company_os_phase2 import inventory_legacy_work, read_phase_2_receipts
+    return {"inventory": await inventory_legacy_work(), "receipts": read_phase_2_receipts()}
+
+
+@phase2_router.post("/drain")
+async def phase_2_drain(body: Phase2DrainBody, request: Request):
+    from backend.company_os_phase2 import force_drain_legacy_work
+    operator = getattr(request.state, "user", None) or "platform_admin"
+    try:
+        return await force_drain_legacy_work(operator_id=str(operator), confirmation=body.confirmation)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
