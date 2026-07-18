@@ -1,17 +1,19 @@
 """Company OS API: the permanent Copilot thread and its durable work graph."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_initiative
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative
 from backend.company_os_dispatch import dispatch_intent, scheduler_tick
 from backend.company_os_runner import launch_mission
 from backend.tenant_auth import require_founder_access
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["company-os"])
 
 
@@ -73,6 +75,26 @@ async def delete_company_os_initiative(company_id: str, initiative_id: str, foun
         raise HTTPException(status_code=404, detail="Initiative not found")
     update_initiative(company_id, initiative_id, state="archived")
     return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
+
+
+@router.delete("/companies/{company_id}/os/artifacts/{artifact_id}")
+async def delete_company_os_artifact_route(company_id: str, artifact_id: str, founder_id: str, request: Request):
+    """Soft-delete (archive) an artifact, same pattern as initiatives, and cascade
+    the delete into the Library -- artifacts created via create_artifact() get
+    auto-mirrored into a Library file (_mirror_artifact_to_library), and
+    delete_file() already cascades into Company Brain, so this one call cleans
+    up all three layers instead of leaving an orphaned Library file behind."""
+    company = _company(request, company_id, founder_id, operator=True)
+    artifact = _artifact(company_id, artifact_id)
+    library_file_id = artifact.get("library_file_id")
+    if library_file_id:
+        try:
+            from backend.library.store import delete_file
+            delete_file(str(company["founder_id"]), str(library_file_id))
+        except Exception:
+            logger.warning("Artifact delete: Library cascade failed company=%s artifact=%s file=%s", company_id, artifact_id, library_file_id, exc_info=True)
+    update_artifact(company_id, artifact_id, state="archived")
+    return {"ok": True, "artifact_id": artifact_id, "company": get_company_os(company_id)}
 
 
 @router.get("/companies/{company_id}/os/artifacts/{artifact_id}")

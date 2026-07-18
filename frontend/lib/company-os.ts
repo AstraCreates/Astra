@@ -16,7 +16,7 @@ export type CompanyHomeTask = {
 export type CompanyHomeInitiative = { id: string; title: string; status: string; progress: number; taskCount: number; archived: boolean };
 export type CompanyHomeSquad = { id: string; name: string; lifecycle: string; activity: string; tasks: CompanyHomeTask[] };
 export type CompanyHomeApproval = { id: string; title: string; squad: string; detail: string };
-export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string };
+export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
 export type CompanyHomeMessage = { id: string; author: string; message: string };
@@ -131,6 +131,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       source: titleCase(text(artifact.source ?? artifact.kind, "Company Brain")),
       updatedAt: text(artifact.updated_at ?? artifact.created_at, "Recently"),
       url: text(artifact.url) || undefined,
+      archived: false,
     };
   });
   return {
@@ -172,11 +173,18 @@ export async function deleteInitiative(scope: CompanyScope, initiativeId: string
   return normalizeCompanyOS(payload.company);
 }
 
+export async function deleteArtifact(scope: CompanyScope, artifactId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope), { method: "DELETE" });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
+}
+
 export async function getCompanyArtifact(scope: CompanyScope, artifactId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyArtifactDetail> {
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope));
   if (!response.ok) throw new Error(await response.text());
   const artifact = record(await response.json());
-  return { id: text(artifact.artifact_id, artifactId), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), content: text(artifact.content), sourceReferences: list(artifact.source_references) };
+  return { id: text(artifact.artifact_id, artifactId), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), content: text(artifact.content), sourceReferences: list(artifact.source_references), archived: text(artifact.state).toLowerCase() === "archived" };
 }
 
 function normalizeCompanyOS(payload: unknown): CompanyHomeData {
@@ -204,7 +212,7 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
       return { id: text(squad.squad_id, `squad-${index}`), name: text(squad.name, "Squad"), lifecycle: titleCase(text(mission?.state, "formed")), activity: active?.title ?? "Setting direction", tasks: matching };
     }),
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
-    brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined }; }) },
+    brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
     conversation: list(root.conversation).map((item, index) => { const message = record(item); return { id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message) }; }),
   };
 }
