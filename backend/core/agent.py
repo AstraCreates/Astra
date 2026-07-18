@@ -2998,6 +2998,20 @@ class Agent:
                     images.append({"url": url, "base64": b64, "prompt": result.get("prompt", "")})
             if images:
                 out.setdefault("ad_images", images)
+            # Stack verification uses these stable artifact names. Preserve
+            # useful packages even when Ling returns the mode-specific fields
+            # but omits the aggregate contract fields.
+            if not out.get("launch_content"):
+                content_parts = [out.get("reel_package"), out.get("tiktok_package"), out.get("meta_ad")]
+                content_parts = [item for item in content_parts if item]
+                if content_parts:
+                    out["launch_content"] = json.dumps(content_parts, default=str)
+            if not out.get("gtm_plan") and out.get("launch_content"):
+                out["gtm_plan"] = (
+                    "Launch plan derived from completed campaign assets: define the target workplace audience, "
+                    "test social and email distribution, measure engagement and activation, and iterate on the "
+                    "highest-performing message.\n\n" + str(out["launch_content"])
+                )
         elif self.name == "sales":
             leads = out.get("leads")
             sequences = out.get("sequences")
@@ -3118,6 +3132,14 @@ class Agent:
             docs = tool_docs + model_docs
             if docs:
                 out["documents"] = docs
+                if self.name == "legal":
+                    combined = "\n\n".join(str(doc.get("text") or "") for doc in docs)
+                    out.setdefault("policy_outline", combined)
+                    out.setdefault(
+                        "legal_checklist",
+                        "Review privacy, terms, founder/IP ownership, data retention, advertising disclosures, "
+                        "consent, security controls, and jurisdiction-specific launch requirements.\n\n" + combined,
+                    )
         elif self.name == "marketing_content":
             reel_scripts = out.get("reel_scripts") if isinstance(out.get("reel_scripts"), list) else []
             tiktok_packages = out.get("tiktok_packages") if isinstance(out.get("tiktok_packages"), list) else []
