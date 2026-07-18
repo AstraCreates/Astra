@@ -103,10 +103,24 @@ async def run_delegated_task(
         return {"error": "Delegation depth limit reached", "restricted_action": "delegate_task"}
     requested_sets = [name for name in (toolsets or []) if name not in BLOCKED_TOOLSETS]
     entries = registry.resolve(toolsets=requested_sets)
-    tools = {
-        name: entry.handler for name, entry in entries.items()
-        if name not in BLOCKED_TOOLS and entry.mutability != "external"
-    }
+    tools = {}
+    for name, entry in entries.items():
+        if name in BLOCKED_TOOLS or entry.mutability == "external":
+            continue
+
+        # Child agents must use the same schema validation, context injection,
+        # coercion, result bounds, and accounting path as top-level agents.
+        # Passing raw handlers here silently bypassed the runtime registry.
+        async def _dispatch_child_tool(_entry=entry, **args):
+            return await registry.dispatch(
+                _entry,
+                args,
+                {"founder_id": ctx.founder_id, "session_id": ctx.session_id},
+            )
+
+        _dispatch_child_tool.__name__ = name
+        _dispatch_child_tool.__doc__ = entry.description or name
+        tools[name] = _dispatch_child_tool
     restricted_entries = {
         name: entry for name, entry in registry.snapshot().items()
         if name in BLOCKED_TOOLS or entry.mutability == "external"

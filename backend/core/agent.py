@@ -143,9 +143,9 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     # obsidian_log/obsidian_read) from its tools dict for the native-search redesign --
     # requiring deep_research here made the gate impossible to satisfy (the tool no
     # longer exists), a real regression caught when reconciling with that change.
-    "research_market":       {"deep_research"},
-    "research_financial":    {"deep_research", "generate_pdf"},
-    "research_regulatory":   {"deep_research", "generate_pdf"},
+    "research_market":       {"run_research_pipeline"},
+    "research_financial":    {"run_research_pipeline", "generate_pdf"},
+    "research_regulatory":   {"run_research_pipeline", "generate_pdf"},
     "research_execution":    {"run_research_pipeline"},
     "research_docs":         {"generate_pdf", "obsidian_log"},
     "legal":             {"format_legal_document", "generate_pdf"},

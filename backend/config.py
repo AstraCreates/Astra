@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # factory.py's _small_kwargs (itself driven by the OR_LIGHT_MODEL env
     # var), which is also being swapped -- kept in sync here for any caller
     # that constructs a research agent directly, bypassing the factory.
-    research_agent_model: str = "deepseek/deepseek-v4-flash"
+    research_agent_model: str = "inclusionai/ling-2.6-flash"
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.
@@ -66,13 +66,13 @@ class Settings(BaseSettings):
     technical_build_model: str = "xiaomi/mimo-v2.5"
     # Light coding worker model used for delegated / parallelized technical sub-builds
     # such as auth screens, isolated dashboard modules, spot fixes, and narrow patches.
-    technical_subagent_model: str = "deepseek/deepseek-v4-flash"
+    technical_subagent_model: str = "inclusionai/ling-2.6-flash"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
     # full build + one round of error recovery without hitting max_iterations.
     technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
-    web_agent_model: str = "deepseek/deepseek-v4-flash"
+    web_agent_model: str = "inclusionai/ling-2.6-flash"
     # Use a stronger native tool-calling model only for the small set of agents
     # that orchestrate many heterogeneous tools / side effects. Keep this
     # separate from the cheaper default light lane because gpt-oss-120b is
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     # DeepSeek Flash: Qwen3-235b-T won bench on quality but runs full thinking (exempt
     # from effort:none), billing thinking tokens as output at $3.34/M — 17% of prod spend.
     # Flash ($1.72/M output, no thinking overhead) cuts this line to ~$0.50/M effective.
-    or_light_model: str = "deepseek/deepseek-v4-flash"
+    or_light_model: str = "inclusionai/ling-2.6-flash"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "deepseek/deepseek-v4-flash"
     # Web-search synthesis model — uncached, so input price dominates.
@@ -147,7 +147,7 @@ class Settings(BaseSettings):
     chat_model_api_key: str = ""
     chat_model_name: str = "deepseek/deepseek-v4-flash"
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "deepseek/deepseek-v4-flash"
+    light_model_name: str = "inclusionai/ling-2.6-flash"
     # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "deepseek/deepseek-v4-flash"

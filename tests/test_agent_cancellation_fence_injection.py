@@ -166,7 +166,7 @@ async def test_done_rejected_for_insufficient_calls_names_an_untried_tool(mocker
 
 
 @pytest.mark.parametrize("agent_name,required", [
-    ("research_market", {"deep_research"}),
+    ("research_market", {"run_research_pipeline"}),
     ("research_financial", {"deep_research", "generate_pdf"}),
     ("research_regulatory", {"deep_research", "generate_pdf"}),
     ("research_execution", {"run_research_pipeline"}),

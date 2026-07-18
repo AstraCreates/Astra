@@ -71,7 +71,9 @@ async def test_registry_context_injection_and_async_dispatch():
         handler=handler, is_async=True,
         context_fields=frozenset({"founder_id"}),
     ))
-    result = await registry.dispatch(entry, {"value": "ok", "ignored": True}, {"founder_id": "f1"})
+    with pytest.raises(TypeError, match="unknown argument"):
+        await registry.dispatch(entry, {"value": "ok", "ignored": True}, {"founder_id": "f1"})
+    result = await registry.dispatch(entry, {"value": "ok"}, {"founder_id": "f1"})
     assert result == {"value": "ok", "founder_id": "f1"}
 
 

@@ -106,13 +106,30 @@ class ToolRegistry:
         return [{"type": "function", "function": {**entry.schema, "name": entry.name}} for entry in entries.values()]
 
     async def dispatch(self, entry: ToolEntry, args: dict[str, Any], context: dict[str, Any]) -> Any:
+        if not isinstance(args, dict):
+            raise TypeError(f"Tool '{entry.name}' arguments must be an object")
         call_args = dict(args)
+        signature = inspect.signature(entry.handler)
+        has_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+        allowed = set(signature.parameters)
+        allowed.update(entry.context_fields)
+        unknown = sorted(set(call_args) - allowed)
+        if unknown and not has_kwargs:
+            raise TypeError(f"Tool '{entry.name}' received unknown argument(s): {', '.join(unknown)}")
         for field_name in entry.context_fields:
             if field_name in context:
                 call_args.setdefault(field_name, context[field_name])
-        signature = inspect.signature(entry.handler)
+        missing = [
+            name for name, param in signature.parameters.items()
+            if param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            and param.default is inspect.Parameter.empty
+            and name not in call_args
+            and name not in entry.context_fields
+        ]
+        if missing:
+            raise TypeError(f"Tool '{entry.name}' is missing required argument(s): {', '.join(missing)}")
         call_args = _coerce_args_to_annotations(signature, call_args)
-        if not any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+        if not has_kwargs:
             call_args = {key: value for key, value in call_args.items() if key in signature.parameters}
         if entry.is_async:
             result = await entry.handler(**call_args)

@@ -3,8 +3,7 @@ import functools
 import re as _re
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, deep_research, sonar_research
-from backend.tools.web_search import web_search, news_search
+from backend.tools.browser_research import build_research_queries, run_research_pipeline
 
 
 def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research_market"):
@@ -61,15 +60,9 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _MARKET_RESEARCH_SEARCHES = (
     "MARKET SIZING & ICP RESEARCH:\n"
-    "1. deep_research([\n"
-    "     '{topic} total addressable market TAM SAM SOM size 2025 billion statistics',\n"
-    "     '{topic} market size growth rate CAGR forecast 2025 2026 2030',\n"
-    "     '{topic} target customer ICP demographics firmographics buyer persona',\n"
-    "     '{topic} pricing benchmark subscription tiers enterprise SMB cost',\n"
-    "     '{topic} willingness to pay price sensitivity market opportunity',\n"
-    "   ]) — deep_research fetches and synthesizes sources internally, no separate URL fetching needed.\n"
-    "2. news_search('{topic} market growth investment funding opportunity 2025 2026')\n"
-    "3. Use fetch_and_read only for specific analyst report URLs or paywalled pages sonar could not fully read.\n\n"
+    "1. build_research_queries(topic='{topic}', focus='market') for focused query planning.\n"
+    "2. run_research_pipeline(topic='{topic}', focus='market') for native-search evidence, coverage status, and citations.\n"
+    "3. If coverage.ready is false, make one refined run_research_pipeline call, then synthesize with uncertainty clearly marked.\n\n"
     "obsidian_log with ALL of the following sections:\n"
     "- TAM: total addressable market with dollar figure, source, and methodology\n"
     "- SAM: serviceable addressable market with rationale for how it narrows from TAM\n"
@@ -96,15 +89,11 @@ def build_research_market_agent(**kwargs) -> Agent:
     ctx_holder: list = [None]
 
     log_name = _re.sub(r"_\d+$", "", agent_name)
-    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
-    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
-    auto_sonar = _make_auto_logging_tool(sonar_research, "sonar_research", ctx_holder, log_name)
-    auto_web = _make_auto_logging_tool(web_search, "web_search", ctx_holder, log_name)
-    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
+    auto_pipeline = _make_auto_logging_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, log_name)
+    auto_queries = _make_auto_logging_tool(build_research_queries, "build_research_queries", ctx_holder, log_name)
 
     kwargs.setdefault("max_tool_calls", {
-        "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 2,
-        "web_search": 2, "news_search": 2, "obsidian_read": 1, "obsidian_log": 1,
+        "run_research_pipeline": 2, "build_research_queries": 1, "obsidian_read": 1, "obsidian_log": 1,
     })
 
     from backend.config import settings
@@ -125,22 +114,15 @@ def build_research_market_agent(**kwargs) -> Agent:
             "(analyst reports, primary data, competitor pages) so every output section is backed by hard "
             "numbers from named, cited sources.\n\n"
             "TOOLS:\n"
-            "- deep_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer with sources. Replaces search_and_fetch + fetch_and_read loops.\n"
-            "- sonar_research(queries) — compatibility alias for deep_research.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports deep_research missed).\n"
-            "- web_search(query) — targeted web search for specific facts or sources.\n"
-            "- news_search(query) — recent news and market developments.\n"
+            "- run_research_pipeline(topic, focus) — PRIMARY native-search research pass with typed coverage and citations.\n"
+            "- build_research_queries(topic, focus) — create a focused query plan only when the topic needs refinement.\n"
             "- obsidian_log — FINAL step only, called once after ALL searches and fetches are complete.\n\n"
             "YOUR MANDATORY RESEARCH SEQUENCE (replace {topic} with the actual subject):\n\n"
             + _MARKET_RESEARCH_SEARCHES
         ),
         tools={
-            "deep_research": auto_sonar,
-            "sonar_research": auto_sonar,
-            "search_and_fetch": auto_search,
-            "fetch_and_read": auto_fetch,
-            "web_search": auto_web,
-            "news_search": auto_news,
+            "run_research_pipeline": auto_pipeline,
+            "build_research_queries": auto_queries,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
         },

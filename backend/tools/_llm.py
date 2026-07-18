@@ -2,7 +2,7 @@
 Sync LLM helper for content-generation tools.
 
 Models:
-  "fast"      → MiMo-v2.5             (default, general purpose)
+  "fast"      → Ling 2.6 Flash        (default, general purpose)
   "large"     → DeepSeek V4 Flash     (docs, copy)
   "instruct"  → DeepSeek V4 Flash     (strict rule-following)
   "nemotron"  → DeepSeek V4 Flash     (HTML/design generation)
@@ -19,11 +19,11 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-_FAST_MODEL = settings.or_light_model           # xiaomi/mimo-v2.5
+_FAST_MODEL = settings.or_light_model           # inclusionai/ling-2.6-flash
 _LARGE_MODEL = settings.or_highoutput_model     # deepseek/deepseek-v4-flash
 _INSTRUCT_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
 _NEMOTRON_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
-_PROMPT_MODEL = settings.or_light_model         # xiaomi/mimo-v2.5
+_PROMPT_MODEL = settings.or_light_model         # inclusionai/ling-2.6-flash
 _OR_BASE = settings.openrouter_base_url
 _GEMINI_IMAGE_MODEL = "google/gemini-3.1-flash-image"
 
