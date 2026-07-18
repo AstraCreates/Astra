@@ -58,6 +58,10 @@ function titleCase(value: string): string {
 }
 
 export function companyScopedUrl(path: string, scope: CompanyScope): string {
+  if (BASE.startsWith("/")) {
+    const params = new URLSearchParams({ founder_id: scope.founderId, company_id: scope.companyId });
+    return `${BASE.replace(/\/$/, "")}${path}?${params.toString()}`;
+  }
   const url = new URL(`${BASE}${path}`);
   url.searchParams.set("founder_id", scope.founderId);
   url.searchParams.set("company_id", scope.companyId);
