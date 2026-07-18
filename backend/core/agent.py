@@ -2771,7 +2771,10 @@ class Agent:
         import inspect as _inspect
         try:
             _sig_params = set(_inspect.signature(fn).parameters.keys())
-            _wrap_keys = {"args", "arguments", "tool_args", "parameters", "input", "kwargs"}
+            # Ling and a few OpenAI-compatible adapters sometimes wrap the
+            # function payload as {"tool_input": {...}}. Treat it exactly like
+            # the other provider-specific argument envelopes.
+            _wrap_keys = {"args", "arguments", "tool_args", "tool_input", "parameters", "input", "kwargs"}
             for _ in range(5):
                 if isinstance(args, dict) and len(args) == 1:
                     ((_only_key, _only_val),) = args.items()
