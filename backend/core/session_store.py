@@ -434,7 +434,9 @@ def list_sessions(
         sessions = [s for s in sessions if s.get("founder_id") == founder_id]
     if company_id:
         sessions = [s for s in sessions if s.get("company_id") == company_id]
-    sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    # Older session metadata may omit or null out timestamps. Normalize before
+    # sorting so legacy inventory can always surface (and drain) those records.
+    sessions.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
     return sessions[:limit]
 
 
