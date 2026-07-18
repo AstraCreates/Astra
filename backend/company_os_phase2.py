@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from backend.core.json_store import json_file_lock
+from backend.core.json_store import cross_process_file_lock
 
 _NONTERMINAL = {"queued", "running", "stalled", "cancelling", "paused", "pending"}
 
@@ -65,14 +65,14 @@ def read_phase_2_receipts() -> list[dict[str, Any]]:
     path = _receipt_path()
     if not path.exists():
         return []
-    with json_file_lock(path):
+    with cross_process_file_lock(path):
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
 def _append_receipt(receipt: dict[str, Any]) -> None:
     path = _receipt_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with json_file_lock(path):
+    with cross_process_file_lock(path):
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(receipt, sort_keys=True) + "\n")
             handle.flush()

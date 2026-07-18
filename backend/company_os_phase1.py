@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from backend import company_os
-from backend.core.json_store import json_file_lock, read_json, write_json_atomic
+from backend.core.json_store import cross_process_file_lock, read_json, write_json_atomic
 
 
 _REGISTRY_NAME = "phase1-internal-cohort.json"
@@ -31,7 +31,7 @@ def configure_internal_test_cohort(
 ) -> dict[str, Any]:
     """Atomically enable or disable a company for internal-only dual writes."""
     path = _registry_path(root)
-    with json_file_lock(path):
+    with cross_process_file_lock(path):
         registry = _read_registry(path)
         companies = registry["companies"]
         if enabled:

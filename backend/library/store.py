@@ -84,6 +84,25 @@ def _rebuild_index(founder_id: str) -> list[dict[str, Any]]:
 
 # ── CRUD ───────────────────────────────────────────────────────────────────────
 
+def _sync_brain_on_create(founder_id: str, file_id: str, department: str, filename: str, content: str) -> str:
+    """Best-effort: mirror a new Library file into the founder's Company Brain.
+    Returns the brain record id to store on the file (empty string if sync failed
+    or there's no real content to index)."""
+    if not content.strip():
+        return ""
+    try:
+        from backend.tools.company_brain import add_company_brain_record
+        result = add_company_brain_record(
+            founder_id, source="library", title=filename, content=content, kind="document",
+            metadata={"library_file_id": file_id, "department": department},
+        )
+        if result.get("ok"):
+            return str(result["record"]["id"])
+    except Exception:
+        logger.warning("library.create_file brain sync failed founder=%s file_id=%s", founder_id, file_id, exc_info=True)
+    return ""
+
+
 def create_file(
     founder_id: str,
     department: str,
@@ -121,6 +140,9 @@ def create_file(
         record["source_tag"] = source_tag
     if source_session_id:
         record["source_session_id"] = source_session_id
+    brain_record_id = _sync_brain_on_create(founder_id, file_id, department, filename, content)
+    if brain_record_id:
+        record["brain_record_id"] = brain_record_id
     meta = _meta_from_record(record)
     with _lock:
         write_json_atomic(_file_path(founder_id, file_id), record)
@@ -150,6 +172,29 @@ def list_files(founder_id: str, department: str | None = None) -> list[dict[str,
     return index
 
 
+def _sync_brain_on_update(founder_id: str, record: dict[str, Any]) -> str:
+    """Best-effort: push updated content into the linked Company Brain record.
+    Returns the (possibly new) brain record id to store on the file."""
+    content = record.get("content") or ""
+    if not content.strip():
+        return str(record.get("brain_record_id") or "")
+    try:
+        from backend.tools.company_brain import add_company_brain_record, revise_company_brain_record
+        existing_id = record.get("brain_record_id")
+        if existing_id:
+            result = revise_company_brain_record(founder_id, record_id=str(existing_id), title=record["filename"], content=content)
+        else:
+            result = add_company_brain_record(
+                founder_id, source="library", title=record["filename"], content=content, kind="document",
+                metadata={"library_file_id": record["id"], "department": record.get("department", "")},
+            )
+        if result.get("ok"):
+            return str(result["record"]["id"])
+    except Exception:
+        logger.warning("library.update_file brain sync failed founder=%s file_id=%s", founder_id, record.get("id"), exc_info=True)
+    return str(record.get("brain_record_id") or "")
+
+
 def update_file(
     founder_id: str,
     file_id: str,
@@ -167,6 +212,7 @@ def update_file(
         record = _load_record(founder_id, file_id)
         if record is None:
             return None
+        content_changed = content is not None and content != record.get("content")
         if content is not None:
             record["content"] = content
             record["size_bytes"] = len(content.encode("utf-8"))
@@ -177,6 +223,10 @@ def update_file(
         if is_canonical is not None:
             record["is_canonical"] = is_canonical
         record["updated_at"] = _now()
+        if content_changed:
+            brain_record_id = _sync_brain_on_update(founder_id, record)
+            if brain_record_id:
+                record["brain_record_id"] = brain_record_id
         write_json_atomic(p, record)
         # Update index entry
         index = _load_index(founder_id)
@@ -192,6 +242,7 @@ def delete_file(founder_id: str, file_id: str) -> bool:
     if not p.exists():
         return False
     with _lock:
+        record = _load_record(founder_id, file_id)
         try:
             p.unlink()
         except Exception:
@@ -199,6 +250,12 @@ def delete_file(founder_id: str, file_id: str) -> bool:
         index = _load_index(founder_id)
         new_index = [f for f in index if f["id"] != file_id]
         _save_index(founder_id, new_index)
+    if record and record.get("brain_record_id"):
+        try:
+            from backend.tools.company_brain import remove_library_file_from_brain
+            remove_library_file_from_brain(founder_id, file_id)
+        except Exception:
+            logger.warning("library.delete_file brain sync failed founder=%s file_id=%s", founder_id, file_id, exc_info=True)
     logger.info("library.delete_file founder=%s file_id=%s", founder_id, file_id)
     return True
 

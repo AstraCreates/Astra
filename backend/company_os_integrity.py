@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from backend import company_os
-from backend.core.json_store import json_file_lock
+from backend.core.json_store import cross_process_file_lock
 
 _SOAK_SECONDS = 72 * 60 * 60
 _EVIDENCE_FILE = "integrity-evidence.jsonl"
@@ -189,7 +189,7 @@ def read_integrity_evidence(company_id: str, *, root: str | Path | None = None) 
     if not path.exists():
         return []
     records: list[dict[str, Any]] = []
-    with json_file_lock(path.parent / ".integrity-evidence.lock"):
+    with cross_process_file_lock(path.parent / ".integrity-evidence.lock"):
         records = _read_evidence_unlocked(path)
     return records
 
@@ -199,7 +199,7 @@ def _append_evidence(company_id: str, payload: dict[str, Any], *, root: str | Pa
     if not path.parent.is_dir():
         raise KeyError(f"unknown company: {company_id}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with json_file_lock(path.parent / ".integrity-evidence.lock"):
+    with cross_process_file_lock(path.parent / ".integrity-evidence.lock"):
         sequence = len(_read_evidence_unlocked(path)) + 1
         record = {"sequence": sequence, "recorded_at": _now(), **copy.deepcopy(payload)}
         record["checksum"] = _checksum(record)

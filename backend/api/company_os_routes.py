@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_initiative
 from backend.company_os_dispatch import dispatch_intent, scheduler_tick
 from backend.company_os_runner import launch_mission
 from backend.tenant_auth import require_founder_access
@@ -61,6 +61,18 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
     return _company(request, company_id, founder_id)
+
+
+@router.delete("/companies/{company_id}/os/initiatives/{initiative_id}")
+async def delete_company_os_initiative(company_id: str, initiative_id: str, founder_id: str, request: Request):
+    """Soft-delete (archive) an initiative -- matches every other entity in this
+    event-sourced store: nothing is physically removed from history, it's just
+    excluded from what the dashboard shows going forward."""
+    company = _company(request, company_id, founder_id, operator=True)
+    if not any(item.get("initiative_id") == initiative_id for item in company.get("initiatives", [])):
+        raise HTTPException(status_code=404, detail="Initiative not found")
+    update_initiative(company_id, initiative_id, state="archived")
+    return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
 
 
 @router.get("/companies/{company_id}/os/artifacts/{artifact_id}")

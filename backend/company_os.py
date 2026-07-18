@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from backend.core.json_store import json_file_lock, read_json, write_json_atomic
+from backend.core.json_store import cross_process_file_lock, read_json, write_json_atomic
 
 _COLLECTIONS = (
     "initiatives", "squads", "missions", "tasks", "task_attempts",
@@ -191,6 +191,13 @@ def create_approval(company_id: str, title: str, *, approval_id: str | None = No
                                                "task_id": task_id, "state": state, **data}, root)
 
 
+def update_initiative(company_id: str, initiative_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    """Persist an initiative lifecycle transition (e.g. state="archived" for a
+    founder-requested delete -- soft, matching every other entity's pattern in
+    this event-sourced store; nothing is ever physically removed from history)."""
+    return _update(company_id, "initiative", "initiative_id", initiative_id, changes, root)
+
+
 def update_task(company_id: str, task_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
     return _update(company_id, "task", "task_id", task_id, changes, root)
 
@@ -269,8 +276,8 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"squad", "mission", "task", "task_attempt", "artifact"}:
-        key = {"squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id"}[kind]
+    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact"}:
+        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id"}[kind]
         entity = _must_find(state, f"{kind}s", key, event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]
@@ -370,7 +377,7 @@ def _mirror_artifact_to_library(company_id: str, artifact: dict[str, Any], *, ro
 
 
 def _writer_lock(directory: Path):
-    return json_file_lock(directory / ".writer.lock")
+    return cross_process_file_lock(directory / ".writer.lock")
 
 
 def _snapshot_path(directory: Path) -> Path:

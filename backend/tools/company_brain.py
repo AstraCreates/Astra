@@ -1566,6 +1566,34 @@ def company_brain_context(
     )["formatted"]
 
 
+def remove_library_file_from_brain(founder_id: str, file_id: str, company_id: str | None = None) -> int:
+    """Delete brain record(s) linked to a deleted Library file. Returns count removed.
+
+    Mirrors purge_session_records's pattern (filter by a metadata key, save, return
+    removed count) rather than the deprecate-and-keep pattern revise_company_brain_record
+    uses -- a deleted document should be fully gone from the brain, not lingering as a
+    deprecated ghost record still counted in brain stats.
+    """
+    if not founder_id or not file_id:
+        return 0
+    try:
+        with _brain_lock(founder_id, company_id):
+            data = _load(founder_id, company_id)
+            before = len(data.get("records") or [])
+            data["records"] = [
+                r for r in (data.get("records") or [])
+                if (r.get("metadata") or {}).get("library_file_id") != file_id
+            ]
+            removed = before - len(data["records"])
+            if removed:
+                _refresh_counts(data)
+                _save(founder_id, data, company_id)
+        return removed
+    except Exception as exc:
+        logger.warning("remove_library_file_from_brain failed founder=%s file=%s: %s", founder_id, file_id, exc)
+        return 0
+
+
 def purge_session_records(founder_id: str, session_id: str, company_id: str | None = None) -> int:
     """Delete all brain records written during a specific session. Returns count removed."""
     if not founder_id or not session_id:

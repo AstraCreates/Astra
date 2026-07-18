@@ -13,7 +13,7 @@ export type CompanyHomeTask = {
   note: string;
 };
 
-export type CompanyHomeInitiative = { id: string; title: string; status: string; progress: number; taskCount: number };
+export type CompanyHomeInitiative = { id: string; title: string; status: string; progress: number; taskCount: number; archived: boolean };
 export type CompanyHomeSquad = { id: string; name: string; lifecycle: string; activity: string; tasks: CompanyHomeTask[] };
 export type CompanyHomeApproval = { id: string; title: string; squad: string; detail: string };
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string };
@@ -88,8 +88,9 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       status: titleCase(text(initiative.status, "planned")),
       progress: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
       taskCount: tasks.length,
+      archived: text(initiative.status).toLowerCase() === "archived",
     };
-  });
+  }).filter((initiative) => !initiative.archived);
   const squads = missions.map((item, index) => {
     const mission = record(item);
     const missionTasks = list(mission.tasks).map((task, taskIndex): CompanyHomeTask => {
@@ -164,6 +165,13 @@ export async function sendCopilotMessage(scope: CompanyScope, message: string, f
   return { message: text(payload.message), data: normalizeCompanyOS(payload.company) };
 }
 
+export async function deleteInitiative(scope: CompanyScope, initiativeId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/initiatives/${encodeURIComponent(initiativeId)}`, scope), { method: "DELETE" });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
+}
+
 export async function getCompanyArtifact(scope: CompanyScope, artifactId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyArtifactDetail> {
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope));
   if (!response.ok) throw new Error(await response.text());
@@ -182,11 +190,13 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
   return {
     companyName: text(root.name, "Your company"),
     northStar: text(brainRecords.find(item => item.key === "north_star")?.value, "Ask Copilot to form your first initiative."),
-    initiatives: initiatives.map((initiative, index) => {
-      const matching = tasks.filter(task => task.initiative_id === initiative.initiative_id);
-      const complete = matching.filter(task => taskStatus(task.state) === "complete").length;
-      return { id: text(initiative.initiative_id, `initiative-${index}`), title: text(initiative.name, "Untitled initiative"), status: titleCase(text(initiative.state, "active")), progress: matching.length ? Math.round(complete / matching.length * 100) : 0, taskCount: matching.length };
-    }),
+    initiatives: initiatives
+      .map((initiative, index) => {
+        const matching = tasks.filter(task => task.initiative_id === initiative.initiative_id);
+        const complete = matching.filter(task => taskStatus(task.state) === "complete").length;
+        return { id: text(initiative.initiative_id, `initiative-${index}`), title: text(initiative.name, "Untitled initiative"), status: titleCase(text(initiative.state, "active")), progress: matching.length ? Math.round(complete / matching.length * 100) : 0, taskCount: matching.length, archived: text(initiative.state).toLowerCase() === "archived" };
+      })
+      .filter(initiative => !initiative.archived),
     squads: squads.map((squad, index) => {
       const matching = tasks.filter(task => task.squad_id === squad.squad_id).map((task, taskIndex) => ({ id: text(task.task_id, `task-${index}-${taskIndex}`), title: text(task.name, "Untitled task"), status: taskStatus(task.state), squad: titleCase(text(squad.department, "Operations")), note: text(task.description) }));
       const mission = missions.find(item => item.squad_id === squad.squad_id);

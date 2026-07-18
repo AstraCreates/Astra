@@ -1,6 +1,7 @@
 """Shared primitives for small JSON-backed stores."""
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 import logging
@@ -10,7 +11,12 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterator, TypeVar
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover -- POSIX only; this stack always runs on Linux
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +27,16 @@ T = TypeVar("T")
 
 
 def json_file_lock(path: str | Path) -> threading.RLock:
-    """Return a process-local RLock for a JSON file path."""
+    """Return a process-local RLock for a JSON file path.
+
+    Same-process thread safety only. Under multiple worker PROCESSES
+    (WEB_CONCURRENCY>1) this provides zero real mutual exclusion -- each
+    process gets its own independent lock object. Fine for read_json/
+    write_json_atomic below, where a single read or a single atomic
+    os.replace() write is already safe to race on its own. NOT fine for a
+    caller doing a read-modify-append sequence across multiple calls (see
+    cross_process_file_lock).
+    """
     key = os.path.abspath(os.fspath(path))
     lock = _locks.get(key)
     if lock is None:
@@ -31,6 +46,35 @@ def json_file_lock(path: str | Path) -> threading.RLock:
                 lock = threading.RLock()
                 _locks[key] = lock
     return lock
+
+
+@contextlib.contextmanager
+def cross_process_file_lock(path: str | Path) -> Iterator[None]:
+    """True cross-process mutual exclusion via flock, for callers that need
+    to serialize a read-modify-append sequence (not just one atomic op).
+
+    Confirmed production bug this exists to fix: Company OS's event log
+    append (read last_sequence, compute next, append) was protected only by
+    json_file_lock's process-local RLock. Under WEB_CONCURRENCY=4, two
+    backend worker processes raced on the same company, both computed the
+    same next sequence number, and both appended -- corrupting the event
+    log with a duplicate sequence number, which made every future read of
+    that company 500 forever ("Company OS event sequence is not
+    contiguous"). flock is a real kernel-level lock shared by all processes
+    on the same file, not just threads within one of them.
+    """
+    p = Path(path)
+    with json_file_lock(p):  # cheap same-process fast path first
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
 
 def read_json(path: str | Path, default: T | Callable[[], T]) -> Any:
