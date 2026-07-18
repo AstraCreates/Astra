@@ -87,6 +87,9 @@ def build_sales_agent(**kwargs) -> Agent:
             "- domains_searched (list of real domains or company names actually researched)\n"
             "- outreach_status (string: 'emails_sent' if gmail_send_direct succeeded, 'pipeline_ready' if sequences built but not sent, 'gmail_not_connected' if Gmail unavailable)\n"
             "- emails_sent_count (integer — actual sent count from gmail_send_direct results, 0 if not sent)\n"
+            "- crm_setup (concrete pipeline stages, fields, lead source, qualification rules, and follow-up ownership)\n"
+            "- cold_email_sequence (complete personalized sequence copy with subject, body, and timing per step)\n"
+            "- sales_playbook (ICP, discovery questions, qualification, objections, messaging, and close path)\n"
             "Do NOT include 'crm_contacts' with fabricated data. Only report what tools actually returned.\n\n"
 
             "═══ GMAIL — Send & read emails (if Gmail is connected) ═══\n"

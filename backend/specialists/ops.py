@@ -38,7 +38,10 @@ def build_ops_agent(**kwargs) -> Agent:
             "your 'done' result JSON MUST include the FULL document content as a field "
             "(e.g. 'hiring_plan', 'report', 'strategy_doc', etc.) — the complete text, "
             "not a summary of what you wrote. A short summary alone does NOT count as delivery. "
-            "After writing to obsidian_log, copy that same content into your done result."
+            "After writing to obsidian_log, copy that same content into your done result. "
+            "The stack requires three concrete artifacts in the done JSON: thirty_day_plan (week-by-week execution plan), "
+            "investor_memo (concise investor narrative), and founder_next_actions (prioritized action list with owners, "
+            "dependencies, and approvals). Include all three as substantive fields; never return only a summary."
         ),
         max_iterations=30,
         tools={

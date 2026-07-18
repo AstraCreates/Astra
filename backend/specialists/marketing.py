@@ -65,7 +65,9 @@ def build_marketing_agent(**kwargs) -> Agent:
             "  BAD: 'professional using our app'\n"
             "  Pass founder_id=<FOUNDER_ID> and session_id=<SESSION> exactly.\n"
             "- composite_logo_on_image after each generate_ad_image (position='bottom-right' / 'bottom-left').\n\n"
-            "done MUST include: reel_package, tiktok_package, meta_ad, ad_images (array of composited {base64, prompt}).\n"
+            "done MUST include: reel_package, tiktok_package, meta_ad, ad_images (array of composited {base64, prompt}), gtm_plan, launch_content. "
+            "gtm_plan must be a concrete audience, positioning, channel, experiment, budget, and measurement plan. "
+            "launch_content must contain the actual social, email, and community copy produced. These required artifacts cannot be replaced by a summary or URLs.\n"
             "Call obsidian_log then done."
         ),
         tools={
