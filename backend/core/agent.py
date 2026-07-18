@@ -786,6 +786,7 @@ class Agent:
         manifest: SpecialistManifest | None = None,
         max_cost_usd: float | None = None,
         deadline_seconds: float | None = None,
+        max_tokens: int | None = None,
     ):
         self.name = name
         self.role = role
@@ -828,6 +829,15 @@ class Agent:
         self._model_base_url = model_base_url or settings.agent_model_base_url
         self._model_api_key = model_api_key or settings.agent_model_api_key
         self._max_iterations = max_iterations or (manifest.max_iterations if manifest else None)
+        # Per-agent override for the output-token cap (see _call_llm's kwargs
+        # below) -- None keeps the existing global ASTRA_AGENT_MAX_TOKENS
+        # default for every other agent's latency protection. Added for
+        # research_competitors, whose competitor-table task is inherently
+        # more detail-heavy: confirmed live it hit the global 8192 cap on
+        # ordinary turns (not just its final done call), truncating into
+        # unparseable JSON and burning its whole iteration budget on retries
+        # that hit the same cap every time.
+        self.max_tokens = max_tokens
         self._max_tool_calls = max_tool_calls or (dict(manifest.max_tool_calls) if manifest else {})
         # Real production bug: specialists are built once and reused for every task
         # assigned to that role (see factory.py — orch.specialists is a persistent
@@ -914,7 +924,7 @@ class Agent:
             messages=messages,
             temperature=0.1,
             timeout=_call_timeout,
-            max_tokens=int(os.environ.get("ASTRA_AGENT_MAX_TOKENS", "8192")),
+            max_tokens=self.max_tokens or int(os.environ.get("ASTRA_AGENT_MAX_TOKENS", "8192")),
         )
         extra_body = openrouter_extra_body(self.model) if is_openrouter else None
         if extra_body:

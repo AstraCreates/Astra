@@ -526,6 +526,15 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         lane_tools.pop("research_papers", None)
         lane_tools.pop("patent_search", None)
 
+    # Confirmed live: research_competitors' competitor-table task (pricing,
+    # funding, positioning, strengths, weaknesses, whitespace per company) is
+    # inherently more detail-heavy than the other lanes' -- it hit the global
+    # 8192-token output cap on ORDINARY turns (not just its final done call),
+    # truncating into unparseable JSON and burning its whole iteration budget
+    # on retries that hit the same cap every time. The other lanes complete
+    # fine at the default, so this stays scoped rather than raised globally.
+    _research_max_tokens = 16000 if agent_name == "research_competitors" else None
+
     agent = Agent(
         name=agent_name,
         model=model,
@@ -533,6 +542,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         model_api_key=model_api_key,
         max_iterations=_max_iter,
         max_tool_calls=_tool_call_caps,
+        max_tokens=_research_max_tokens,
         role=_build_research_role(agent_name, focus_searches, "starter"),
         tools=lane_tools,
         **kwargs,
