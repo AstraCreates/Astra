@@ -488,6 +488,15 @@ async def run_deep_verification(
 
     verdict["status"] = status
     verdict["failed_checks"] = all_failed
+    # Never expose a stale deterministic summary after the deep ladder changes
+    # the verdict. A blocked result must explain what blocked it; "N checks
+    # passed" is contradictory and caused the UI to show confusing errors.
+    if status == "blocked" and (not verdict.get("summary") or "checks passed" in str(verdict.get("summary")).lower()):
+        missing = verdict.get("required_missing") or []
+        verdict["summary"] = (
+            "Missing required artifacts: " + ", ".join(str(item) for item in missing)
+            if missing else "Artifact verification blocked: " + "; ".join(all_failed[:3] or ["required checks failed"])
+        )
     verdict["correction_prompt"] = _build_correction_prompt(all_failed)
     verdict["levels"] = {
         "shape": shape_fails,
