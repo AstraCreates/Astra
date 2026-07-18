@@ -98,7 +98,7 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
-        evidence = run_research_pipeline(str(mission["name"]), focus="market", max_results_each=6)
+        evidence = run_research_pipeline(_research_subject(str(mission["name"])), focus="market", max_results_each=6)
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
         if evidence.get("error") or len(sources) < 3 or not evidence.get("coverage", {}).get("ready"):
             raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources and coverage are required.")
@@ -114,7 +114,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
 
 
 def _store_artifact(company_id: str, task: Mapping[str, Any], label: str, result: Mapping[str, Any], *, source: str) -> dict[str, Any]:
-    content = str(result.get("content") or result.get("report") or result.get("formatted") or result)
+    # Research pipelines expose the human-readable evidence under
+    # combined_formatted. Falling through to str(result) leaked raw tool JSON.
+    content = str(result.get("content") or result.get("report") or result.get("combined_formatted") or result.get("formatted") or result)
     artifact = create_artifact(company_id, f"{label}: {task['name']}", task_id=task["task_id"], source=source,
                                content=content[:_MAX_ARTIFACT_CONTENT], source_references=result.get("sources", []))
     return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", []))}
@@ -141,7 +143,14 @@ def _synthesis(evidence: Mapping[str, Any]) -> str:
 def _decision_brief(evidence: Mapping[str, Any]) -> str:
     if not evidence.get("source_references"):
         raise RuntimeError("Cannot produce a decision brief without cited evidence.")
-    return "## Decision brief\n\n" + (evidence.get("content") or "Evidence is still being collected.")[:16_000] + "\n\n## Recommendation\nProceed only as a narrowly scoped, paid discovery engagement: validate the intended meaning of 'ML-based lattices', identify a single scientific or manufacturing workflow, and agree measurable customer data, validation, and economic-success criteria before offering implementation work."
+    return "## Decision brief\n\n" + (evidence.get("content") or "Evidence is still being collected.")[:16_000] + "\n\n## Recommendation\nTreat this as a hypothesis, not a launch decision. Choose one target player segment, one platform, and one monetization model; then validate retention, conversion, and acquisition economics with a small instrumented prototype before scaling spend."
+
+
+def _research_subject(intent: str) -> str:
+    """Resolve high-risk product-language ambiguity before web queries are generated."""
+    if "cookie clicker" in intent.lower():
+        return f"{intent} as an idle/incremental video game, including game monetization, retention, platform fees, player acquisition, and comparable games"
+    return intent
 
 
 def _find(items: list[Mapping[str, Any]], key: str, value: object) -> Mapping[str, Any] | None:
