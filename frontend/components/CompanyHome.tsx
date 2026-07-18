@@ -133,6 +133,7 @@ export default function CompanyHome() {
   const tasks = home.squads.flatMap(squad => squad.tasks);
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
+  const chatTurns = home.conversation.filter(turn => turn.kind !== "status");
   const agentOptions = home.squads.map(s => ({ id: s.id.replace(/[^a-z0-9_]/gi, "_").toLowerCase(), label: s.name, status: s.lifecycle.toLowerCase() }));
 
   return <div style={{ display: "flex", height: "100%", minHeight: "100vh", background: "var(--bg)" }}>
@@ -170,7 +171,7 @@ export default function CompanyHome() {
 
       <div ref={threadRef} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 20px 12px" }}>
-          {home.conversation.length === 0 ? (
+          {chatTurns.length === 0 ? (
             <div style={{ minHeight: "50vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
               <span style={{ width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", color: "var(--accent)", background: "var(--accent-light)" }}><Sparkles size={20} /></span>
               <div>
@@ -185,7 +186,7 @@ export default function CompanyHome() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {home.conversation.map(turn => {
+              {chatTurns.map(turn => {
                 const isFounder = turn.author !== "copilot";
                 return (
                   <div key={turn.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>

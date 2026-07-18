@@ -45,12 +45,12 @@ async def run_mission(company_id: str, mission_id: str) -> None:
     if squad:
         update_squad(company_id, squad["squad_id"], state="working", lifecycle="working")
     update_mission(company_id, mission_id, state="working")
-    append_message(company_id, f"{mission['name']}: the {mission.get('department', 'operations').replace('_', ' ').title()} Lead started the squad work.", author="copilot", scope="initiative", scope_id=mission["initiative_id"])
+    append_message(company_id, f"{mission['name']}: the {mission.get('department', 'operations').replace('_', ' ').title()} Lead started the squad work.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
 
     for task in _mission_tasks(company_id, mission_id):
         if task.get("state") not in {"pending", "scheduled"}:
             continue
-        append_message(company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"])
+        append_message(company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"], kind="status")
         try:
             result = await asyncio.to_thread(
                 execute_task, company_id, task, lambda current: _execute_internal_work(company_id, mission, current)
@@ -60,13 +60,13 @@ async def run_mission(company_id: str, mission_id: str) -> None:
             update_mission(company_id, mission_id, state="review", blocked_reason=str(exc))
             if squad:
                 update_squad(company_id, squad["squad_id"], state="review", lifecycle="review")
-            append_message(company_id, f"{mission['name']} needs review before continuing: {exc}", author="copilot", scope="initiative", scope_id=mission["initiative_id"])
+            append_message(company_id, f"{mission['name']} needs review before continuing: {exc}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
             return
         if result.get("status") == "awaiting_approval":
             update_mission(company_id, mission_id, state="waiting")
             if squad:
                 update_squad(company_id, squad["squad_id"], state="waiting", lifecycle="review")
-            append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"])
+            append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
             return
 
     remaining = _mission_tasks(company_id, mission_id)
@@ -75,7 +75,11 @@ async def run_mission(company_id: str, mission_id: str) -> None:
         update_mission(company_id, mission_id, state=final_state)
         if squad:
             update_squad(company_id, squad["squad_id"], state=final_state, lifecycle="done" if final_state == "done" else "review")
-        append_message(company_id, f"{mission['name']} is {final_state}. Review the squad artifacts for the evidence and decision brief.", author="copilot", scope="initiative", scope_id=mission["initiative_id"])
+        if final_state == "done":
+            reply = _completion_reply(company_id, mission)
+        else:
+            reply = f"{mission['name']} is waiting on your approval before the last step. Check Approvals in the sidebar."
+        append_message(company_id, reply, author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="chat")
 
 
 async def recover_pending_missions() -> int:
@@ -127,6 +131,25 @@ def _latest_research_artifact(company_id: str, mission_id: object) -> Mapping[st
     task_ids = {task.get("task_id") for task in company.get("tasks", []) if task.get("mission_id") == mission_id}
     artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids]
     return artifacts[0] if artifacts else {}
+
+
+def _completion_reply(company_id: str, mission: Mapping[str, Any]) -> str:
+    """Answer in the founder's terms instead of pointing at a log line -- the
+    chat thread is a conversation, not a task tracker (the sidebar already
+    covers per-task status)."""
+    company = get_company_os(company_id) or {}
+    task_ids = {task.get("task_id") for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")}
+    brief = next((a for a in company.get("artifacts", []) if a.get("task_id") in task_ids and str(a.get("name", "")).startswith("Decision brief")), None)
+    if not brief or not brief.get("content"):
+        return f"{mission['name']} is done. I didn't produce a decision brief for it -- check the squad's artifacts for what was gathered."
+    excerpt = str(brief["content"]).split("## Recommendation", 1)
+    findings = excerpt[0].replace("## Decision brief", "").strip()[:600]
+    recommendation = ("## Recommendation" + excerpt[1]).strip() if len(excerpt) > 1 else ""
+    reply = f"Here's what I found on {mission['name'].lower()}:\n\n{findings}"
+    if recommendation:
+        reply += f"\n\n{recommendation}"
+    reply += "\n\nFull evidence and sources are in the artifact if you want to dig in."
+    return reply
 
 
 def _synthesis(evidence: Mapping[str, Any]) -> str:

@@ -19,7 +19,7 @@ export type CompanyHomeApproval = { id: string; title: string; squad: string; de
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" };
 
 export type CompanyHomeData = {
   companyName: string;
@@ -213,6 +213,6 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
     }),
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
     brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
-    conversation: list(root.conversation).map((item, index) => { const message = record(item); return { id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message) }; }),
+    conversation: list(root.conversation).map((item, index) => { const message = record(item); return { id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind: text(message.kind, "chat") === "status" ? "status" : "chat" }; }),
   };
 }
