@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,7 @@ def _append_receipt(receipt: dict[str, Any]) -> None:
 
 
 def _receipt_path() -> Path:
-    return Path.cwd() / "workspace" / "company" / "phase-2-legacy-drain.jsonl"
+    return Path(os.environ.get("ASTRA_WORKSPACE", Path.cwd() / "workspace")) / "company" / "phase-2-legacy-drain.jsonl"
 
 
 def _now() -> str:

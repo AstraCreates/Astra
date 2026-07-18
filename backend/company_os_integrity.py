@@ -230,7 +230,7 @@ def _require_company(company_id: str, root: str | Path | None) -> dict[str, Any]
 
 
 def _evidence_path(company_id: str, root: str | Path | None) -> Path:
-    base = Path(root) if root is not None else Path.cwd() / "workspace" / "company"
+    base = Path(root) if root is not None else Path(os.environ.get("ASTRA_WORKSPACE", Path.cwd() / "workspace")) / "company"
     if not company_id or Path(company_id).name != company_id:
         raise ValueError("company_id must be a non-empty path-safe identifier")
     return base / company_id / _EVIDENCE_FILE

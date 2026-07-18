@@ -318,7 +318,9 @@ def _must_find(state: dict[str, Any], collection: str, key: str, value: str) -> 
 
 
 def _root(root: str | Path | None) -> Path:
-    return Path(root) if root is not None else Path.cwd() / "workspace" / "company"
+    # Company OS must share the durable workspace volume used by the backend,
+    # never the container image's current working directory.
+    return Path(root) if root is not None else Path(os.environ.get("ASTRA_WORKSPACE", Path.cwd() / "workspace")) / "company"
 
 
 def _company_dir(company_id: str, root: str | Path | None) -> Path:
