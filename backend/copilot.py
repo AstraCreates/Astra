@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 _COPILOT_MAX_STEPS = 12
 _COPILOT_TOOL_TIMEOUT_SECONDS = 90
 _COPILOT_MAX_TURN_SECONDS = 5 * 60
+_COPILOT_MAX_CONTINUATIONS = int(os.environ.get("ASTRA_COPILOT_MAX_CONTINUATIONS", "8"))
+_continuation_tasks: dict[str, asyncio.Task[Any]] = {}
 
 
 async def _emit_turn_progress(
@@ -52,6 +54,93 @@ async def _emit_turn_progress(
         })
     except Exception as exc:
         logger.warning("copilot progress publish failed for %s: %s", session_id, exc)
+
+
+def _pending_turn_key(turn_id: str) -> str:
+    return f"copilot:{turn_id}"
+
+
+def _save_pending_turn(session_id: str, pending: dict[str, Any] | None) -> None:
+    from backend.core.session_store import merge_session_meta
+    merge_session_meta(session_id, copilot_pending_turn=pending)
+
+
+async def _run_copilot_continuation(session_id: str, turn_id: str) -> None:
+    """Resume a capped Copilot turn outside the original HTTP request."""
+    try:
+        from backend.core.session_store import get_session_meta
+        pending = await asyncio.to_thread(get_session_meta, session_id)
+        turn = (pending or {}).get("copilot_pending_turn") or {}
+        if str(turn.get("turn_id") or "") != turn_id or str(turn.get("status") or "") != "queued":
+            return
+        result = await run_copilot(
+            str(turn.get("founder_id") or ""),
+            session_id,
+            str(turn.get("message") or ""),
+            founder_email=str(turn.get("founder_email") or ""),
+            attachments=turn.get("attachments") if isinstance(turn.get("attachments"), list) else [],
+            mentioned_agents=turn.get("mentioned_agents") if isinstance(turn.get("mentioned_agents"), list) else [],
+            turn_id=turn_id,
+            continuation_count=int(turn.get("continuation_count") or 0) + 1,
+            persist_founder=False,
+        )
+        if result.get("status") == "continuing":
+            # run_copilot queued the next chunk while this task was still active;
+            # defer scheduling until this task has released its single-turn slot.
+            asyncio.get_running_loop().call_soon(schedule_copilot_continuation, session_id, turn_id)
+            return
+        _save_pending_turn(session_id, None)
+        from backend.core.events import publish
+        await publish(session_id, {
+            "type": "copilot_turn_complete",
+            "turn_id": turn_id,
+            "reply": result.get("reply") or "Copilot finished without a reply.",
+            "actions": result.get("actions") or [],
+            "status": result.get("status") or "completed",
+        })
+    except Exception as exc:
+        logger.exception("copilot continuation failed for %s: %s", session_id, exc)
+        _save_pending_turn(session_id, None)
+        await _emit_turn_progress(session_id, turn_id, "failed", "Copilot could not resume this turn.")
+        try:
+            from backend.core.events import publish
+            await publish(session_id, {
+                "type": "copilot_turn_complete",
+                "turn_id": turn_id,
+                "reply": "Copilot could not resume this turn. Please retry your request.",
+                "actions": [],
+                "status": "failed",
+            })
+        except Exception:
+            pass
+    finally:
+        _continuation_tasks.pop(_pending_turn_key(turn_id), None)
+
+
+def schedule_copilot_continuation(session_id: str, turn_id: str) -> None:
+    """Schedule once per turn; persisted metadata makes startup recovery possible."""
+    key = _pending_turn_key(turn_id)
+    task = _continuation_tasks.get(key)
+    if task is not None and not task.done():
+        return
+    _continuation_tasks[key] = asyncio.create_task(_run_copilot_continuation(session_id, turn_id))
+
+
+async def recover_pending_copilot_turns() -> int:
+    """Reschedule queued Copilot turns after an API process restart."""
+    from backend.core.session_store import get_session_meta, list_sessions
+    recovered = 0
+    for session in await asyncio.to_thread(list_sessions, None, 10_000):
+        session_id = str(session.get("session_id") or "")
+        if not session_id:
+            continue
+        meta = await asyncio.to_thread(get_session_meta, session_id)
+        turn = (meta or {}).get("copilot_pending_turn") or {}
+        if str(turn.get("status") or "") != "queued" or not str(turn.get("turn_id") or ""):
+            continue
+        schedule_copilot_continuation(session_id, str(turn["turn_id"]))
+        recovered += 1
+    return recovered
 
 
 # ── History store ───────────────────────────────────────────────────────────────
@@ -1888,6 +1977,8 @@ async def run_copilot(
     attachments: list[dict[str, Any]] | None = None,
     mentioned_agents: list[str] | None = None,
     turn_id: str = "",
+    continuation_count: int = 0,
+    persist_founder: bool = True,
 ) -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
@@ -2179,9 +2270,29 @@ async def run_copilot(
             }
             for item in normalized_attachments
         ]
-    history.append(founder_record)
-    history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
+    should_continue = outcome == "cap_reached" and bool(turn_id) and continuation_count < _COPILOT_MAX_CONTINUATIONS
+    if should_continue:
+        pending = {
+            "turn_id": turn_id,
+            "status": "queued",
+            "founder_id": founder_id,
+            "founder_email": founder_email,
+            "message": message,
+            "attachments": _normalize_attachments(attachments),
+            "mentioned_agents": list(mentioned_agents or []),
+            "continuation_count": continuation_count,
+            "updated_at": now,
+        }
+        _save_pending_turn(session_id, pending)
+        await _emit_turn_progress(session_id, turn_id, "continuing", "Continuing automatically with the recorded actions.", step=_COPILOT_MAX_STEPS)
+    if persist_founder:
+        history.append(founder_record)
+    if not should_continue:
+        history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
     _save_history(session_id, history)
+    if should_continue:
+        schedule_copilot_continuation(session_id, turn_id)
+        return {"ok": True, "status": "continuing", "reply": "", "actions": action_summaries, "history": history, "turn_id": turn_id}
     await _emit_turn_progress(session_id, turn_id, "complete", "Turn complete.", step=min(len(actions) + 1, _COPILOT_MAX_STEPS))
     return {"ok": outcome == "completed", "status": outcome, "reply": reply, "actions": action_summaries, "history": history, "turn_id": turn_id}
 

@@ -150,6 +150,29 @@ async def test_run_copilot_returns_explicit_status_when_step_cap_is_reached(monk
 
 
 @pytest.mark.asyncio
+async def test_capped_turn_queues_automatic_continuation(monkeypatch):
+    outputs = iter(['{"action":"tool","tool":"stop_agent","args":{"agent":"research"}}'] * copilot._COPILOT_MAX_STEPS)
+    scheduled = []
+    persisted = []
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": ["research"]}))
+    monkeypatch.setattr(copilot, "_emit_turn_progress", AsyncMock())
+    monkeypatch.setattr(copilot, "_save_pending_turn", lambda session_id, pending: persisted.append((session_id, pending)))
+    monkeypatch.setattr(copilot, "schedule_copilot_continuation", lambda session_id, turn_id: scheduled.append((session_id, turn_id)))
+    monkeypatch.setitem(copilot._TOOLS, "stop_agent", ("doc", AsyncMock(return_value={"ok": True})))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "stop research", turn_id="turn_123")
+
+    assert result["ok"] is True
+    assert result["status"] == "continuing"
+    assert result["reply"] == ""
+    assert persisted[-1][1]["turn_id"] == "turn_123"
+    assert scheduled == [("sess_123", "turn_123")]
+
+
+@pytest.mark.asyncio
 async def test_run_copilot_auto_routes_named_agent_directive(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *args, **kwargs: '{"action":"reply","text":"I am on it."}')
     monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"I am on it."}'))

@@ -570,6 +570,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           step: Number(ev.step || 0),
         });
         break;
+      case "copilot_turn_complete":
+        if (!isCurrentCopilotTurn(copilotTurnRef.current, ev.turn_id)) break;
+        setCopilot((current) => [...current, {
+          role: "copilot",
+          content: String(ev.reply || "Copilot finished without a reply."),
+          actions: normalizeCopilotActions(ev.actions),
+        }]);
+        copilotTurnRef.current = "";
+        setCopilotProgress(null);
+        setCopilotBusy(false);
+        break;
       case "goal_start": {
         const rawGoal = ev.goal || ev.instruction || st.goal;
         const { projectName, cleanGoal } = extractProjectName(rawGoal);
@@ -1030,6 +1041,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     setCopilotAttachments([]);
     setCopilotBusy(true);
     const turnId = crypto.randomUUID();
+    let continuesAutomatically = false;
     copilotTurnRef.current = turnId;
     setCopilotProgress({ turnId, text: "Reading the live run context.", phase: "thinking", step: 0 });
     try {
@@ -1039,15 +1051,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         body: JSON.stringify({ message: msg, attachments, mentioned_agents: mentionedAgents, turn_id: turnId }),
       });
       const d = await r.json();
+      if (d.status === "continuing") {
+        continuesAutomatically = true;
+        return;
+      }
       setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
     } catch (e) {
       setCopilot((c) => [...c, { role: "copilot", content: "Copilot error — try again." }]);
     } finally {
-      if (copilotTurnRef.current === turnId) {
+      if (!continuesAutomatically && copilotTurnRef.current === turnId) {
         copilotTurnRef.current = "";
         setCopilotProgress(null);
       }
-      setCopilotBusy(false);
+      if (!continuesAutomatically) setCopilotBusy(false);
     }
   };
   const answerAgentQuestion = async (answer: string) => {

@@ -131,6 +131,16 @@ async def startup_background_jobs():
     except Exception as exc:
         logger.warning("startup session reconciliation failed: %s", exc)
 
+    # Copilot turns may intentionally outlive their original HTTP request. Their
+    # queued state lives in session metadata, so reconnect them after a restart.
+    try:
+        from backend.copilot import recover_pending_copilot_turns
+        recovered_copilot_turns = await recover_pending_copilot_turns()
+        if recovered_copilot_turns:
+            logger.info("startup copilot recovery: resumed %d pending turn(s)", recovered_copilot_turns)
+    except Exception as exc:
+        logger.warning("startup copilot recovery failed: %s", exc)
+
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler
