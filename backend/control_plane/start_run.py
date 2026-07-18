@@ -883,9 +883,11 @@ async def start_run(
                     feature_assignment=feature_assignment,
                 )
             except Exception as temporal_exc:
-                logger.warning("Temporal dispatch failed, falling back to legacy: %s", temporal_exc)
-                engine = "legacy"
-                feature_assignment = dict(feature_assignment, engine="legacy")
+                # Never fail open into the legacy engine after assignment. The
+                # run is already durably assigned to Temporal; switching here
+                # would violate engine stickiness and make a dispatch outage
+                # indistinguishable from a successful legacy launch.
+                logger.error("Temporal dispatch failed for assigned Temporal run: %s", temporal_exc)
                 try:
                     from backend.core.session_store import merge_session_meta as _merge_features
 
@@ -894,9 +896,10 @@ async def start_run(
                         error=str(temporal_exc),
                         metadata={"feature_assignment": feature_assignment, "initial_budget_reservation_id": initial_reservation_id},
                     )
-                    _merge_features(resolved_run_id, feature_assignment=feature_assignment, engine="legacy")
+                    _merge_features(resolved_run_id, feature_assignment=feature_assignment, engine="temporal")
                 except Exception as merge_exc:
-                    logger.warning("session_store.merge_session_meta (engine correction) failed: %s", merge_exc)
+                    logger.warning("session_store.merge_session_meta (Temporal dispatch failure) failed: %s", merge_exc)
+                raise RuntimeError(f"Temporal dispatch failed; run was not started on legacy engine: {temporal_exc}") from temporal_exc
 
         shadow_run_id = ""
 

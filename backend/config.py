@@ -227,8 +227,10 @@ class Settings(BaseSettings):
     # Wave 1 control plane (PLAN.md). Same declare-or-silently-off rule as
     # above. All default OFF/0 -- unlike the mature flags above, none of
     # these back a proven system yet; nothing reads them this wave.
-    astra_control_plane_v2: bool = False
-    astra_control_plane_v2_rollout_percent: int = 0
+    # Temporal is the canonical engine for new runs. Legacy remains readable
+    # for pre-cutover runs, but new assignments must not silently land there.
+    astra_control_plane_v2: bool = True
+    astra_control_plane_v2_rollout_percent: int = 100
     # Percentage-only: samples eligible runs for Temporal shadow comparison
     # (Wave 3), independent of control_plane_v2 -- a legacy-engine run can
     # still be selected for shadow. No matching bool; the plan caps this at
