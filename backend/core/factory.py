@@ -89,9 +89,7 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=_or_key,
         ), **_sh}
         _technical_kwargs = {**dict(
-            # Technical is a tool-heavy supervisor. Keep the coding subprocess
-            # model separate, but use the reliable tool-calling model here.
-            model=settings.tool_heavy_agent_model,
+            model=settings.technical_agent_model or settings.or_light_model,
             model_base_url=_or_base,
             model_api_key=_or_key,
             max_iterations=settings.technical_agent_max_iterations,
@@ -123,7 +121,7 @@ def get_orchestrator() -> Orchestrator:
             # Web / ops / tool-heavy marketing lanes — stronger tool calling,
             # but intentionally scoped because GPT OSS is much pricier than Ling.
             "web": build_web_agent(use_computer=True, **_tool_heavy_kwargs),
-            # Technical wrapper — reliable tool-calling supervisor; run_mvp_loop owns the heavy coding model.
+            # Technical wrapper — cheap router/logger; run_mvp_loop owns the heavy coding model.
             "technical": build_technical_agent(use_computer=False, **_technical_kwargs),
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
             "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
@@ -131,13 +129,13 @@ def get_orchestrator() -> Orchestrator:
             # Marketing — mimo-v2.5. On hy3-preview it never finished its task (mangled
             # tool-call JSON / no agent_done), which left goal tasks perpetually open and
             # spawned endless follow-up runs. mimo completes its tool workflow reliably.
-            "marketing": build_marketing_agent(use_computer=True, **_tool_heavy_kwargs),
-            "legal": build_legal_agent(use_computer=True, **_tool_heavy_kwargs),
+            "marketing": build_marketing_agent(use_computer=True, **_small_kwargs),
+            "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
             "ops": build_ops_agent(use_computer=True, **_tool_heavy_kwargs),
             # Design — mimo-v2.5 (fast, clean tool calls). It works through tools
             # (brand board, wireframe, logo brief), so it doesn't need a heavy reasoning
             # model; hy3-preview here ran 20+ min per stuck iteration ("design took ages").
-            "design": build_design_agent(use_computer=False, **_tool_heavy_kwargs),
+            "design": build_design_agent(use_computer=False, **_small_kwargs),
             "legal_docs": build_legal_docs_agent(use_computer=True, **_highoutput_kwargs),
             "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
             "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
@@ -149,7 +147,7 @@ def get_orchestrator() -> Orchestrator:
             "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
             "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
             # Short repeated-output task agents — MiMo (fast, cheap)
-            "sales": build_sales_agent(use_computer=False, max_iterations=15, **_tool_heavy_kwargs),
+            "sales": build_sales_agent(use_computer=False, max_iterations=15, **_small_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
             # Web Navigator — vision-driven autonomous browser agent
             # Uses Gemini Flash vision via OpenRouter for screenshot → action loop
