@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative
+from backend.company_os import append_message, archive_messages, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_message
 from backend.company_os_dispatch import dispatch_intent, scheduler_tick
 from backend.company_os_runner import launch_mission
 from backend.tenant_auth import require_founder_access
@@ -63,6 +63,29 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
     return _company(request, company_id, founder_id)
+
+
+@router.patch("/companies/{company_id}/os/messages/{message_id}")
+async def edit_message(company_id: str, message_id: str, body: MessageEditBody, request: Request):
+    company = _company(request, company_id, body.founder_id, operator=True)
+    message = next((item for item in company.get("conversation", []) if item.get("message_id") == message_id), None)
+    if not message: raise HTTPException(status_code=404, detail="Message not found")
+    update_message(company_id, message_id, message=body.message, edited_at="now")
+    return {"company": get_company_os(company_id)}
+
+
+@router.delete("/companies/{company_id}/os/messages/{message_id}")
+async def delete_message(company_id: str, message_id: str, founder_id: str, request: Request):
+    _company(request, company_id, founder_id, operator=True)
+    update_message(company_id, message_id, state="archived")
+    return {"company": get_company_os(company_id)}
+
+
+@router.delete("/companies/{company_id}/os/messages")
+async def clear_messages(company_id: str, founder_id: str, request: Request):
+    _company(request, company_id, founder_id, operator=True)
+    archive_messages(company_id)
+    return {"company": get_company_os(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/initiatives/{initiative_id}")

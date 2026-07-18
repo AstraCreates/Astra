@@ -129,8 +129,8 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], label: str, result
 def _latest_research_artifact(company_id: str, mission_id: object) -> Mapping[str, Any]:
     company = get_company_os(company_id) or {}
     task_ids = {task.get("task_id") for task in company.get("tasks", []) if task.get("mission_id") == mission_id}
-    artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids]
-    return artifacts[0] if artifacts else {}
+    artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids and artifact.get("state") != "archived"]
+    return artifacts[-1] if artifacts else {}
 
 
 def _completion_reply(company_id: str, mission: Mapping[str, Any]) -> str:
