@@ -14,7 +14,7 @@ from backend.company_os import (
     update_squad,
 )
 from backend.company_os_dispatch import execute_task
-from backend.tools.web_search import deep_research
+from backend.tools.browser_research import run_research_pipeline
 
 logger = logging.getLogger(__name__)
 _ACTIVE_MISSIONS: dict[str, asyncio.Task[None]] = {}
@@ -98,9 +98,11 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
-        evidence = deep_research(str(mission["name"]), focus="market viability, demand, competition, pricing, and risks")
-        if evidence.get("error") or not (evidence.get("report") or evidence.get("sources")):
-            raise RuntimeError(evidence.get("error") or "Research returned no usable evidence")
+        evidence = run_research_pipeline(str(mission["name"]), focus="market", max_results_each=6)
+        sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
+        if evidence.get("error") or len(sources) < 3 or not evidence.get("coverage", {}).get("ready"):
+            raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources and coverage are required.")
+        evidence["sources"] = sources
         return _store_artifact(company_id, task, "Research evidence", evidence, source="web research")
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
@@ -131,11 +133,15 @@ def _synthesis(evidence: Mapping[str, Any]) -> str:
     for source in source_refs[:12]:
         if isinstance(source, Mapping):
             source_lines.append(f"- {source.get('title') or 'Source'}: {source.get('url') or ''}")
-    return "## Evidence synthesis\n\n" + (evidence.get("content") or "No evidence artifact was available.")[:20_000] + "\n\n## Sources\n" + ("\n".join(source_lines) or "No source URLs were returned.")
+    if not source_lines:
+        raise RuntimeError("Cannot synthesize uncited research evidence.")
+    return "## Evidence synthesis\n\n" + (evidence.get("content") or "No evidence artifact was available.")[:20_000] + "\n\n## Verified sources\n" + "\n".join(source_lines)
 
 
 def _decision_brief(evidence: Mapping[str, Any]) -> str:
-    return "## Decision brief\n\n" + (evidence.get("content") or "Evidence is still being collected.")[:16_000] + "\n\nRecommendation: treat this as an internal, review-ready research brief. Validate the cited evidence and unit economics before committing spend, publishing claims, or contacting prospects."
+    if not evidence.get("source_references"):
+        raise RuntimeError("Cannot produce a decision brief without cited evidence.")
+    return "## Decision brief\n\n" + (evidence.get("content") or "Evidence is still being collected.")[:16_000] + "\n\n## Recommendation\nProceed only as a narrowly scoped, paid discovery engagement: validate the intended meaning of 'ML-based lattices', identify a single scientific or manufacturing workflow, and agree measurable customer data, validation, and economic-success criteria before offering implementation work."
 
 
 def _find(items: list[Mapping[str, Any]], key: str, value: object) -> Mapping[str, Any] | None:

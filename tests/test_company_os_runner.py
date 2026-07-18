@@ -12,10 +12,15 @@ async def test_research_mission_runs_to_a_durable_decision_brief(tmp_path, monke
     dispatch = dispatch_intent("acme", "Research the viability of an AI consulting company")
 
     monkeypatch.setattr(
-        "backend.company_os_runner.deep_research",
+        "backend.company_os_runner.run_research_pipeline",
         lambda *_args, **_kwargs: {
-            "report": "Demand exists, but differentiation and specialist credibility are critical.",
-            "sources": [{"title": "Industry report", "url": "https://example.com/report"}],
+            "combined_formatted": "Demand exists, but differentiation and specialist credibility are critical.",
+            "sources": [
+                {"title": "Industry report", "url": "https://example.com/report"},
+                {"title": "Customer evidence", "url": "https://example.com/customer"},
+                {"title": "Competitor evidence", "url": "https://example.com/competitor"},
+            ],
+            "coverage": {"ready": True},
         },
     )
 
