@@ -9,8 +9,8 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from backend.company_os import append_message, archive_messages, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_message
-from backend.company_os_dispatch import dispatch_intent, scheduler_tick
-from backend.company_os_runner import launch_mission
+from backend.company_os_dispatch import scheduler_tick
+from backend.company_os_copilot import coordinate_turn
 from backend.tenant_auth import require_founder_access
 
 logger = logging.getLogger(__name__)
@@ -138,18 +138,8 @@ async def download_company_os_artifact(company_id: str, artifact_id: str, founde
 async def copilot_message_route(company_id: str, body: CopilotMessageBody, request: Request):
     _company(request, company_id, body.founder_id, operator=True)
     append_message(company_id, body.message, author="founder", role="user")
-    dispatch = dispatch_intent(company_id, body.message, proposed_spend=body.proposed_spend)
-    squad = dispatch["squad"]
-    initiative = dispatch["initiative"]
-    department = dispatch["department"].replace("_", " ").title()
-    acknowledgement = (
-        f"I formed the {squad['name'].title()} Squad for {initiative['name']}. "
-        f"The {department} Lead is coordinating the work and will surface any approval needed."
-    )
-    append_message(company_id, acknowledgement, author="copilot", role="assistant",
-                   scope="initiative", scope_id=initiative["initiative_id"])
-    launch_mission(company_id, dispatch["mission"]["mission_id"])
-    return {"message": acknowledgement, "dispatch": dispatch, "company": get_company_os(company_id)}
+    result = await coordinate_turn(company_id, body.message, proposed_spend=body.proposed_spend)
+    return {**result, "company": get_company_os(company_id)}
 
 
 @router.post("/companies/{company_id}/os/operations/tick")

@@ -336,6 +336,16 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Get the founder's credit balance and usage (1 credit = $0.005). Returns balance, total granted, total used.",
         "inputSchema": _schema({"founder_id": {"type": "string"}}),
     },
+    {
+        "name": "astra_company_os_context",
+        "description": "Read the local-first Company OS snapshot: initiatives, squads, missions, tasks, approvals, artifacts, and Company Brain references. Never creates a legacy session.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "founder_id": {"type": "string"}}, ["company_id"]),
+    },
+    {
+        "name": "astra_company_research",
+        "description": "Run cited web research for a Company OS mission. This is internal research only; it creates no external side effect.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
+    },
 ]
 
 # ── Tool implementations ──────────────────────────────────────────────────────
@@ -568,6 +578,24 @@ def _credits(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _company_os_context(args: dict) -> dict:
+    from backend.company_os import get_company_os
+    company = get_company_os(str(args["company_id"]))
+    if not company:
+        return {"ok": False, "error": "Company not found"}
+    if company.get("founder_id") != (args.get("founder_id") or _founder_id()):
+        return {"ok": False, "error": "Company not found"}
+    return {"ok": True, "company": company}
+
+def _company_research(args: dict) -> dict:
+    from backend.company_os import get_company_os
+    from backend.tools.browser_research import run_research_pipeline
+    company = get_company_os(str(args["company_id"]))
+    if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
+        return {"ok": False, "error": "Company not found"}
+    evidence = run_research_pipeline(str(args["subject"]), focus=str(args.get("focus") or "market"), max_results_each=6)
+    return {"ok": not bool(evidence.get("error")), **evidence}
+
 _DISPATCH: dict[str, Any] = {
     "astra_submit_goal": _submit_goal,
     "astra_session_status": _session_status,
@@ -589,6 +617,8 @@ _DISPATCH: dict[str, Any] = {
     "astra_approve_next_goal": _approve_next_goal,
     "astra_run_cycle": _run_cycle,
     "astra_credits": _credits,
+    "astra_company_os_context": _company_os_context,
+    "astra_company_research": _company_research,
 }
 
 # ── JSON-RPC handler ──────────────────────────────────────────────────────────

@@ -626,6 +626,17 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str, trigge
     if not flow:
         raise ValueError(f"Flow '{flow_id}' not found")
 
+    # The canvas is an authoring surface; Company OS is the execution ledger.
+    # Preflight every node before any side effect is considered. External nodes
+    # become durable approval cards instead of silently running from a webhook.
+    from backend.company_os_automations import prepare_flow_run, update_node_task
+    company_context = await asyncio.to_thread(prepare_flow_run, founder_id, flow, run_id)
+    if company_context:
+        automation_store.update_run(founder_id, run_id, company_id=company_context["company_id"], mission_id=company_context["mission_id"])
+        if company_context["requires_approval"]:
+            automation_store.update_run(founder_id, run_id, status="awaiting_approval", error="Company OS approval required before external automation actions.", finished_at=automation_store.now())
+            return automation_store.get_run(founder_id, run_id)
+
     nodes = {n["id"]: n for n in flow.get("nodes", [])}
     edges = flow.get("edges", [])
     outputs: dict[str, str] = {}
@@ -648,6 +659,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str, trigge
                 continue
 
             publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "running"})
+            await asyncio.to_thread(update_node_task, company_context, node_id, "working")
 
             # Only follow live edges — a switch node's non-matching branches stay out
             # of upstream_text even though the switch node itself isn't "skipped".
@@ -755,6 +767,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str, trigge
             text = _extract_text(result)
             outputs[node_id] = text
             automation_store.set_node_result(founder_id, run_id, node_id, {"status": "error" if result.get("error") else "done", "output": result})
+            await asyncio.to_thread(update_node_task, company_context, node_id, "blocked" if result.get("error") else "done", error=result.get("error"))
             publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "error" if result.get("error") else "done", "output": text})
 
             if result.get("error"):
