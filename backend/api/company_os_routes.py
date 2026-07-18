@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os
 from backend.company_os_dispatch import dispatch_intent, scheduler_tick
+from backend.company_os_runner import launch_mission
 from backend.tenant_auth import require_founder_access
 
 router = APIRouter(tags=["company-os"])
@@ -67,6 +68,7 @@ async def copilot_message_route(company_id: str, body: CopilotMessageBody, reque
     )
     append_message(company_id, acknowledgement, author="copilot", role="assistant",
                    scope="initiative", scope_id=initiative["initiative_id"])
+    launch_mission(company_id, dispatch["mission"]["mission_id"])
     return {"message": acknowledgement, "dispatch": dispatch, "company": get_company_os(company_id)}
 
 

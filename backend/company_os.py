@@ -172,6 +172,16 @@ def update_task(company_id: str, task_id: str, *, root: str | Path | None = None
     return _update(company_id, "task", "task_id", task_id, changes, root)
 
 
+def update_squad(company_id: str, squad_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    """Persist a squad lifecycle transition without mutating the snapshot directly."""
+    return _update(company_id, "squad", "squad_id", squad_id, changes, root)
+
+
+def update_mission(company_id: str, mission_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    """Persist a mission lifecycle transition without mutating the snapshot directly."""
+    return _update(company_id, "mission", "mission_id", mission_id, changes, root)
+
+
 def update_task_attempt(company_id: str, attempt_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
     return _update(company_id, "task_attempt", "attempt_id", attempt_id, changes, root)
 
@@ -232,8 +242,8 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"task", "task_attempt"}:
-        key = "task_id" if kind == "task" else "attempt_id"
+    if action == "updated" and kind in {"squad", "mission", "task", "task_attempt"}:
+        key = {"squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id"}[kind]
         entity = _must_find(state, f"{kind}s", key, event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]

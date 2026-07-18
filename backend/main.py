@@ -155,6 +155,19 @@ async def startup_background_jobs():
 
     _background_tasks.append(asyncio.create_task(_recover_copilot_turns_in_background()))
 
+    async def _recover_company_os_work_in_background() -> None:
+        try:
+            from backend.company_os_runner import recover_pending_missions
+            recovered = await recover_pending_missions()
+            if recovered:
+                logger.info("startup Company OS recovery: resumed %d pending mission(s)", recovered)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("startup Company OS recovery failed: %s", exc)
+
+    _background_tasks.append(asyncio.create_task(_recover_company_os_work_in_background()))
+
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.company_os_phase1_scheduler import start_company_os_phase_1_scheduler

@@ -28,7 +28,7 @@ export default function CompanyHome() {
   const [notice, setNotice] = useState("");
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { let live = true; void getCompanyHomeData({ founderId, companyId }).then(data => { if (live) setHome(data); }).catch(() => { if (live) setNotice("Company Home is ready while live data reconnects."); }); return () => { live = false; }; }, [founderId, companyId]);
+  useEffect(() => { let live = true; const refresh = () => void getCompanyHomeData({ founderId, companyId }).then(data => { if (live) setHome(data); }).catch(() => { if (live) setNotice("Company Home is ready while live data reconnects."); }); refresh(); const timer = window.setInterval(refresh, 3000); return () => { live = false; window.clearInterval(timer); }; }, [founderId, companyId]);
   const tasks = home.squads.flatMap(squad => squad.tasks);
   const board = ["planned", "active", "waiting", "complete"] as const;
 
