@@ -32,7 +32,15 @@ class Settings(BaseSettings):
     research_model: str = "perplexity/sonar"
     # Wrapper model for research specialists. This is separate from
     # research_model, which is the internal web-research synthesis model.
-    research_agent_model: str = "inclusionai/ling-2.6-flash"
+    # Swapped from ling-2.6-flash to deepseek-v4-flash for more reliable tool
+    # calling -- ling was producing malformed/truncated tool-call JSON
+    # (confirmed live: research_competitors repeatedly hit its output-token
+    # cap and, on one attempt, recovered a parsed action missing its "tool"
+    # field entirely). In practice this default is usually shadowed by
+    # factory.py's _small_kwargs (itself driven by the OR_LIGHT_MODEL env
+    # var), which is also being swapped -- kept in sync here for any caller
+    # that constructs a research agent directly, bypassing the factory.
+    research_agent_model: str = "deepseek/deepseek-v4-flash"
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.
