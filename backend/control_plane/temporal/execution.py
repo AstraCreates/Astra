@@ -628,7 +628,12 @@ async def execute_lane_attempt(
         goal=instruction,
         founder_id=founder_id,
         session_id=run_id,
-        task_id=str(spec.get("task_id") or step_key),
+        # Action receipts reference astra_run_steps.id, not the planner's
+        # logical task key (for example, t_web). Using the logical key here
+        # caused every durable external action to fail its step FK constraint.
+        # Keep the logical key in the task metadata; the execution context
+        # carries the concrete attempt UUID for idempotency and receipts.
+        task_id=step.id,
         shadow_mode=bool(constraints.get("shadow_mode", False)),
         unlimited_credits=bool(constraints.get("unlimited_credits", False)),
         shared=shared,
