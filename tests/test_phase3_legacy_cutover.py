@@ -38,6 +38,15 @@ def test_automation_run_urls_are_removed_in_favor_of_attempts():
     response = client.get("/automations/flows/flow_123/runs")
     assert response.status_code == 410
     assert response.json()["error"] == "legacy_run_removed"
+
+
+def test_http_mcp_rejects_retired_session_action():
+    import backend.main as main
+
+    client = TestClient(main.app)
+    response = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "astra_submit_goal", "arguments": {}}})
+    payload = response.json()["result"]["structuredContent"]
+    assert payload["error"] == "legacy_run_session_removed"
     response = client.post("/automations/flows/flow_123/run")
     assert response.status_code == 410
     assert response.json()["error"] == "legacy_run_removed"

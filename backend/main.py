@@ -332,6 +332,15 @@ async def mcp_http(request: Request):
         elif method == "tools/call":
             name = params.get("name", "")
             args = params.get("arguments") or {}
+            from backend.astra_mcp import _LEGACY_MCP_TOOLS
+            if name in _LEGACY_MCP_TOOLS:
+                result = _tool_result({
+                    "ok": False,
+                    "error": "legacy_run_session_removed",
+                    "message": "This MCP run/session action was removed. Use Company OS tools instead.",
+                })
+                content = _json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}, separators=(",", ":"))
+                return Response(content=content, media_type="application/json")
             mutating_tools = {
                 "astra_submit_goal",
                 "astra_steer",
