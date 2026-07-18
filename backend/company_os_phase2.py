@@ -31,6 +31,8 @@ async def inventory_legacy_work() -> dict[str, Any]:
             except Exception as exc:
                 item["temporal_error"] = str(exc)
         active.append(item)
+    temporal_orphans = await _list_temporal_orphans({str(item["session_id"]) for item in active if item.get("session_id")})
+    active.extend(temporal_orphans)
     return {"checked_at": _now(), "active": active, "active_count": len(active), "clear": not active}
 
 
@@ -43,6 +45,14 @@ async def force_drain_legacy_work(*, operator_id: str, confirmation: str) -> dic
     from backend.core import cancellation
     from backend.core.session_store import update_session_status
     for item in before["active"]:
+        if item.get("orphaned_temporal"):
+            if item.get("workflow_id") == "temporal-inventory-unavailable":
+                raise RuntimeError("Temporal inventory is unavailable; Phase 2 cannot claim a clean drain")
+            from backend.control_plane.temporal.dispatch import _get_client
+            handle = (await _get_client()).get_workflow_handle(item["workflow_id"])
+            await handle.terminate(reason="Phase 2 forced termination: Company OS hard replacement.")
+            terminated.append({**item, "terminal_status": "terminated"})
+            continue
         session_id = str(item["session_id"])
         temporal_cancelled = False
         if item.get("engine") == "temporal":
@@ -84,3 +94,22 @@ def _receipt_path() -> Path:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+async def _list_temporal_orphans(known_run_ids: set[str]) -> list[dict[str, Any]]:
+    """Independently enumerate running Astra workflows, including ones with no session row."""
+    try:
+        from backend.control_plane.temporal.dispatch import _get_client
+        client = await _get_client()
+        records = []
+        async for workflow in client.list_workflows('ExecutionStatus="Running"'):
+            workflow_id = str(workflow.id)
+            if not workflow_id.startswith("astra-"):
+                continue
+            run_id = workflow_id.removeprefix("astra-run-").removeprefix("astra-shadow-")
+            if run_id not in known_run_ids:
+                records.append({"workflow_id": workflow_id, "session_id": run_id, "engine": "temporal", "status": "running", "orphaned_temporal": True})
+        return records
+    except Exception:
+        # A Temporal outage is not a clean inventory; surface it as a blocker.
+        return [{"workflow_id": "temporal-inventory-unavailable", "engine": "temporal", "status": "unknown", "orphaned_temporal": True}]

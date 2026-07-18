@@ -142,10 +142,19 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     """Create initiative, squad, mission, and specialist tasks for an intent."""
     company = _call("get_company_os", company_id=company_id) or {}
     department, squad_name = choose_department(intent)
-    initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
-    initiative_id = _entity_id(initiative, "initiative_id")
-    squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
-    squad_id = _entity_id(squad, "squad_id")
+    # A department head is a standing team, not a disposable run container.
+    squad = next((item for item in company.get("squads", []) if item.get("department") == department), None)
+    if squad:
+        initiative_id = _entity_id(squad, "initiative_id")
+        initiative = next((item for item in company.get("initiatives", []) if item.get("initiative_id") == initiative_id), None)
+        if not initiative:
+            raise ValueError("existing squad has no initiative")
+        squad_id = _entity_id(squad, "squad_id")
+    else:
+        initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
+        initiative_id = _entity_id(initiative, "initiative_id")
+        squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+        squad_id = _entity_id(squad, "squad_id")
     mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent, department=department, state="active")
     mission_id = _entity_id(mission, "mission_id")
     created_tasks = []
