@@ -133,13 +133,20 @@ async def startup_background_jobs():
 
     # Copilot turns may intentionally outlive their original HTTP request. Their
     # queued state lives in session metadata, so reconnect them after a restart.
-    try:
-        from backend.copilot import recover_pending_copilot_turns
-        recovered_copilot_turns = await recover_pending_copilot_turns()
-        if recovered_copilot_turns:
-            logger.info("startup copilot recovery: resumed %d pending turn(s)", recovered_copilot_turns)
-    except Exception as exc:
-        logger.warning("startup copilot recovery failed: %s", exc)
+    # Recovery scans durable session metadata and must not block readiness: on a
+    # large store that scan can outlive the container health-check window.
+    async def _recover_copilot_turns_in_background() -> None:
+        try:
+            from backend.copilot import recover_pending_copilot_turns
+            recovered = await recover_pending_copilot_turns()
+            if recovered:
+                logger.info("startup copilot recovery: resumed %d pending turn(s)", recovered)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("startup copilot recovery failed: %s", exc)
+
+    _background_tasks.append(asyncio.create_task(_recover_copilot_turns_in_background()))
 
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
