@@ -160,7 +160,9 @@ def _synthesis(evidence: Mapping[str, Any]) -> str:
             source_lines.append(f"- {source.get('title') or 'Source'}: {source.get('url') or ''}")
     if not source_lines:
         raise RuntimeError("Cannot synthesize uncited research evidence.")
-    return "## Evidence synthesis\n\n" + (evidence.get("content") or "No evidence artifact was available.")[:20_000] + "\n\n## Verified sources\n" + "\n".join(source_lines)
+    content = str(evidence.get("content") or "")
+    paragraphs = [part.strip() for part in content.split("\n\n") if part.strip()][:6]
+    return "## Evidence synthesis\n\n" + "\n\n".join(paragraphs) + "\n\n## Verified sources\n" + "\n".join(source_lines)
 
 
 def _decision_brief(evidence: Mapping[str, Any]) -> str:

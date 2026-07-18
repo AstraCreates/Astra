@@ -50,6 +50,8 @@ def ensure_company_operations(company_id: str, *, root: str | Path | None = None
         raise KeyError(f"unknown company: {company_id}")
     existing = next((item for item in company["initiatives"] if item.get("system_key") == "company_operations"), None)
     if existing:
+        if existing.get("state") == "archived":
+            update_initiative(company_id, existing["initiative_id"], state="active")
         _ensure_operations_tasks(company_id, existing["initiative_id"], root=root)
         return existing
     initiative = create_initiative(company_id, "Company Operations", root=root, department="operations", system_key="company_operations")

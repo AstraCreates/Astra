@@ -143,7 +143,8 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     company = _call("get_company_os", company_id=company_id) or {}
     department, squad_name = choose_department(intent)
     # A department head is a standing team, not a disposable run container.
-    squad = next((item for item in company.get("squads", []) if item.get("department") == department), None)
+    active_initiatives = {item.get("initiative_id") for item in company.get("initiatives", []) if item.get("state") != "archived"}
+    squad = next((item for item in company.get("squads", []) if item.get("department") == department and item.get("state") != "archived" and item.get("initiative_id") in active_initiatives), None)
     if squad:
         initiative_id = _entity_id(squad, "initiative_id")
         initiative = next((item for item in company.get("initiatives", []) if item.get("initiative_id") == initiative_id), None)
