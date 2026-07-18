@@ -1253,6 +1253,19 @@ class Agent:
                     arguments = json.loads(call.function.arguments or "{}")
                 except Exception:
                     arguments = {}
+                # OpenRouter/Ling occasionally wraps native function arguments
+                # in an extra provider envelope. Normalize before the call is
+                # logged, deduplicated, capped, or dispatched so research tools
+                # do not receive an apparently empty payload.
+                if isinstance(arguments, dict):
+                    for _ in range(5):
+                        if len(arguments) != 1:
+                            break
+                        key, value = next(iter(arguments.items()))
+                        if key in {"args", "arguments", "tool_args", "tool_input", "parameters", "input", "kwargs"} and isinstance(value, dict):
+                            arguments = value
+                            continue
+                        break
                 calls.append({
                     "id": getattr(call, "id", ""),
                     "tool": call.function.name,
