@@ -732,7 +732,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       ensureAg(key);
       const agent = st.agents[key];
       agent.status = legacyAgentStatus(step.status);
-      if (step.error) addLog(key, "error", step.error);
+      // Verification summaries are not execution errors. Older Temporal
+      // attempts persisted the receipt summary in the step error column, so
+      // keep those receipts visible without turning every successful lane red.
+      if (step.error) {
+        const message = String(step.error);
+        if (/^\d+\s+artifact checks passed\.?$/i.test(message.trim())) {
+          addLog(key, "done", message);
+        } else if (/^(weak artifact evidence needs review|missing required artifacts):/i.test(message.trim())) {
+          addLog(key, "result", message);
+        } else {
+          addLog(key, "error", message);
+        }
+      }
     }
     st.approvals = normalizeApprovals(snapshot.approvals.map((approval) => ({
       ...approval,

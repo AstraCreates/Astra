@@ -888,6 +888,11 @@ async def execute_verification(
         patch: dict[str, Any] = {"heartbeat_at": datetime.now(timezone.utc)}
         if deep_verdict.get("status") == "blocked":
             patch["error"] = deep_verdict.get("summary") or "artifact verification blocked"
+        else:
+            # Verification receipts belong in the verification event/output,
+            # not in the step error column. Clearing a stale value also repairs
+            # attempts created by the earlier projection bug.
+            patch["error"] = None
         step_repo.update_fields(latest_attempt.id, patch)
     await _publish({
         "type": "stack_artifact_verification",
