@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import os
 import time
 import uuid
@@ -21,6 +22,7 @@ _COLLECTIONS = (
     "artifacts", "approvals", "conversation", "context_records", "policy_decisions",
 )
 _SEGMENT_LIMIT = 250
+logger = logging.getLogger(__name__)
 
 
 def create_company_os(company_id: str, founder_id: str, name: str, *, state: str = "active",
@@ -177,7 +179,9 @@ def create_task_attempt(company_id: str, task_id: str, *, attempt_id: str | None
 
 def create_artifact(company_id: str, name: str, *, artifact_id: str | None = None,
                     root: str | Path | None = None, **data: Any) -> dict[str, Any]:
-    return _create(company_id, "artifact", {"artifact_id": artifact_id or _id("artifact"), "name": name, **data}, root)
+    artifact = _create(company_id, "artifact", {"artifact_id": artifact_id or _id("artifact"), "name": name, **data}, root)
+    _mirror_artifact_to_library(company_id, artifact, root=root)
+    return artifact
 
 
 def create_approval(company_id: str, title: str, *, approval_id: str | None = None,
@@ -203,6 +207,10 @@ def update_mission(company_id: str, mission_id: str, *, root: str | Path | None 
 
 def update_task_attempt(company_id: str, attempt_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
     return _update(company_id, "task_attempt", "attempt_id", attempt_id, changes, root)
+
+
+def update_artifact(company_id: str, artifact_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    return _update(company_id, "artifact", "artifact_id", artifact_id, changes, root)
 
 
 def append_message(company_id: str, message: str, *, scope: str = "company", scope_id: str | None = None,
@@ -261,8 +269,8 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"squad", "mission", "task", "task_attempt"}:
-        key = {"squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id"}[kind]
+    if action == "updated" and kind in {"squad", "mission", "task", "task_attempt", "artifact"}:
+        key = {"squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id"}[kind]
         entity = _must_find(state, f"{kind}s", key, event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]
@@ -334,6 +342,31 @@ def _require_company(company_id: str, root: str | Path | None) -> Path:
     if not directory.exists() or _load_snapshot(directory) is None:
         raise KeyError(f"unknown company: {company_id}")
     return directory
+
+
+def _mirror_artifact_to_library(company_id: str, artifact: dict[str, Any], *, root: str | Path | None) -> None:
+    """Mirror a durable Company OS artifact into the founder's Library once."""
+    if artifact.get("library_file_id"):
+        return
+    try:
+        company = get_company_os(company_id, root=root)
+        if not company:
+            return
+        from backend.library.store import create_file
+        file = create_file(
+            founder_id=str(company["founder_id"]),
+            department=str(artifact.get("department") or "Operations").replace("_", " ").title(),
+            filename=f"{artifact['name']}.md",
+            content=str(artifact.get("content") or ""),
+            source_tag="Company OS",
+            source_session_id=str(artifact["artifact_id"]),
+        )
+        update_artifact(company_id, str(artifact["artifact_id"]), root=root, library_file_id=file["id"])
+        artifact["library_file_id"] = file["id"]
+    except Exception as exc:
+        # The Company OS event is already durable; a later projection rebuild
+        # can retry a failed mirror without risking loss of the primary artifact.
+        logger.warning("Company OS artifact Library mirror failed: company=%s artifact=%s error=%s", company_id, artifact.get("artifact_id"), exc)
 
 
 def _writer_lock(directory: Path):
