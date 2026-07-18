@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const desktopDir = path.resolve(__dirname, "..");
 const srcTauriDir = path.resolve(__dirname, "..", "src-tauri");
-const frontendDir = path.join(repoRoot, "frontend");
+const bundledShellDir = path.join(desktopDir, ".generated-shell");
 
 function parseEnvFile(filePath) {
   try {
@@ -56,6 +56,48 @@ const frontendUrl = getFrontendUrl();
 const frontendUrlObject = new URL(frontendUrl);
 const frontendOriginPattern = `${frontendUrlObject.origin}/*`;
 const frontendOrigin = frontendUrlObject.origin;
+mkdirSync(bundledShellDir, { recursive: true });
+writeFileSync(
+  path.join(bundledShellDir, "index.html"),
+  `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astra Desktop</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0d1117; color: #f5f7fb; }
+      main { width: min(520px, calc(100vw - 40px)); padding: 28px; border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; background: rgba(255,255,255,0.04); }
+      button { margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: 0; background: #f5f7fb; color: #0d1117; cursor: pointer; }
+      p { color: rgba(245,247,251,0.82); line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Astra is offline</h1>
+      <p id="status">Trying to reach ${frontendUrl}…</p>
+      <button id="retry" type="button">Retry</button>
+    </main>
+    <script>
+      const target = ${JSON.stringify(frontendUrl)};
+      const status = document.getElementById("status");
+      async function boot() {
+        status.textContent = "Trying to reach " + target + "…";
+        try {
+          await fetch(target, { method: "GET", mode: "no-cors", cache: "no-store" });
+          window.location.replace(target);
+        } catch (_) {
+          status.textContent = "Astra's hosted app is unreachable right now. Check your connection or try again shortly.";
+        }
+      }
+      document.getElementById("retry").addEventListener("click", boot);
+      boot();
+    </script>
+  </body>
+</html>
+`,
+  "utf8"
+);
 const generatedConfigRs = `pub const FRONTEND_ORIGIN: &str = ${JSON.stringify(frontendOrigin)};
 pub const DEV_FRONTEND_ORIGIN: &str = "http://localhost:3000";
 `;
@@ -72,7 +114,7 @@ const tauriConfig = {
       wait: false,
     },
     devUrl: "http://localhost:3000",
-    frontendDist: frontendUrl,
+    frontendDist: bundledShellDir,
   },
   app: {
     security: {

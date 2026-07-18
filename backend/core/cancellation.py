@@ -133,8 +133,9 @@ async def _is_paused_durable(session_id: str) -> bool:
         from backend.core.session_store import get_session_meta
         meta = await asyncio.to_thread(get_session_meta, session_id)
         return bool((meta or {}).get("paused"))
-    except Exception:
-        return False
+    except Exception as exc:
+        logger.warning("Pause: durable session_meta read failed for %s: %s", session_id, exc)
+        return True
 
 
 async def wait_if_paused(session_id: str, poll_interval: float = 1.0) -> None:

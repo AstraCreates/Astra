@@ -15,12 +15,13 @@ Usage:
 from __future__ import annotations
 
 import logging
-import json
 import os
 import re
 import time
 from pathlib import Path
 from typing import Any, Optional
+
+from backend.core.json_store import read_json, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +41,15 @@ def _receipt_path() -> Path:
 
 
 def _load_receipts() -> dict[str, dict[str, Any]]:
-    try:
-        raw = json.loads(_receipt_path().read_text())
-        return raw if isinstance(raw, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except Exception as exc:
-        logger.warning("[PII_VAULT] Could not load durable receipt ledger: %s", exc)
-        return {}
+    raw = read_json(_receipt_path(), {})
+    if isinstance(raw, dict):
+        return raw
+    logger.warning("[PII_VAULT] Durable receipt ledger had unexpected shape; using empty dict.")
+    return {}
 
 
 def _save_receipts(receipts: dict[str, dict[str, Any]]) -> None:
-    path = _receipt_path()
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(receipts, sort_keys=True))
-    tmp.replace(path)
+    write_json_atomic(_receipt_path(), receipts, sort_keys=True, indent=2)
 
 
 # ── Scrubbing ─────────────────────────────────────────────────────────────────

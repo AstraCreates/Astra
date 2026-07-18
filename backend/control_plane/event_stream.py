@@ -40,6 +40,24 @@ def _utc_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _record_outbox_failure(outbox_id: int, row: dict[str, Any], error: str) -> None:
+    from backend.db.client import get_supabase
+
+    attempts = int(row.get("attempts") or 0) + 1
+    patch: dict[str, Any] = {
+        "attempts": attempts,
+        "last_error": error[:2000],
+    }
+    if attempts >= _OUTBOX_MAX_ATTEMPTS:
+        patch["dead_lettered_at"] = _utc_now()
+    (
+        get_supabase().table("astra_outbox")
+        .update(patch)
+        .eq("id", outbox_id)
+        .execute()
+    )
+
+
 def _trim_stream(redis_client: Any, key: str) -> None:
     try:
         min_timestamp_ms = max(0, int(time.time() * 1000) - _STREAM_MAX_AGE_MS)
@@ -80,6 +98,19 @@ def _publish_outbox_batch_sync(limit: int = 100) -> int:
         run = run_repo.get(run_id)
         org_id = str((run.org_id if run else "") or "")
         if not org_id:
+            error = "run lookup produced no org_id; cannot publish stream event"
+            _record_outbox_failure(outbox_id, row, error)
+            attempts = int(row.get("attempts") or 0) + 1
+            if attempts >= _OUTBOX_MAX_ATTEMPTS:
+                logger.error(
+                    "Redis stream publish dead-lettered outbox_id=%s run_id=%s attempts=%s error=%s",
+                    outbox_id, run_id, attempts, error,
+                )
+            else:
+                logger.warning(
+                    "Redis stream publish deferred for outbox_id=%s run_id=%s attempt=%s: %s",
+                    outbox_id, run_id, attempts, error,
+                )
             continue
         key = _stream_key(org_id, run_id)
         try:
@@ -94,12 +125,8 @@ def _publish_outbox_batch_sync(limit: int = 100) -> int:
         except Exception as exc:
             if "equal or smaller" not in str(exc).lower():
                 attempts = int(row.get("attempts") or 0) + 1
-                patch: dict[str, Any] = {
-                    "attempts": attempts,
-                    "last_error": str(exc)[:2000],
-                }
+                _record_outbox_failure(outbox_id, row, str(exc))
                 if attempts >= _OUTBOX_MAX_ATTEMPTS:
-                    patch["dead_lettered_at"] = _utc_now()
                     logger.error(
                         "Redis stream publish dead-lettered outbox_id=%s run_id=%s attempts=%s error=%s",
                         outbox_id, run_id, attempts, exc,
@@ -109,12 +136,6 @@ def _publish_outbox_batch_sync(limit: int = 100) -> int:
                         "Redis stream publish failed for outbox_id=%s run_id=%s attempt=%s: %s",
                         outbox_id, run_id, attempts, exc,
                     )
-                (
-                    get_supabase().table("astra_outbox")
-                    .update(patch)
-                    .eq("id", outbox_id)
-                    .execute()
-                )
                 continue
         (
             get_supabase().table("astra_outbox")
@@ -210,18 +231,27 @@ async def stream_run_events(run_id: str, *, last_event_id: int | None = None) ->
             continue
         for _stream_name, entries in response:
             for stream_event_id, fields in entries:
-                cursor = str(stream_event_id)
                 sequence = _parse_stream_sequence(stream_event_id)
-                latest_sequence = max(latest_sequence, sequence)
                 raw_payload = fields.get("payload") if isinstance(fields, dict) else None
                 if raw_payload is None:
+                    cursor = str(stream_event_id)
+                    latest_sequence = max(latest_sequence, sequence)
                     continue
                 try:
                     payload_wrapper = json.loads(raw_payload)
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Malformed Redis stream payload for run=%s stream_id=%s: %s", run_id, stream_event_id, exc)
+                    cursor = str(stream_event_id)
+                    replay = await list_run_events(run_id, latest_sequence)
+                    for event in replay:
+                        latest_sequence = max(latest_sequence, int(event.get("sequence") or 0))
+                        payload = dict(event.get("payload") or {})
+                        payload.setdefault("type", event.get("event_type") or "")
+                        yield _fmt_sse(int(event.get("sequence") or 0), payload)
                     continue
                 payload = dict(payload_wrapper.get("payload") or {})
                 payload.setdefault("type", payload_wrapper.get("event_type") or "")
                 sequence = int(payload_wrapper.get("sequence") or sequence)
+                cursor = str(stream_event_id)
                 latest_sequence = max(latest_sequence, sequence)
                 yield _fmt_sse(sequence, payload)

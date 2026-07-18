@@ -44,7 +44,10 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
     PluginBuilder::new("astra-desktop-links")
         .on_navigation(|webview, url| {
             if should_open_externally(url.as_str()) {
-                let _ = webview.app_handle().opener().open_url(url.as_str(), None::<&str>);
+                if let Err(err) = webview.app_handle().opener().open_url(url.as_str(), None::<&str>) {
+                    eprintln!("failed to open external url {}: {}", url, err);
+                    return true;
+                }
                 return false;
             }
             true
@@ -124,9 +127,18 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
             const __astraIsDownload = (url) => __astraIsInternal(url) && url.pathname.startsWith(__ASTRA_DOWNLOAD_PREFIX__);
             const __astraOpenExternal = (url) => {
               if (window.__TAURI_INTERNALS__?.invoke) {
-                return window.__TAURI_INTERNALS__.invoke("open_external", { url: url.toString() }).catch(() => {});
+                return window.__TAURI_INTERNALS__.invoke("open_external", { url: url.toString() });
               }
-              return Promise.resolve();
+              return Promise.reject(new Error("External opener unavailable"));
+            };
+            const __astraFallbackExternalOpen = (url) => {
+              const text = `Couldn't open ${url.toString()} in an external app.`;
+              try {
+                window.alert(text);
+              } catch (_) {}
+              if (url.protocol === "mailto:" || url.protocol === "tel:") {
+                window.location.assign(url.toString());
+              }
             };
 
             if (!window.__astraDesktopLinkBridgeInstalled) {
@@ -141,7 +153,7 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
 
                 const keepInApp = __astraIsGoogle(resolved);
                 if (__astraIsDownload(resolved) || (!__astraIsInternal(resolved) && !keepInApp) || resolved.protocol === "mailto:" || resolved.protocol === "tel:") {
-                  void __astraOpenExternal(resolved);
+                  void __astraOpenExternal(resolved).catch(() => __astraFallbackExternalOpen(resolved));
                   return window;
                 }
 
@@ -173,7 +185,7 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
                 if (wantsExternal) {
                   event.preventDefault();
                   event.stopPropagation();
-                  void __astraOpenExternal(resolved);
+                  void __astraOpenExternal(resolved).catch(() => __astraFallbackExternalOpen(resolved));
                   return;
                 }
 

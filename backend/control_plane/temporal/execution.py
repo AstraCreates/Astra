@@ -1041,6 +1041,21 @@ async def execute_orchestrator_run(
 
     try:
         result = await orch_task
+        normalized_result = result if isinstance(result, dict) else {"output": str(result)[:1000]}
+        if isinstance(normalized_result, dict) and normalized_result.get("ok") is False:
+            if observe_state_fn:
+                observe_state_fn({
+                    "workflow_status": "failed",
+                    "active_step": None,
+                    "waiting_approval": None,
+                    "cancellation_requested": False,
+                    "shadow_mode": shadow_mode,
+                    "metadata": {
+                        "phase": "failed",
+                        "reason": str(normalized_result.get("error") or "legacy orchestrator reported failure"),
+                    },
+                })
+            raise RuntimeError(str(normalized_result.get("error") or "legacy orchestrator reported failure"))
         if heartbeat:
             heartbeat(f"run={session_id} state=completed")
         if observe_state_fn:
@@ -1056,7 +1071,7 @@ async def execute_orchestrator_run(
             "session_id": session_id,
             "run_id": run_input.run_id,
             "status": "completed",
-            "result": result if isinstance(result, dict) else {"output": str(result)[:1000]},
+            "result": normalized_result,
         }
     except asyncio.CancelledError:
         logger.info("Orchestrator cancelled for durable run=%s", session_id)

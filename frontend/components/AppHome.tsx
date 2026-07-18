@@ -16,6 +16,7 @@ export default function AppHome() {
   const { userId } = useDevUser();
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [showWelcomeLS, setShowWelcomeLS] = useState(false);
+  const [onboardingCheckError, setOnboardingCheckError] = useState<string | null>(null);
 
   const sessionId = searchParams.get("session") ?? "";
   const forceNew = searchParams.get("new") === "1";
@@ -52,8 +53,10 @@ export default function AppHome() {
         setOnboarded(false);
       }
     }).catch(() => {
-      // Network error — default to not onboarded
-      setOnboarded(false);
+      // If the backend is temporarily unreachable, avoid trapping existing users
+      // behind onboarding just because this browser has no local marker yet.
+      setOnboardingCheckError("Couldn't verify onboarding right now. Showing your dashboard instead.");
+      setOnboarded(true);
     });
   }, [userId]);
 
@@ -90,7 +93,14 @@ export default function AppHome() {
       ) : view === "session" ? (
         <SessionView key={sessionId} sessionId={sessionId} />
       ) : (
-        <DashboardView />
+        <>
+          {onboardingCheckError && (
+            <div style={{ padding: "10px 14px", background: "rgba(255,184,77,0.12)", color: "var(--text)", borderBottom: "1px solid var(--bd)", fontSize: 12 }}>
+              {onboardingCheckError}
+            </div>
+          )}
+          <DashboardView />
+        </>
       )}
       {/* PostOnboarding overlay — fixed on top so DashboardView loads sessions in background */}
       {showWelcome && <PostOnboardingScreen name={postName} onComplete={handleWelcomeDone} />}

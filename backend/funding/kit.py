@@ -22,6 +22,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _FUNDING_DEPT = "Finance"
+_GENERATION_STALE_SECONDS = 60 * 30
 
 
 # ── Status persistence ──────────────────────────────────────────────────────────
@@ -36,9 +37,19 @@ def _status_path(founder_id: str) -> Path:
 def _load_status(founder_id: str) -> dict[str, Any]:
     p = _status_path(founder_id)
     try:
-        return json.loads(p.read_text()) if p.exists() else {}
+        status = json.loads(p.read_text()) if p.exists() else {}
     except Exception:
         return {}
+    if (
+        status.get("generating")
+        and float(status.get("generation_started_at") or 0) > 0
+        and (time.time() - float(status.get("generation_started_at") or 0)) > _GENERATION_STALE_SECONDS
+    ):
+        status["generating"] = False
+        status["needs_refresh"] = True
+        status.setdefault("error", "Previous funding kit generation did not finish. Please retry.")
+        _save_status(founder_id, status)
+    return status
 
 
 def _save_status(founder_id: str, status: dict[str, Any]) -> None:
@@ -193,6 +204,7 @@ def generate_funding_kit(founder_id: str, company_id: str | None = None) -> dict
 
     status = _load_status(founder_id)
     status["generating"] = True
+    status["generation_started_at"] = time.time()
     status.pop("error", None)
     _save_status(founder_id, status)
 
@@ -266,6 +278,7 @@ def generate_funding_kit(founder_id: str, company_id: str | None = None) -> dict
             "genome_hash": genome_hash,
             "needs_refresh": False,
             "generating": False,
+            "generation_started_at": None,
             "documents": documents,
         }
         _save_status(founder_id, new_status)
@@ -275,6 +288,7 @@ def generate_funding_kit(founder_id: str, company_id: str | None = None) -> dict
         logger.error("generate_funding_kit failed founder=%s: %s", founder_id, exc, exc_info=True)
         status = _load_status(founder_id)
         status["generating"] = False
+        status["generation_started_at"] = None
         status["error"] = str(exc)
         _save_status(founder_id, status)
         raise

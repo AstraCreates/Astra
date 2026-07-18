@@ -66,6 +66,22 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _meta_from_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in record.items() if k != "content"}
+
+
+def _rebuild_index(founder_id: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for candidate in _library_dir(founder_id).glob("*.json"):
+        if candidate.name == "index.json":
+            continue
+        data = read_json(candidate, None)
+        if isinstance(data, dict) and data.get("id"):
+            records.append(_meta_from_record(data))
+    records.sort(key=lambda f: f.get("updated_at", ""), reverse=True)
+    return records
+
+
 # ── CRUD ───────────────────────────────────────────────────────────────────────
 
 def create_file(
@@ -105,7 +121,7 @@ def create_file(
         record["source_tag"] = source_tag
     if source_session_id:
         record["source_session_id"] = source_session_id
-    meta = {k: v for k, v in record.items() if k != "content"}
+    meta = _meta_from_record(record)
     with _lock:
         write_json_atomic(_file_path(founder_id, file_id), record)
         index = _load_index(founder_id)
@@ -123,7 +139,11 @@ def get_file(founder_id: str, file_id: str) -> dict[str, Any] | None:
 def list_files(founder_id: str, department: str | None = None) -> list[dict[str, Any]]:
     """Return metadata list (no content) for a founder, optionally filtered by department."""
     with _lock:
-        index = _load_index(founder_id)
+        rebuilt = _rebuild_index(founder_id)
+        index = rebuilt or _load_index(founder_id)
+        if rebuilt and rebuilt != index:
+            _save_index(founder_id, rebuilt)
+            index = rebuilt
     if department:
         index = [f for f in index if f.get("department") == department]
     index.sort(key=lambda f: f.get("updated_at", ""), reverse=True)
@@ -160,7 +180,7 @@ def update_file(
         write_json_atomic(p, record)
         # Update index entry
         index = _load_index(founder_id)
-        meta = {k: v for k, v in record.items() if k != "content"}
+        meta = _meta_from_record(record)
         new_index = [meta if f["id"] == file_id else f for f in index]
         _save_index(founder_id, new_index)
     return record

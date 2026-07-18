@@ -10,7 +10,7 @@
       "wait": false
     },
     "devUrl": "http://localhost:3000",
-    "frontendDist": "http://178.105.231.73.nip.io"
+    "frontendDist": "/Users/ishaangubbala/Documents/Astra/desktop/.generated-shell"
   },
   "app": {
     "security": {

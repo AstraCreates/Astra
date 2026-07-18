@@ -945,6 +945,32 @@ class Agent:
         # json_object not supported by OpenRouter models
         if not is_openrouter and not native_enabled:
             kwargs["response_format"] = {"type": "json_object"}
+
+        def _build_request_kwargs(model_name: str) -> dict:
+            request_kwargs = {**kwargs, "model": model_name}
+            fallback_native_enabled = bool(
+                ctx and runtime_feature_enabled("native_tool_calls", ctx.founder_id)
+                and capabilities_for(model_name).native_tool_calls
+            )
+            request_kwargs.pop("tools", None)
+            request_kwargs.pop("tool_choice", None)
+            request_kwargs.pop("response_format", None)
+            if is_openrouter:
+                request_kwargs["extra_body"] = openrouter_extra_body(model_name)
+            else:
+                request_kwargs.pop("extra_body", None)
+            if fallback_native_enabled and self.tools:
+                if self._runtime_entries:
+                    request_kwargs["tools"] = runtime_tool_registry.definitions(self._runtime_entries)
+                else:
+                    request_kwargs["tools"] = [
+                        {"type": "function", "function": schema_from_callable(name, fn)}
+                        for name, fn in self.tools.items()
+                    ]
+                request_kwargs["tool_choice"] = "auto"
+            elif not is_openrouter:
+                request_kwargs["response_format"] = {"type": "json_object"}
+            return request_kwargs
         # Rate-limit/transient resilience: retry with key rotation + backoff.
         # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
         # back off. Honors a Retry-After header when the provider sends one.
@@ -1108,14 +1134,12 @@ class Agent:
                     if not (_is_rate or _is_transient):
                         raise
                     if _attempt == _max_attempts - 1:
-                        # Exhausted retries on a flaky provider — return empty so the agent
-                        # loop handles it (re-prompt / finish) instead of crashing the run.
-                        logger.warning("%s LLM call failed after %d attempts (%s) — returning empty",
+                        logger.warning("%s LLM call failed after %d attempts (%s)",
                                        self.name, _max_attempts, type(_e).__name__)
                         fallback = settings.astra_fallback_model
                         if fallback and fallback != self.model:
                             try:
-                                fallback_kwargs = {**kwargs, "model": fallback}
+                                fallback_kwargs = _build_request_kwargs(fallback)
                                 resp = self._get_llm().chat.completions.create(**fallback_kwargs)
                                 if getattr(resp, "choices", None):
                                     runtime_metric("model_fallback_success_total")
@@ -1132,7 +1156,7 @@ class Agent:
                                 get_default_budget_service().release(_reservation.id)
                             except Exception:
                                 pass
-                        return ""
+                        raise RuntimeError(f"{self.name} model provider unavailable after {_max_attempts} attempts") from _e
                     # Prefer the provider's Retry-After; else exponential backoff + jitter.
                     _retry_after = None
                     _r = getattr(_e, "response", None)
@@ -1239,10 +1263,8 @@ class Agent:
                 except Exception:
                     pass
         if not resp or not getattr(resp, "choices", None):
-            # Provider never returned a usable completion after all retries — return
-            # empty so the agent loop handles it (re-prompt / finish) instead of crashing.
-            logger.warning("%s LLM produced no choices after %d attempts — returning empty", self.name, _max_attempts)
-            return ""
+            logger.warning("%s LLM produced no choices after %d attempts", self.name, _max_attempts)
+            raise RuntimeError(f"{self.name} model provider returned no usable choices after {_max_attempts} attempts")
         msg = resp.choices[0].message
         native_calls = getattr(msg, "tool_calls", None) or []
         if native_calls:

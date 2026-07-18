@@ -32,12 +32,20 @@ class OpenAICompatibleAdapter:
         choice = response.choices[0]
         message = choice.message
         calls: list[ToolInvocation] = []
+        tool_call_parse_errors: list[dict[str, str]] = []
         for call in getattr(message, "tool_calls", None) or []:
             raw_args = getattr(call.function, "arguments", "{}") or "{}"
             try:
                 args = json.loads(raw_args)
-            except Exception:
-                args = {}
+                if not isinstance(args, dict):
+                    raise ValueError("tool arguments must decode to an object")
+            except Exception as exc:
+                tool_call_parse_errors.append({
+                    "name": getattr(call.function, "name", ""),
+                    "error": str(exc),
+                    "raw_arguments": str(raw_args)[:1000],
+                })
+                continue
             calls.append(ToolInvocation(
                 id=getattr(call, "id", None) or f"call_{uuid.uuid4().hex[:10]}",
                 name=call.function.name,
@@ -53,4 +61,5 @@ class OpenAICompatibleAdapter:
             tool_calls=calls,
             usage=usage,
             finish_reason=getattr(choice, "finish_reason", None),
+            raw_metadata={"tool_call_parse_errors": tool_call_parse_errors} if tool_call_parse_errors else {},
         )

@@ -551,8 +551,21 @@ async def start_continue_run(
             if bootstrap_task is not None:
                 try:
                     await bootstrap_task
-                except Exception:
-                    pass
+                except Exception as bootstrap_exc:
+                    logger.warning("continuation bootstrap failed for %s: %s", resolved_run_id, bootstrap_exc)
+                    if final_status == "done":
+                        final_status = "error"
+                    try:
+                        from backend.core.events import publish
+                        await publish(
+                            resolved_run_id,
+                            {
+                                "type": "goal_error",
+                                "error": f"Continuation bootstrap failed: {bootstrap_exc}",
+                            },
+                        )
+                    except Exception:
+                        pass
             cancellation.clear(resolved_run_id)
             try:
                 from backend.db.client import get_supabase

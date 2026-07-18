@@ -12,7 +12,10 @@ directly, same as the direct path today.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class GatewayUnavailableError(RuntimeError):
@@ -113,8 +116,8 @@ def _resolve_gateway_api_key(founder_id: str) -> str:
                 key = mapping.get(founder_id)
                 if isinstance(key, str) and key.strip():
                     return key.strip()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Malformed litellm_org_keys_json; falling back to shared gateway key: %s", exc)
     return settings.litellm_master_key or "sk-astra-gateway"
 
 

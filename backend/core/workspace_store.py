@@ -21,6 +21,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
+from backend.core.json_store import read_json, write_json_atomic
+
 logger = logging.getLogger(__name__)
 
 _global_lock = threading.Lock()
@@ -78,17 +80,12 @@ def _ws_lock(workspace_id: str) -> threading.Lock:
 
 
 def _load_index() -> dict:
-    p = _index_path()
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+    data = read_json(_index_path(), {})
+    return data if isinstance(data, dict) else {}
 
 
 def _save_index(data: dict) -> None:
-    _index_path().write_text(json.dumps(data, indent=2))
+    write_json_atomic(_index_path(), data, indent=2)
 
 
 def _with_company_id(record: dict) -> dict:
@@ -97,6 +94,51 @@ def _with_company_id(record: dict) -> dict:
     workspace_id = str(normalized.get("workspace_id") or "")
     normalized.setdefault("company_id", workspace_id or str(normalized.get("founder_id") or ""))
     return normalized
+
+
+def _index_record_from_meta(meta: dict) -> dict:
+    return {
+        "workspace_id": meta.get("workspace_id"),
+        "company_id": meta.get("workspace_id"),
+        "founder_id": meta.get("founder_id"),
+        "name": meta.get("name"),
+        "company_name": meta.get("company_name"),
+        "stack_id": meta.get("stack_id"),
+        "status": meta.get("status"),
+        "created_at": meta.get("created_at"),
+        "last_active": meta.get("last_active"),
+        "chapter_count": len(meta.get("chapter_ids", [])),
+    }
+
+
+def _all_workspace_meta() -> dict[str, dict]:
+    rebuilt: dict[str, dict] = {}
+    root = _vault_root()
+    for candidate in root.iterdir():
+        if not candidate.is_dir():
+            continue
+        meta_path = candidate / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            continue
+        workspace_id = str(meta.get("workspace_id") or candidate.name)
+        rebuilt[workspace_id] = _index_record_from_meta(meta)
+    return rebuilt
+
+
+def _reconcile_index(workspace_id: str, meta: dict | None = None) -> None:
+    meta = meta or get_workspace(workspace_id)
+    if not meta:
+        return
+    record = _index_record_from_meta(meta)
+    with _global_lock:
+        idx = _load_index()
+        if idx.get(workspace_id) != record:
+            idx[workspace_id] = record
+            _save_index(idx)
 
 
 # ── Workspace CRUD ──────────────────────────────────────────────────────────
@@ -127,23 +169,9 @@ def create_workspace(
     with _ws_lock(workspace_id):
         ws.mkdir(parents=True, exist_ok=True)
         (ws / "chapters").mkdir(exist_ok=True)
-        (ws / "meta.json").write_text(json.dumps(meta, indent=2))
-        (ws / "vault.json").write_text(json.dumps({}, indent=2))
-    with _global_lock:
-        idx = _load_index()
-        idx[workspace_id] = {
-            "workspace_id": workspace_id,
-            "company_id": workspace_id,
-            "founder_id": founder_id,
-            "name": meta["name"],
-            "company_name": meta["company_name"],
-            "stack_id": stack_id,
-            "status": "active",
-            "created_at": now,
-            "last_active": now,
-            "chapter_count": 0,
-        }
-        _save_index(idx)
+        write_json_atomic(ws / "meta.json", meta, indent=2)
+        write_json_atomic(ws / "vault.json", {}, indent=2)
+    _reconcile_index(workspace_id, meta)
     logger.info("Created workspace %s for founder %s", workspace_id, founder_id)
     return meta
 
@@ -160,7 +188,13 @@ def get_workspace(workspace_id: str) -> Optional[dict]:
 
 def list_workspaces(founder_id: str) -> list[dict]:
     with _global_lock:
+        rebuilt = _all_workspace_meta()
         idx = _load_index()
+        if rebuilt and idx != rebuilt:
+            idx = rebuilt
+            _save_index(idx)
+        elif rebuilt:
+            idx = rebuilt
     items = [_with_company_id(v) for v in idx.values() if v.get("founder_id") == founder_id]
     items.sort(key=lambda x: x.get("last_active", ""), reverse=True)
     return items
@@ -218,16 +252,8 @@ def update_workspace_meta(workspace_id: str, **fields) -> Optional[dict]:
         meta.update(fields)
         meta["company_id"] = workspace_id
         meta["last_active"] = now
-        p.write_text(json.dumps(meta, indent=2))
-    with _global_lock:
-        idx = _load_index()
-        if workspace_id in idx:
-            idx[workspace_id]["company_id"] = workspace_id
-            for k in fields:
-                if k in idx[workspace_id]:
-                    idx[workspace_id][k] = fields[k]
-            idx[workspace_id]["last_active"] = now
-            _save_index(idx)
+        write_json_atomic(p, meta, indent=2)
+    _reconcile_index(workspace_id, meta)
     return _with_company_id(meta)
 
 
@@ -314,13 +340,10 @@ def create_chapter(
             meta = json.loads(meta_p.read_text())
             meta.setdefault("chapter_ids", []).append(chapter_id)
             meta["last_active"] = now
-            meta_p.write_text(json.dumps(meta, indent=2))
-    with _global_lock:
-        idx = _load_index()
-        if workspace_id in idx:
-            idx[workspace_id]["last_active"] = now
-            idx[workspace_id]["chapter_count"] = idx[workspace_id].get("chapter_count", 0) + 1
-            _save_index(idx)
+            write_json_atomic(meta_p, meta, indent=2)
+    ws_meta = get_workspace(workspace_id)
+    if ws_meta:
+        _reconcile_index(workspace_id, ws_meta)
     logger.info("Created chapter %s in workspace %s (session %s)", chapter_id, workspace_id, session_id)
     return chapter
 

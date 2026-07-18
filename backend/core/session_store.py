@@ -94,6 +94,52 @@ def _save_index(index: dict[str, Any]) -> None:
     tmp.replace(p)  # atomic on POSIX; best-effort on Windows
 
 
+def _index_record_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: meta.get(k)
+        for k in (
+            "session_id",
+            "founder_id",
+            "company_id",
+            "workspace_id",
+            "goal",
+            "stack_id",
+            "status",
+            "created_at",
+            "completed_at",
+            "parent_session_id",
+            "kind",
+        )
+    }
+
+
+def _reconcile_index_from_meta(session_id: str, meta: dict[str, Any] | None = None) -> None:
+    meta = meta or get_session_meta(session_id)
+    if not meta or not bool(meta.get("visible", True)):
+        return
+    record = _index_record_from_meta(meta)
+    with _index_lock:
+        index = _load_index()
+        if index.get(session_id) != record:
+            index[session_id] = record
+            _save_index(index)
+
+
+def _rebuild_index_sessions() -> dict[str, Any]:
+    sessions_root = _vault() / "sessions"
+    rebuilt: dict[str, Any] = {}
+    if not sessions_root.exists():
+        return rebuilt
+    for candidate in sessions_root.iterdir():
+        if not candidate.is_dir():
+            continue
+        meta = get_session_meta(candidate.name)
+        if not meta or not bool(meta.get("visible", True)):
+            continue
+        rebuilt[candidate.name] = _index_record_from_meta(meta)
+    return rebuilt
+
+
 def _with_company_id(record: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(record)
     normalized.setdefault(
@@ -144,25 +190,7 @@ def register_session(
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
     if visible:
-        with _index_lock:
-            index = _load_index()
-            index[session_id] = {
-                k: meta[k]
-                for k in (
-                    "session_id",
-                    "founder_id",
-                    "company_id",
-                    "workspace_id",
-                    "goal",
-                    "stack_id",
-                    "status",
-                    "created_at",
-                    "completed_at",
-                    "parent_session_id",
-                    "kind",
-                )
-            }
-            _save_index(index)
+        _reconcile_index_from_meta(session_id, meta)
 
 
 def update_session_status(
@@ -185,10 +213,10 @@ def update_session_status(
     # Update the shared index under its own lock.
     with _index_lock:
         index = _load_index()
-        if session_id in index:
-            index[session_id]["status"] = status
-            index[session_id]["completed_at"] = meta.get("completed_at")
-            _save_index(index)
+        current = index.get(session_id, {})
+        current.update(_index_record_from_meta(meta))
+        index[session_id] = current
+        _save_index(index)
 
 
 def merge_session_meta(session_id: str, **fields) -> None:
@@ -356,7 +384,14 @@ def list_sessions(
 ) -> list[dict]:
     """Return sessions from the index, newest first."""
     with _lock:
-        index = _load_index()
+        rebuilt = _rebuild_index_sessions()
+        with _index_lock:
+            index = _load_index()
+            if rebuilt and index != rebuilt:
+                index = rebuilt
+                _save_index(index)
+            elif rebuilt:
+                index = rebuilt
     sessions = [_with_company_id(session) for session in index.values()]
     if founder_id:
         sessions = [s for s in sessions if s.get("founder_id") == founder_id]

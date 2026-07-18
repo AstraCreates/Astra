@@ -59,6 +59,7 @@ def ingest_connector_webhook(founder_id: str, source: str, payload: dict[str, An
     event_type = str(normalized.get("event_type") or "")
     cursor = str(normalized.get("cursor") or sync_event_id or "")
     result = ingest_company_brain_records(founder_id, source, records)
+    ledger_error = ""
     try:
         from backend.connector_sync_ledger import record_connector_webhook
         record_connector_webhook(
@@ -69,8 +70,8 @@ def ingest_connector_webhook(founder_id: str, source: str, payload: dict[str, An
             changed_records=int(result.get("changed_records") or 0),
             cursor=cursor or None,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        ledger_error = str(exc)
     return {
         **result,
         "source": source,
@@ -78,6 +79,10 @@ def ingest_connector_webhook(founder_id: str, source: str, payload: dict[str, An
         "event_type": event_type,
         "cursor": cursor,
         "records": len(records),
+        "degraded": bool(ledger_error),
+        "warning": "Webhook ingested but sync ledger persistence failed." if ledger_error else "",
+        "ledger_recorded": not ledger_error,
+        "ledger_error": ledger_error,
     }
 
 

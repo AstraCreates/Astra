@@ -1770,10 +1770,27 @@ export default function SetupPage() {
       if (!popup) throw new Error("Popup blocked by browser");
       stackConnectPopupRef.current = popup;
       stopStackConnectorPolling();
+      let pollFailures = 0;
+      const startedAt = Date.now();
       stackConnectPollRef.current = window.setInterval(async () => {
+        if (popup.closed) {
+          stopStackConnectorPolling();
+          setConnectorConnectError("OAuth window was closed before the connection finished.");
+          setConnectorConnectErrorKey(connector.key);
+          setConnectorConnectingKey(null);
+          return;
+        }
+        if (Date.now() - startedAt > 120000) {
+          stopStackConnectorPolling();
+          setConnectorConnectError("Timed out waiting for the connector to finish authorizing. Please try again.");
+          setConnectorConnectErrorKey(connector.key);
+          setConnectorConnectingKey(null);
+          return;
+        }
         try {
           await Promise.all([loadStatus(), loadStackData()]);
           const latest = await getSetupStatus(founderId);
+          pollFailures = 0;
           const connected = (
             connector.key === "github" ? !!latest.github :
             connector.key === "gmail" ? !!latest.apps?.["gmail_direct"] :
@@ -1788,7 +1805,13 @@ export default function SetupPage() {
             setConnectorConnectErrorKey(null);
           }
         } catch {
-          // keep polling during auth flow
+          pollFailures += 1;
+          if (pollFailures >= 3) {
+            stopStackConnectorPolling();
+            setConnectorConnectError("Couldn't confirm the connector status. Please refresh and try again.");
+            setConnectorConnectErrorKey(connector.key);
+            setConnectorConnectingKey(null);
+          }
         }
       }, 2000);
     } catch (e) {

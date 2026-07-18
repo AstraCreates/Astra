@@ -166,18 +166,20 @@ export default function WorkspaceView({
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vault, setVault] = useState<Record<string, WorkspaceVaultEntry>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadWorkspace = async () => {
     try {
       const ws = await getWorkspace(workspaceId);
       setWorkspace(ws);
+      setLoadError(null);
       // Default to the latest chapter if none specified
       if (!activeChapterId && ws.chapters && ws.chapters.length > 0) {
         setActiveChapterId(ws.chapters[ws.chapters.length - 1].chapter_id);
       }
     } catch {
-      // ignore
+      setLoadError("Workspace data is temporarily unavailable. Retry in a moment.");
     } finally {
       setLoading(false);
     }
@@ -213,6 +215,14 @@ export default function WorkspaceView({
 
   if (loading) {
     return <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fm)", fontSize: 11 }}>Loading workspace…</div>;
+  }
+  if (loadError) {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text)", gap: 10, fontSize: 11 }}>
+        <div>{loadError}</div>
+        <button onClick={() => { setLoading(true); void loadWorkspace(); void loadVault(); }}>Retry</button>
+      </div>
+    );
   }
   if (!workspace) {
     return <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--red)", fontSize: 11 }}>Workspace not found.</div>;
