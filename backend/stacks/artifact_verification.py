@@ -140,6 +140,8 @@ def _artifact_status(evidence: str, required: bool) -> str:
 
 def _summary(status: str, artifacts: list[dict[str, Any]]) -> str:
     if status == "passed":
+        if not artifacts:
+            return "Completed; no per-lane artifact checks required."
         return f"{len(artifacts)} artifact checks passed."
     if status == "blocked":
         missing = [item["artifact_key"] for item in artifacts if item["status"] == "missing"]
