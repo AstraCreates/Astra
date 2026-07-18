@@ -179,9 +179,12 @@ def create_task_attempt(company_id: str, task_id: str, *, attempt_id: str | None
 
 def create_artifact(company_id: str, name: str, *, artifact_id: str | None = None,
                     root: str | Path | None = None, **data: Any) -> dict[str, Any]:
-    artifact = _create(company_id, "artifact", {"artifact_id": artifact_id or _id("artifact"), "name": name, **data}, root)
-    _mirror_artifact_to_library(company_id, artifact, root=root)
-    return artifact
+    resolved_id = artifact_id or _id("artifact")
+    library_file_id = data.get("library_file_id") or _mirror_artifact_to_library(company_id, resolved_id, name, data, root=root)
+    payload = {"artifact_id": resolved_id, "name": name, **data}
+    if library_file_id:
+        payload["library_file_id"] = library_file_id
+    return _create(company_id, "artifact", payload, root)
 
 
 def create_approval(company_id: str, title: str, *, approval_id: str | None = None,
@@ -351,29 +354,29 @@ def _require_company(company_id: str, root: str | Path | None) -> Path:
     return directory
 
 
-def _mirror_artifact_to_library(company_id: str, artifact: dict[str, Any], *, root: str | Path | None) -> None:
-    """Mirror a durable Company OS artifact into the founder's Library once."""
-    if artifact.get("library_file_id"):
-        return
+def _mirror_artifact_to_library(company_id: str, artifact_id: str, name: str, data: dict[str, Any], *, root: str | Path | None) -> str | None:
+    """Create the Library file for a not-yet-persisted artifact and return its
+    file id, so create_artifact can fold it into the artifact.created event
+    instead of following up with a second artifact.updated event."""
     try:
         company = get_company_os(company_id, root=root)
         if not company:
-            return
+            return None
         from backend.library.store import create_file
         file = create_file(
             founder_id=str(company["founder_id"]),
-            department=str(artifact.get("department") or "Operations").replace("_", " ").title(),
-            filename=f"{artifact['name']}.md",
-            content=str(artifact.get("content") or ""),
+            department=str(data.get("department") or "Operations").replace("_", " ").title(),
+            filename=f"{name}.md",
+            content=str(data.get("content") or ""),
             source_tag="Company OS",
-            source_session_id=str(artifact["artifact_id"]),
+            source_session_id=str(artifact_id),
         )
-        update_artifact(company_id, str(artifact["artifact_id"]), root=root, library_file_id=file["id"])
-        artifact["library_file_id"] = file["id"]
+        return file["id"]
     except Exception as exc:
         # The Company OS event is already durable; a later projection rebuild
         # can retry a failed mirror without risking loss of the primary artifact.
-        logger.warning("Company OS artifact Library mirror failed: company=%s artifact=%s error=%s", company_id, artifact.get("artifact_id"), exc)
+        logger.warning("Company OS artifact Library mirror failed: company=%s artifact=%s error=%s", company_id, artifact_id, exc)
+        return None
 
 
 def _writer_lock(directory: Path):
