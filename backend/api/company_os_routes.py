@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_squad
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative
 from backend.company_os_dispatch import dispatch_intent, scheduler_tick
 from backend.company_os_runner import launch_mission
 from backend.tenant_auth import require_founder_access
@@ -27,11 +27,6 @@ class CopilotMessageBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
     proposed_spend: float = Field(default=0, ge=0)
-
-
-class MessageEditBody(BaseModel):
-    founder_id: str
-    message: str = Field(min_length=1, max_length=20_000)
 
 
 def _artifact(company_id: str, artifact_id: str) -> dict[str, Any]:
@@ -80,15 +75,6 @@ async def delete_company_os_initiative(company_id: str, initiative_id: str, foun
         raise HTTPException(status_code=404, detail="Initiative not found")
     update_initiative(company_id, initiative_id, state="archived")
     return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
-
-
-@router.delete("/companies/{company_id}/os/squads/{squad_id}")
-async def delete_company_os_squad(company_id: str, squad_id: str, founder_id: str, request: Request):
-    company = _company(request, company_id, founder_id, operator=True)
-    if not any(item.get("squad_id") == squad_id for item in company.get("squads", [])):
-        raise HTTPException(status_code=404, detail="Squad not found")
-    update_squad(company_id, squad_id, state="archived", lifecycle="archived")
-    return {"ok": True, "squad_id": squad_id, "company": get_company_os(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/artifacts/{artifact_id}")
