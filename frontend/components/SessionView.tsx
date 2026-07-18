@@ -17,6 +17,7 @@ import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard"
 import LLCFilingModal from "@/components/LLCFilingModal";
 import AstraCopilotComposer, { type CopilotAgentOption } from "@/components/AstraCopilotComposer";
 import SessionCopilotSurface, { type SessionActivityItem } from "@/components/SessionCopilotSurface";
+import { isCurrentCopilotTurn } from "@/lib/copilot-turn";
 import RunStatusBadge from "@/components/RunStatusBadge";
 import RunTraceLink from "@/components/RunTraceLink";
 import { decideApproval as decideDurableApproval, getRunEvents, getRunSnapshot, type RunEvent, type RunSnapshot } from "@/lib/control-plane-api";
@@ -43,6 +44,7 @@ type Artifact = { key?: string; title?: string; status?: string; preview?: strin
 type Approval = { gate_key: string; request_id: string; action_digest: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn"; session_id?: string };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
+
 type PlanTask = { id: string; agent: string; instruction: string };
 
 function legacyStatusFromControlPlane(status: string): string {
@@ -357,10 +359,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [copilotInput, setCopilotInput] = useState("");
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
+  const [copilotProgress, setCopilotProgress] = useState<{ turnId: string; text: string; phase: string; step: number } | null>(null);
   const [copilotOpen, setCopilotOpen] = useState(true);
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const [copilotAttachments, setCopilotAttachments] = useState<CopilotAttachment[]>([]);
   const [copilotUploading, setCopilotUploading] = useState(false);
+  const copilotTurnRef = useRef("");
   const copilotLoadedSession = useRef<string | null>(null);
   const copilotFileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -557,6 +561,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const handleEvent = useCallback((ev: Record<string, any>) => {
     const st = S.current;
     switch (ev.type) {
+      case "copilot_turn_progress":
+        if (!isCurrentCopilotTurn(copilotTurnRef.current, ev.turn_id)) break;
+        setCopilotProgress({
+          turnId: String(ev.turn_id || ""),
+          text: String(ev.text || "Working on your request."),
+          phase: String(ev.phase || "thinking"),
+          step: Number(ev.step || 0),
+        });
+        break;
       case "goal_start": {
         const rawGoal = ev.goal || ev.instruction || st.goal;
         const { projectName, cleanGoal } = extractProjectName(rawGoal);
@@ -1016,17 +1029,26 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     }]);
     setCopilotAttachments([]);
     setCopilotBusy(true);
+    const turnId = crypto.randomUUID();
+    copilotTurnRef.current = turnId;
+    setCopilotProgress({ turnId, text: "Reading the live run context.", phase: "thinking", step: 0 });
     try {
       const r = await apiFetch(`${API}/copilot/${sessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, attachments, mentioned_agents: mentionedAgents }),
+        body: JSON.stringify({ message: msg, attachments, mentioned_agents: mentionedAgents, turn_id: turnId }),
       });
       const d = await r.json();
       setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
     } catch (e) {
       setCopilot((c) => [...c, { role: "copilot", content: "Copilot error — try again." }]);
-    } finally { setCopilotBusy(false); }
+    } finally {
+      if (copilotTurnRef.current === turnId) {
+        copilotTurnRef.current = "";
+        setCopilotProgress(null);
+      }
+      setCopilotBusy(false);
+    }
   };
   const answerAgentQuestion = async (answer: string) => {
     if (!agentQuestion) return;
@@ -1643,6 +1665,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           images={designImages}
           copilot={copilot}
           copilotBusy={copilotBusy || copilotUploading}
+          copilotProgress={copilotProgress}
           input={copilotInput}
           onInput={setCopilotInput}
           onSubmit={sendCopilot}

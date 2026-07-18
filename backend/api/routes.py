@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 import threading
 import time
@@ -2072,6 +2073,9 @@ async def copilot_chat(session_id: str, body: dict, request: Request):
     founder_email = request.headers.get("x-astra-email") or body.get("founder_email") or ""
     attachments = body.get("attachments") if isinstance(body.get("attachments"), list) else []
     mentioned_agents = body.get("mentioned_agents") if isinstance(body.get("mentioned_agents"), list) else []
+    turn_id = str(body.get("turn_id") or "").strip()
+    if turn_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", turn_id):
+        raise HTTPException(status_code=400, detail="turn_id must contain only letters, numbers, underscores, or hyphens")
     return await run_copilot(
         fid,
         session_id,
@@ -2079,6 +2083,7 @@ async def copilot_chat(session_id: str, body: dict, request: Request):
         founder_email=founder_email,
         attachments=attachments,
         mentioned_agents=mentioned_agents,
+        turn_id=turn_id,
     )
 
 

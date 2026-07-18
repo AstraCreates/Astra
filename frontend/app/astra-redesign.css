@@ -632,23 +632,32 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
 .copilot-action-link:hover {
   text-decoration: underline;
 }
-.copilot-thinking {
+.copilot-turn-progress {
   display: flex;
-  gap: 4px;
-  padding: 14px 17px;
+  gap: 10px;
+  min-width: 230px;
+  padding: 11px 14px;
   border: 1px solid var(--bd);
-  border-radius: 8px 22px 22px 22px !important;
-  background: var(--surface);
+  border-radius: 8px 18px 18px 18px !important;
+  background: linear-gradient(120deg, var(--surface), color-mix(in srgb, var(--blue) 9%, var(--surface)));
 }
-.copilot-thinking span {
-  width: 5px;
-  height: 5px;
+.copilot-turn-progress strong { display: block; font-size: 11px; color: var(--fg); }
+.copilot-turn-progress p { margin: 2px 0 0; color: var(--fd); font-size: 11px; line-height: 1.4; }
+.copilot-turn-progress small { display: block; margin-top: 4px; color: var(--fm); font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
+.copilot-turn-orbit {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  border: 2px solid color-mix(in srgb, var(--blue) 22%, transparent);
+  border-top-color: var(--blue);
   border-radius: 50% !important;
-  background: var(--fm);
-  animation: astraChatDot 1.2s infinite ease-in-out;
+  animation: copilotOrbit 1.15s linear infinite;
 }
-.copilot-thinking span:nth-child(2) { animation-delay: .15s; }
-.copilot-thinking span:nth-child(3) { animation-delay: .3s; }
+@keyframes copilotOrbit { to { transform: rotate(360deg); } }
+.copilot-turn-orbit.is-acting { border-top-color: var(--green); border-right-color: var(--green); }
+.copilot-turn-orbit.is-repairing, .copilot-turn-orbit.is-needs_input { border-top-color: var(--amber); border-right-color: var(--amber); }
+.copilot-turn-orbit.is-failed { border-top-color: var(--red); border-right-color: var(--red); animation: none; }
 .copilot-dock .steer-wrap {
   gap: 10px;
   min-height: 54px;

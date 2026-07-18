@@ -12,6 +12,7 @@ session in the durable volume.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -21,6 +22,36 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_COPILOT_MAX_STEPS = 12
+_COPILOT_TOOL_TIMEOUT_SECONDS = 90
+_COPILOT_MAX_TURN_SECONDS = 5 * 60
+
+
+async def _emit_turn_progress(
+    session_id: str,
+    turn_id: str,
+    phase: str,
+    text: str,
+    *,
+    step: int = 0,
+    tool: str = "",
+) -> None:
+    """Publish a durable, client-scoped status update for an active Copilot turn."""
+    if not turn_id:
+        return
+    try:
+        from backend.core.events import publish
+        await publish(session_id, {
+            "type": "copilot_turn_progress",
+            "turn_id": turn_id[:80],
+            "phase": phase,
+            "text": _clip(text, 220),
+            "step": step,
+            "tool": tool[:80],
+        })
+    except Exception as exc:
+        logger.warning("copilot progress publish failed for %s: %s", session_id, exc)
 
 
 # ── History store ───────────────────────────────────────────────────────────────
@@ -771,10 +802,8 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
 
     args: {agents: [..]|str, instruction: str}. Creates a minimal child session per
     dispatch for event isolation, rooted at the company's existing workspace/repo."""
-    import asyncio
     from backend.core.factory import get_orchestrator
     from backend.core.session_ids import new_session_id
-    from backend.core.session_store import register_session
 
     instruction = str(args.get("instruction") or "").strip()
     instruction_context = str(args.get("context") or "").strip()
@@ -796,31 +825,29 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
     except Exception:
         root = session_id
 
-    async def _go():
-        try:
-            dispatch_instruction = instruction if not instruction_context else f"{instruction}\n\nContext:\n{instruction_context}"
-            from backend.control_plane.start_run import start_continue_run
-
-            result = await start_continue_run(
-                founder_id=founder_id,
-                instruction=dispatch_instruction,
-                prior_session_id=root,
-                run_id=child,
-                agents=valid,
-                company_id=company_id,
-                kind="user",
-            )
-            return result.session_id
-        except Exception as e:
-            logger.error("copilot dispatch_agents run failed: %s", e)
-            return ""
-
     child = new_session_id()
-    asyncio.create_task(_go())
+    dispatch_instruction = instruction if not instruction_context else f"{instruction}\n\nContext:\n{instruction_context}"
+    try:
+        # start_continue_run returns after the child run is registered and scheduled.
+        # Do not detach this acceptance step or report a launch that never happened.
+        from backend.control_plane.start_run import start_continue_run
+        started = await start_continue_run(
+            founder_id=founder_id,
+            instruction=dispatch_instruction,
+            prior_session_id=root,
+            run_id=child,
+            agents=valid,
+            company_id=company_id,
+            kind="user",
+        )
+    except Exception as exc:
+        logger.error("copilot dispatch_agents launch failed: %s", exc)
+        return {"ok": False, "error": f"dispatch was not accepted: {exc}"}
     return {
         "ok": True,
         "dispatched": valid,
-        "session_id": child,
+        "session_id": started.session_id,
+        "status": started.status,
         "instruction": instruction[:120],
         "context": instruction_context[:200],
     }
@@ -1860,6 +1887,7 @@ async def run_copilot(
     founder_email: str = "",
     attachments: list[dict[str, Any]] | None = None,
     mentioned_agents: list[str] | None = None,
+    turn_id: str = "",
 ) -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
@@ -1971,14 +1999,26 @@ async def run_copilot(
     convo.append(f"founder: {founder_turn}")
     actions: list[dict[str, Any]] = []
     reply = ""
+    outcome = "completed"
 
     tool_errors: list[str] = []
-    for _step in range(6):
+    turn_started = time.monotonic()
+    await _emit_turn_progress(session_id, turn_id, "thinking", "Reading the live run context.")
+    for _step in range(_COPILOT_MAX_STEPS):
+        step_number = _step + 1
+        if time.monotonic() - turn_started >= _COPILOT_MAX_TURN_SECONDS:
+            outcome = "cap_reached"
+            reply = "I reached this turn's time limit while verifying the work. Please continue this thread and I'll pick up from the recorded actions."
+            await _emit_turn_progress(session_id, turn_id, "needs_input", "This turn reached its safety time limit.", step=step_number)
+            break
+        await _emit_turn_progress(session_id, turn_id, "thinking", "Planning the next action.", step=step_number)
         prompt = system + "\n\nCONVERSATION:\n" + "\n".join(convo) + "\n\nYour next JSON step:"
         try:
             raw = await _copilot_generate(prompt)
         except Exception:
+            outcome = "model_unavailable"
             reply = "I couldn't reach Copilot for this turn. No action was taken. Please retry."
+            await _emit_turn_progress(session_id, turn_id, "failed", "Copilot could not complete this turn.", step=step_number)
             break
         act = _parse_action(raw)
         # The model frequently emits {"action":"<tool_name>", ...} (tool name
@@ -1998,18 +2038,33 @@ async def run_copilot(
         if act.get("action") == "tool" and act.get("tool") in _TOOLS:
             name = act["tool"]
             preface = str(act.get("preface") or "").strip()
+            args = act.get("args")
+            if not isinstance(args, dict):
+                convo.append(f"tool[{name}] -> {{\"ok\": false, \"error\": \"args must be an object\"}}")
+                await _emit_turn_progress(session_id, turn_id, "repairing", "Correcting an invalid tool request.", step=step_number, tool=name)
+                continue
+            if len(json.dumps(args, default=str)) > 16_000:
+                convo.append(f"tool[{name}] -> {{\"ok\": false, \"error\": \"args too large\"}}")
+                await _emit_turn_progress(session_id, turn_id, "repairing", "Correcting an oversized tool request.", step=step_number, tool=name)
+                continue
+            await _emit_turn_progress(session_id, turn_id, "acting", f"Using {name.replace('_', ' ')}.", step=step_number, tool=name)
             try:
-                result = await _TOOLS[name][1](founder_id, session_id, act.get("args") or {})
+                result = await asyncio.wait_for(
+                    _TOOLS[name][1](founder_id, session_id, args),
+                    timeout=_COPILOT_TOOL_TIMEOUT_SECONDS,
+                )
             except Exception as exc:
                 result = {"ok": False, "error": str(exc)}
-            actions.append({"tool": name, "args": act.get("args") or {}, "result": result})
+            actions.append({"tool": name, "args": args, "result": result})
             # Redact tool errors from LLM context — it should answer from live snapshot, not surface internal failures
             if result.get("ok") is False and result.get("error"):
                 error = str(result.get("error"))[:300]
                 tool_errors.append(f"{name}: {error}")
                 convo.append(f"tool[{name}] -> {{\"ok\": false, \"error\": {json.dumps(error)}}}")
+                await _emit_turn_progress(session_id, turn_id, "repairing", f"{name.replace('_', ' ')} needs a different approach.", step=step_number, tool=name)
             else:
                 convo.append(f"tool[{name}] -> {json.dumps(result)[:1200]}")
+                await _emit_turn_progress(session_id, turn_id, "observing", f"{name.replace('_', ' ')} completed. Checking the result.", step=step_number, tool=name)
             if preface:
                 convo.append(f"assistant_note: {preface}")
             continue
@@ -2023,7 +2078,17 @@ async def run_copilot(
             )
             continue
         reply = str(act.get("text") or raw).strip()
+        if reply.startswith("{") or reply.startswith("```"):
+            outcome = "parse_failed"
+            reply = "I couldn't safely interpret Copilot's next action, so I stopped before making another change. Please retry this request."
+            await _emit_turn_progress(session_id, turn_id, "failed", "Copilot returned an invalid action and stopped safely.", step=step_number)
+            break
+        await _emit_turn_progress(session_id, turn_id, "responding", "Preparing a concise update.", step=step_number)
         break
+    else:
+        outcome = "cap_reached"
+        reply = "I reached this turn's safety limit after completing the actions above and need another turn to verify the remaining work. Please continue this thread."
+        await _emit_turn_progress(session_id, turn_id, "needs_input", "This turn reached its safety limit before a final verification.", step=_COPILOT_MAX_STEPS)
 
     # Auto-steer fallback: model replied without calling steer_agents, but agents ARE
     # running and the message is clearly a directive — push the steer directly.
@@ -2117,7 +2182,8 @@ async def run_copilot(
     history.append(founder_record)
     history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
     _save_history(session_id, history)
-    return {"ok": True, "reply": reply, "actions": action_summaries, "history": history}
+    await _emit_turn_progress(session_id, turn_id, "complete", "Turn complete.", step=min(len(actions) + 1, _COPILOT_MAX_STEPS))
+    return {"ok": outcome == "completed", "status": outcome, "reply": reply, "actions": action_summaries, "history": history, "turn_id": turn_id}
 
 
 def _bootstrap_history_key(founder_id: str) -> str:

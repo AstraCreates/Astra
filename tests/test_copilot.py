@@ -107,6 +107,49 @@ async def test_run_copilot_unknown_tool_name_retries_instead_of_dumping_json(mon
 
 
 @pytest.mark.asyncio
+async def test_run_copilot_reports_progress_for_each_tool_and_final_reply(monkeypatch):
+    outputs = iter([
+        '{"action":"tool","tool":"stop_agent","args":{"agent":"research"}}',
+        '{"action":"reply","text":"Research has been stopped."}',
+    ])
+    progress = []
+
+    async def record_progress(*args, **kwargs):
+        progress.append((args, kwargs))
+
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": ["research"]}))
+    monkeypatch.setattr(copilot, "_emit_turn_progress", record_progress)
+    monkeypatch.setitem(copilot._TOOLS, "stop_agent", ("doc", AsyncMock(return_value={"ok": True})))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "stop research", turn_id="turn_123")
+
+    assert result["status"] == "completed"
+    assert any(args[2] == "acting" for args, _ in progress)
+    assert any(args[2] == "responding" for args, _ in progress)
+    assert progress[-1][0][2] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_run_copilot_returns_explicit_status_when_step_cap_is_reached(monkeypatch):
+    outputs = iter(['{"action":"tool","tool":"stop_agent","args":{"agent":"research"}}'] * copilot._COPILOT_MAX_STEPS)
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": ["research"]}))
+    monkeypatch.setattr(copilot, "_emit_turn_progress", AsyncMock())
+    monkeypatch.setitem(copilot._TOOLS, "stop_agent", ("doc", AsyncMock(return_value={"ok": True})))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "stop research")
+
+    assert result["ok"] is False
+    assert result["status"] == "cap_reached"
+    assert "safety limit" in result["reply"]
+
+
+@pytest.mark.asyncio
 async def test_run_copilot_auto_routes_named_agent_directive(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *args, **kwargs: '{"action":"reply","text":"I am on it."}')
     monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"I am on it."}'))
