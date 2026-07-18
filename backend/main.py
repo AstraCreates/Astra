@@ -119,17 +119,20 @@ async def startup_background_jobs():
         _settings.tooluse_model_name,
         _settings.chat_model_name,
     )
-    # Reconcile sessions left "running"/"queued" by a prior process crash/restart --
-    # nothing else ever revisits these, so without this sweep they show as
-    # perpetually in-flight forever (has_active_run() only ignores them for its
-    # one caller, it doesn't fix the stored status).
-    try:
-        from backend.core.session_store import reconcile_orphaned_sessions
-        reconciled = reconcile_orphaned_sessions()
-        if reconciled:
-            logger.info("startup session reconciliation: marked %d orphaned session(s) as error: %s", len(reconciled), reconciled)
-    except Exception as exc:
-        logger.warning("startup session reconciliation failed: %s", exc)
+    # Reconcile sessions left "running"/"queued" by a prior process crash/restart.
+    # This is a durable-store sweep and must not block readiness on a large store.
+    async def _reconcile_sessions_in_background() -> None:
+        try:
+            from backend.core.session_store import reconcile_orphaned_sessions
+            reconciled = await asyncio.to_thread(reconcile_orphaned_sessions)
+            if reconciled:
+                logger.info("startup session reconciliation: marked %d orphaned session(s) as error: %s", len(reconciled), reconciled)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("startup session reconciliation failed: %s", exc)
+
+    _background_tasks.append(asyncio.create_task(_reconcile_sessions_in_background()))
 
     # Copilot turns may intentionally outlive their original HTTP request. Their
     # queued state lives in session metadata, so reconnect them after a restart.
