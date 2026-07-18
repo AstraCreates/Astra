@@ -31,8 +31,9 @@ _UNICODE_MAP = {
 }
 
 
-def _safe(text: str) -> str:
+def _safe(text: object) -> str:
     """Replace non-Latin-1 chars so fpdf Helvetica doesn't crash."""
+    text = str(text or "")
     for char, replacement in _UNICODE_MAP.items():
         text = text.replace(char, replacement)
     return text.encode("latin-1", errors="replace").decode("latin-1")

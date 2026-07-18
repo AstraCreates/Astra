@@ -34,11 +34,13 @@ def build_legal_agent(**kwargs) -> Agent:
             "5. format_legal_document(doc_type='founder_agreement', company_name=<COMPANY_NAME>, content=<equity split, vesting schedule, IP assignment, roles>)\n"
             "   IMMEDIATELY after: generate_pdf(content=<formatted_text from step 5>, filename='founder_agreement.pdf')\n"
             "6. obsidian_log — log all document titles and PDF file paths\n"
-            "7. done — return {documents: [{doc_type, title, path, text}], patent_landscape: <summary string>}\n\n"
+            "7. done — return {legal_checklist: <concrete founder legal risks, compliance tasks, and entity/IP checklist>, "
+            "policy_outline: <concrete privacy policy and terms outline with data handling, retention, user rights, and launch gaps>, "
+            "documents: [{doc_type, title, path, text}], patent_landscape: <summary string>}\n\n"
             "RULES: NEVER skip generate_pdf. Call it immediately after EACH format_legal_document. "
             "Use COMPANY_NAME from SHARED CONTEXT as the company name everywhere. "
             "Write FULL document content — not placeholders. "
-            "done output MUST include documents array where each entry has path (the PDF filepath returned by generate_pdf)."
+            "done output MUST include legal_checklist and policy_outline with substantive text, plus documents array where each entry has path (the PDF filepath returned by generate_pdf)."
         ),
         tools={
             "generate_pdf": generate_pdf,
