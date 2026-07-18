@@ -98,15 +98,26 @@ def get_orchestrator() -> Orchestrator:
         ), **_sh}
         specialists = {
             # Research — MiMo for fast, repeated, source-grounded cycles
-            "research": build_research_agent(agent_name="research", use_computer=True, **_small_kwargs),
-            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_small_kwargs),
-            "research_execution": build_research_agent(agent_name="research_execution", use_computer=True, **_small_kwargs),
-            "research_customers": build_research_agent(agent_name="research_customers", use_computer=True, **_small_kwargs),
-            "research_gtm": build_research_agent(agent_name="research_gtm", use_computer=True, **_small_kwargs),
+            # use_computer=False on every research lane: confirmed live that
+            # research_competitors burned 4+ of its 24 iterations calling
+            # computer_use (and a hallucinated headroom_retrieve) in a loop,
+            # ignoring the "Unknown tool" error each time. None of the research
+            # role prompts (research.py, research_market.py, research_financial.py,
+            # research_regulatory.py) mention computer_use as an available
+            # capability -- it's a leftover from before research moved fully onto
+            # provider-native search (run_research_pipeline). The model was
+            # discovering it only from the generic use_computer=True prompt
+            # scaffolding, with zero guidance on when/how to invoke it correctly,
+            # and kept retrying instead of finishing.
+            "research": build_research_agent(agent_name="research", use_computer=False, **_small_kwargs),
+            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=False, **_small_kwargs),
+            "research_execution": build_research_agent(agent_name="research_execution", use_computer=False, **_small_kwargs),
+            "research_customers": build_research_agent(agent_name="research_customers", use_computer=False, **_small_kwargs),
+            "research_gtm": build_research_agent(agent_name="research_gtm", use_computer=False, **_small_kwargs),
             "research_docs": build_research_docs_agent(use_computer=False, **_small_kwargs),
-            "research_market": build_research_market_agent(use_computer=True, **_small_kwargs),
-            "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
-            "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),
+            "research_market": build_research_market_agent(use_computer=False, **_small_kwargs),
+            "research_financial": build_research_financial_agent(use_computer=False, **_small_kwargs),
+            "research_regulatory": build_research_regulatory_agent(use_computer=False, **_small_kwargs),
             # Web / ops / tool-heavy marketing lanes — stronger tool calling,
             # but intentionally scoped because GPT OSS is much pricier than Ling.
             "web": build_web_agent(use_computer=True, **_tool_heavy_kwargs),
