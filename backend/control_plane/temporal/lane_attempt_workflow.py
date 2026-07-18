@@ -65,16 +65,28 @@ class LaneAttemptWorkflow:
             await asyncio.sleep(1)
         result = await activity_handle
         lane_result = result if isinstance(result, LaneAttemptResult) else LaneAttemptResult(**dict(result or {}))
-        verification = await workflow.execute_activity(
-            ExecuteVerificationActivity.execute,
-            VerificationInput(
-                run_id=input.run_id,
-                step_key=input.step_key,
-                attempt_number=lane_result.attempt_number,
-            ),
-            start_to_close_timeout=timedelta(minutes=10),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
-        verification_result = verification if isinstance(verification, VerificationResult) else VerificationResult(**dict(verification or {}))
-        lane_result.verification = dict(verification_result.verification or {})
+        try:
+            verification = await workflow.execute_activity(
+                ExecuteVerificationActivity.execute,
+                VerificationInput(
+                    run_id=input.run_id,
+                    step_key=input.step_key,
+                    attempt_number=lane_result.attempt_number,
+                ),
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+            verification_result = verification if isinstance(verification, VerificationResult) else VerificationResult(**dict(verification or {}))
+            lane_result.verification = dict(verification_result.verification or {})
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Verification is a review signal, not permission to tear down
+            # unrelated lanes. Preserve the lane result and let the phase gate
+            # surface it as needs_review with an actionable error.
+            lane_result.verification = {
+                "status": "needs_review",
+                "summary": f"Verification unavailable: {str(exc)[:300]}",
+                "recoverable": True,
+            }
         return lane_result

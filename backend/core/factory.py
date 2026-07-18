@@ -200,7 +200,13 @@ def get_orchestrator() -> Orchestrator:
         # Let nearly all specialists escalate meaningful founder decisions.
         # web_navigator stays excluded because it drives the browser autonomously and
         # blocking mid-crawl stalls the session.
-        _ask_user_agents = set(specialists) - {"web_navigator"}
+        # Research lanes are autonomous: asking the founder mid-run leaves a
+        # durable child workflow waiting forever and can consume the whole
+        # run's budget while siblings are still working.
+        _ask_user_agents = {
+            name for name in specialists
+            if name != "web_navigator" and not name.startswith("research")
+        }
         for name, agent in specialists.items():
             agent.tools.setdefault("dashboard_add_element", dashboard_add_element)
             agent.tools.setdefault("dashboard_remove_element", dashboard_remove_element)

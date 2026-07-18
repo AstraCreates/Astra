@@ -721,7 +721,25 @@ async def execute_lane_attempt(
                 "attempt_number": step.attempt_number,
                 "error": str(exc)[:300],
             })
-            raise
+            # A specialist/tool failure is a lane-level outcome, not a
+            # workflow-level failure. Returning a durable result lets the
+            # phase gate show the lane for review while sibling lanes finish.
+            # Cancellation remains special-cased above and still propagates so
+            # founder cancellation cannot be mistaken for graceful recovery.
+            return LaneAttemptResult(
+                run_id=run_id,
+                step_key=step_key,
+                step_id=step.id,
+                agent=agent_name,
+                status="failed",
+                attempt_number=step.attempt_number,
+                result={
+                    "status": "failed",
+                    "agent": agent_name,
+                    "error": str(exc)[:500],
+                    "recoverable": True,
+                },
+            ).__dict__
 
 
 class _CancelledFence:
