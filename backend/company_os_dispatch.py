@@ -85,6 +85,41 @@ def _call(function_name: str, **values: Any) -> Any:
         return fn(**values)
 
 
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "it", "to", "of", "for", "and", "or", "in", "on", "if", "that",
+    "this", "was", "were", "are", "be", "do", "does", "did", "how", "what", "why", "when",
+    "where", "who", "we", "i", "you", "our", "your", "find", "out", "see", "teh", "with",
+    "can", "could", "should", "would", "will", "research", "reserach", "resreach",
+})
+_CONTINUATION_OVERLAP_THRESHOLD = 0.4
+
+
+def _content_words(text: str) -> frozenset[str]:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return frozenset(w for w in words if w not in _STOPWORDS and len(w) > 2)
+
+
+def _find_continuation(intent: str, candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Find an active initiative whose name is close enough to `intent` that
+    this is really the same ask again (verbatim repeat or light rephrasing),
+    not a new topic that happens to share a department. Purely lexical
+    (overlap coefficient on stopword-filtered words) -- no LLM call, so it
+    catches repeats and near-repeats but not a genuinely different question
+    about the same broad subject; that's a deliberate, cheaper middle ground."""
+    words = _content_words(intent)
+    if len(words) < 2:
+        return None
+    best: tuple[float, dict[str, Any]] | None = None
+    for candidate in candidates:
+        candidate_words = _content_words(str(candidate.get("name", "")))
+        if len(candidate_words) < 2:
+            continue
+        overlap = len(words & candidate_words) / min(len(words), len(candidate_words))
+        if overlap >= _CONTINUATION_OVERLAP_THRESHOLD and (best is None or overlap > best[0]):
+            best = (overlap, candidate)
+    return best[1] if best else None
+
+
 def choose_department(intent: str) -> tuple[str, str]:
     """Choose a department head and its default specialist squad from intent."""
     words = (intent or "").lower()
@@ -154,17 +189,29 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     """Create initiative, squad, mission, and specialist tasks for an intent."""
     company = _call("get_company_os", company_id=company_id) or {}
     department, squad_name = choose_department(intent)
-    # Squads were previously reused across ANY active initiative in the same
+    # Squads used to be reused across ANY active initiative in the same
     # department, keyed only on department -- with no topic check. That silently
     # merged unrelated asks (e.g. a fresh "cookie clicker monetization" question
     # landing inside an existing "Big Pharma consulting" research initiative)
     # into one initiative, corrupting the acknowledgement text and evidence
-    # trail. Every dispatch is its own initiative now; nothing here reuses
-    # another initiative's squad.
-    initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
-    initiative_id = _entity_id(initiative, "initiative_id")
-    squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
-    squad_id = _entity_id(squad, "squad_id")
+    # trail. Now a new dispatch reuses an existing initiative + squad only when
+    # its wording is actually close to one already active in the same
+    # department (re-asking the same thing, or a light rephrasing of it);
+    # a genuinely different ask in the same department still gets its own.
+    same_department_active = [item for item in company.get("initiatives", []) if item.get("state") != "archived" and item.get("department") == department]
+    reuse = _find_continuation(intent, same_department_active)
+    if reuse:
+        initiative = reuse
+        initiative_id = _entity_id(initiative, "initiative_id")
+        squad = next((item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("state") != "archived"), None)
+        if squad is None:
+            squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+        squad_id = _entity_id(squad, "squad_id")
+    else:
+        initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
+        initiative_id = _entity_id(initiative, "initiative_id")
+        squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+        squad_id = _entity_id(squad, "squad_id")
     mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent, department=department, state="active")
     mission_id = _entity_id(mission, "mission_id")
     created_tasks = []
