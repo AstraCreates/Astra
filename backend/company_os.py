@@ -279,9 +279,15 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact"}:
-        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id"}[kind]
-        entity = _must_find(state, f"{kind}s", key, event["payload"][key])
+    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact", "message"}:
+        # A durable event log is append-only forever: even after the message
+        # edit/delete API routes were pulled back (pending an audit-safe
+        # design), any message.updated events already written by that code
+        # still have to replay. Rejecting a historical event type here 500s
+        # every read for any company whose log contains one -- not just the
+        # new API surface, the entire company becomes unreadable.
+        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id"}[kind]
+        entity = _must_find(state, "conversation" if kind == "message" else f"{kind}s", key, event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]
         state["updated_at"] = event["at"]
