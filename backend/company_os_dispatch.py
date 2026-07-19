@@ -142,20 +142,17 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     """Create initiative, squad, mission, and specialist tasks for an intent."""
     company = _call("get_company_os", company_id=company_id) or {}
     department, squad_name = choose_department(intent)
-    # A department head is a standing team, not a disposable run container.
-    active_initiatives = {item.get("initiative_id") for item in company.get("initiatives", []) if item.get("state") != "archived"}
-    squad = next((item for item in company.get("squads", []) if item.get("department") == department and item.get("state") != "archived" and item.get("initiative_id") in active_initiatives), None)
-    if squad:
-        initiative_id = _entity_id(squad, "initiative_id")
-        initiative = next((item for item in company.get("initiatives", []) if item.get("initiative_id") == initiative_id), None)
-        if not initiative:
-            raise ValueError("existing squad has no initiative")
-        squad_id = _entity_id(squad, "squad_id")
-    else:
-        initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
-        initiative_id = _entity_id(initiative, "initiative_id")
-        squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
-        squad_id = _entity_id(squad, "squad_id")
+    # Squads were previously reused across ANY active initiative in the same
+    # department, keyed only on department -- with no topic check. That silently
+    # merged unrelated asks (e.g. a fresh "cookie clicker monetization" question
+    # landing inside an existing "Big Pharma consulting" research initiative)
+    # into one initiative, corrupting the acknowledgement text and evidence
+    # trail. Every dispatch is its own initiative now; nothing here reuses
+    # another initiative's squad.
+    initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
+    initiative_id = _entity_id(initiative, "initiative_id")
+    squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+    squad_id = _entity_id(squad, "squad_id")
     mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent, department=department, state="active")
     mission_id = _entity_id(mission, "mission_id")
     created_tasks = []
