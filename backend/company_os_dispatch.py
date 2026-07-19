@@ -195,7 +195,14 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
         _call("update_task", company_id=company_id, task_id=task_id, state="blocked", blocked_reason=str(exc))
         raise
     _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed")
-    _call("update_task", company_id=company_id, task_id=task_id, state="done", completed_at=_utcnow())
+    completed_at = _utcnow()
+    if task.get("recurring") or task.get("cadence_seconds"):
+        # A cadence task must re-arm for its next slot, not finish like a
+        # one-shot task -- otherwise scheduler_tick's state filter permanently
+        # excludes it after its first run and "recurring" never recurs again.
+        _call("update_task", company_id=company_id, task_id=task_id, state="scheduled", last_run_at=completed_at, completed_at=completed_at)
+    else:
+        _call("update_task", company_id=company_id, task_id=task_id, state="done", completed_at=completed_at)
     return {"status": "completed", "attempt": attempt, "result": result, "policy": policy, "idempotency_key": key}
 
 
@@ -209,7 +216,9 @@ def scheduler_tick(company_id: str, executor: Callable[[Mapping[str, Any]], Any]
     for task in company.get("tasks") or []:
         if not _due(task, now) or task.get("state", task.get("status")) not in ("pending", "scheduled"):
             continue
-        results.append(execute_task(company_id, task, executor, proposed_spend=float(task.get("proposed_spend", 0) or 0)))
+        cadence = task.get("cadence_seconds")
+        key = _attempt_key(company_id, task, now=now, cadence=cadence) if cadence else None
+        results.append(execute_task(company_id, task, executor, proposed_spend=float(task.get("proposed_spend", 0) or 0), idempotency_key=key))
     return results
 
 
@@ -240,8 +249,14 @@ def _entity_id(record: Any, key: str) -> str:
     raise ValueError(f"Company OS record is missing {key}")
 
 
-def _attempt_key(company_id: str, task: Mapping[str, Any]) -> str:
-    material = f"{company_id}:{_id(task) or task.get('title', '')}:{task.get('cadence_slot', '')}"
+def _attempt_key(company_id: str, task: Mapping[str, Any], *, now: datetime | None = None, cadence: float | None = None) -> str:
+    # Without a time-bucketed slot, a recurring task's idempotency key never
+    # changes, so _existing_attempt would report every later run as a
+    # duplicate of the first one forever.
+    slot: Any = task.get("cadence_slot", "")
+    if cadence and now:
+        slot = int(now.timestamp() // float(cadence))
+    material = f"{company_id}:{_id(task) or task.get('title', '')}:{slot}"
     return hashlib.sha256(material.encode()).hexdigest()
 
 
