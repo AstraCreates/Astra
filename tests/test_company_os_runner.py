@@ -17,8 +17,8 @@ async def test_research_mission_runs_to_a_durable_decision_brief(tmp_path, monke
             "combined_formatted": "Demand exists, but differentiation and specialist credibility are critical.",
             "sources": [
                 {"title": "Industry report", "url": "https://example.com/report"},
-                {"title": "Customer evidence", "url": "https://example.com/customer"},
-                {"title": "Competitor evidence", "url": "https://example.com/competitor"},
+                {"title": "Customer evidence", "url": "https://customers.example/customer"},
+                {"title": "Competitor evidence", "url": "https://competitors.example/competitor"},
             ],
             "coverage": {"ready": True},
         },
