@@ -14,7 +14,7 @@ from backend.company_os import (
     update_squad,
 )
 from backend.company_os_dispatch import execute_task
-from backend.company_os_mcp import invoke as invoke_mcp
+from backend.tools.browser_research import run_research_pipeline
 
 logger = logging.getLogger(__name__)
 _ACTIVE_MISSIONS: dict[str, asyncio.Task[None]] = {}
@@ -102,7 +102,7 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
-        evidence = invoke_mcp(company_id, "astra_company_research", {"subject": _research_subject(str(mission["name"])), "focus": "market"})
+        evidence = run_research_pipeline(_research_subject(str(mission["name"])), focus="market", max_results_each=6)
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
         if evidence.get("error") or len(sources) < 3 or not evidence.get("coverage", {}).get("ready"):
             raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources and coverage are required.")
@@ -129,8 +129,8 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], label: str, result
 def _latest_research_artifact(company_id: str, mission_id: object) -> Mapping[str, Any]:
     company = get_company_os(company_id) or {}
     task_ids = {task.get("task_id") for task in company.get("tasks", []) if task.get("mission_id") == mission_id}
-    artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids and artifact.get("state") != "archived"]
-    return artifacts[-1] if artifacts else {}
+    artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids]
+    return artifacts[0] if artifacts else {}
 
 
 def _completion_reply(company_id: str, mission: Mapping[str, Any]) -> str:
@@ -160,9 +160,7 @@ def _synthesis(evidence: Mapping[str, Any]) -> str:
             source_lines.append(f"- {source.get('title') or 'Source'}: {source.get('url') or ''}")
     if not source_lines:
         raise RuntimeError("Cannot synthesize uncited research evidence.")
-    content = str(evidence.get("content") or "")
-    paragraphs = [part.strip() for part in content.split("\n\n") if part.strip()][:6]
-    return "## Evidence synthesis\n\n" + "\n\n".join(paragraphs) + "\n\n## Verified sources\n" + "\n".join(source_lines)
+    return "## Evidence synthesis\n\n" + (evidence.get("content") or "No evidence artifact was available.")[:20_000] + "\n\n## Verified sources\n" + "\n".join(source_lines)
 
 
 def _decision_brief(evidence: Mapping[str, Any]) -> str:

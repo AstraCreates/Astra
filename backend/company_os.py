@@ -50,8 +50,6 @@ def ensure_company_operations(company_id: str, *, root: str | Path | None = None
         raise KeyError(f"unknown company: {company_id}")
     existing = next((item for item in company["initiatives"] if item.get("system_key") == "company_operations"), None)
     if existing:
-        if existing.get("state") == "archived":
-            update_initiative(company_id, existing["initiative_id"], state="active")
         _ensure_operations_tasks(company_id, existing["initiative_id"], root=root)
         return existing
     initiative = create_initiative(company_id, "Company Operations", root=root, department="operations", system_key="company_operations")
@@ -230,16 +228,6 @@ def append_message(company_id: str, message: str, *, scope: str = "company", sco
     return _create(company_id, "message", {"message_id": _id("message"), "message": message, "scope": scope, "scope_id": scope_id, "author": author, **data}, root)
 
 
-def update_message(company_id: str, message_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
-    return _update(company_id, "message", "message_id", message_id, changes, root)
-
-
-def archive_messages(company_id: str, *, root: str | Path | None = None) -> None:
-    for message in (get_company_os(company_id, root=root) or {}).get("conversation", []):
-        if message.get("state") != "archived":
-            update_message(company_id, message["message_id"], root=root, state="archived")
-
-
 def add_context_record(company_id: str, key: str, value: Any, *, scope: str = "company", scope_id: str | None = None,
                        root: str | Path | None = None, **data: Any) -> dict[str, Any]:
     _validate_scope(scope, scope_id)
@@ -291,9 +279,9 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact", "message"}:
-        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id"}[kind]
-        entity = _must_find(state, "conversation" if kind == "message" else f"{kind}s", key, event["payload"][key])
+    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact"}:
+        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id"}[kind]
+        entity = _must_find(state, f"{kind}s", key, event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]
         state["updated_at"] = event["at"]
