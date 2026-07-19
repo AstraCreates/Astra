@@ -20,7 +20,9 @@ DEPARTMENT_HEADS = (
 )
 
 _INTENT_KEYWORDS = {
-    "research": ("research", "market", "competitor", "customer interview", "learn", "investigate"),
+    "research": ("research", "market", "competitor", "customer interview", "learn", "investigate",
+                 "viable", "viability", "feasible", "feasibility", "find out", "figure out",
+                 "profitable", "profitability", "worth it", "is it possible", "possible"),
     "marketing": ("marketing", "campaign", "brand", "seo", "content", "audience"),
     "sales": ("sales", "lead", "prospect", "pipeline", "outreach", "close"),
     "product_technical": ("product", "feature", "bug", "api", "code", "technical", "engineering"),
@@ -29,6 +31,13 @@ _INTENT_KEYWORDS = {
     "legal": ("legal", "contract", "privacy", "terms", "compliance", "trademark"),
     "operations": ("operation", "process", "schedule", "vendor", "workflow", "hire"),
 }
+
+# When nothing scores above zero, max()'s tie-break silently picked whichever
+# department happened to be first in DEPARTMENT_HEADS -- an accident of tuple
+# order, not a decision. Research is still the right default for a vague
+# "is X viable/worth doing" ask, but it's now an explicit choice instead of
+# incidental ordering, so changing the default later means changing one name.
+_DEFAULT_DEPARTMENT = "research"
 
 _SQUADS = {
     "research": "insights", "marketing": "growth", "sales": "revenue",
@@ -79,7 +88,10 @@ def _call(function_name: str, **values: Any) -> Any:
 def choose_department(intent: str) -> tuple[str, str]:
     """Choose a department head and its default specialist squad from intent."""
     words = (intent or "").lower()
-    winner = max(DEPARTMENT_HEADS, key=lambda head: sum(term in words for term in _INTENT_KEYWORDS[head]))
+    scores = {head: sum(term in words for term in _INTENT_KEYWORDS[head]) for head in DEPARTMENT_HEADS}
+    winner = max(DEPARTMENT_HEADS, key=lambda head: scores[head])
+    if scores[winner] == 0:
+        winner = _DEFAULT_DEPARTMENT
     return winner, _SQUADS[winner]
 
 
