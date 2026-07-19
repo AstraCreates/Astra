@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, PanelRightClose, PanelRightOpen, ShieldCheck, Sparkles, Trash2, Users } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { deleteArtifact, deleteCompanyMessage, deleteInitiative, editCompanyMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
+import { deleteArtifact, deleteInitiative, deleteSquad, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -23,14 +23,17 @@ function ArtifactDocument({ content }: { content: string }) {
   })}</article>;
 }
 
-function SquadCard({ squad }: { squad: CompanyHomeSquad }) {
+function SquadCard({ squad, deleting, onDelete }: { squad: CompanyHomeSquad; deleting: boolean; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
-  return <article style={{ border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)", overflow: "hidden" }}>
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ width: "100%", padding: "12px", border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
-      <span style={{ width: 28, height: 28, borderRadius: "50%", display: "grid", placeItems: "center", color: "var(--accent)", background: "var(--accent-light)", flexShrink: 0 }}><Users size={14} /></span>
-      <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 12.5 }}>{squad.name}</b><small style={{ display: "block", marginTop: 2, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{squad.activity}</small></span>
-      <small style={{ color: "var(--text-3)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0 }}>{squad.lifecycle}</small><ChevronDown size={14} style={{ color: "var(--text-3)", flexShrink: 0, transform: open ? "rotate(180deg)" : undefined, transition: "transform .18s" }} />
-    </button>
+  return <article className="company-home-squad-card" style={{ border: "1px solid var(--border)", borderRadius: "var(--r)", background: "var(--bg-surface)", overflow: "hidden" }}>
+    <div style={{ display: "flex", alignItems: "center" }}>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ flex: 1, minWidth: 0, padding: "12px", border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
+        <span style={{ width: 28, height: 28, borderRadius: "50%", display: "grid", placeItems: "center", color: "var(--accent)", background: "var(--accent-light)", flexShrink: 0 }}><Users size={14} /></span>
+        <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", color: "var(--text)", fontSize: 12.5 }}>{squad.name}</b><small style={{ display: "block", marginTop: 2, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{squad.activity}</small></span>
+        <small style={{ color: "var(--text-3)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0 }}>{squad.lifecycle}</small><ChevronDown size={14} style={{ color: "var(--text-3)", flexShrink: 0, transform: open ? "rotate(180deg)" : undefined, transition: "transform .18s" }} />
+      </button>
+      <button type="button" aria-label={`Delete ${squad.name}`} disabled={deleting} onClick={onDelete} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 22, height: 22, marginRight: 8, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--text-3)", cursor: "pointer", opacity: deleting ? 0.5 : undefined }}><Trash2 size={11} /></button>
+    </div>
     {open && <div style={{ padding: "0 12px 12px", borderTop: "1px solid var(--border)" }}>{squad.tasks.map(task => <div key={task.id} style={{ display: "flex", gap: 8, paddingTop: 10, fontSize: 11.5 }}><span style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", marginTop: 4, background: STATUS_COLOR[task.status] }} /><span style={{ color: "var(--text)", flex: 1, minWidth: 0 }}>{task.title}{task.note && <small style={{ display: "block", color: "var(--text-3)", marginTop: 2 }}>{task.note}</small>}</span><small style={{ color: "var(--text-3)", flexShrink: 0 }}>{task.status}</small></div>)}</div>}
   </article>;
 }
@@ -45,7 +48,6 @@ export default function CompanyHome() {
   const [artifactError, setArtifactError] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
-  const [editingMessage, setEditingMessage] = useState("");
   const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
@@ -99,6 +101,18 @@ export default function CompanyHome() {
     }
   };
 
+  const handleDeleteSquad = async (squadId: string) => {
+    setDeletingId(squadId);
+    try {
+      const data = await deleteSquad({ founderId, companyId }, squadId);
+      setHome(data);
+    } catch {
+      setNotice("Could not delete that squad — try again.");
+    } finally {
+      setDeletingId("");
+    }
+  };
+
   const handleDeleteArtifact = async (artifactId: string, event: MouseEvent) => {
     event.stopPropagation();
     setDeletingId(artifactId);
@@ -131,12 +145,6 @@ export default function CompanyHome() {
     }
   };
 
-  const updateMessage = async (id: string, current: string) => {
-    const next = window.prompt("Edit message", current);
-    if (!next || next === current) return;
-    setEditingMessage(id); try { setHome(await editCompanyMessage({ founderId, companyId }, id, next)); } finally { setEditingMessage(""); }
-  };
-
   const tasks = home.squads.flatMap(squad => squad.tasks);
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
@@ -148,6 +156,7 @@ export default function CompanyHome() {
       .company-home-initiative-delete { opacity: 0; transition: opacity .14s, background .14s, color .14s; }
       .company-home-initiative-card:hover .company-home-initiative-delete,
       .company-home-artifact-row:hover .company-home-initiative-delete,
+      .company-home-squad-card:hover .company-home-initiative-delete,
       .company-home-initiative-delete:focus-visible { opacity: 1; }
       .company-home-initiative-delete:hover { background: rgba(185, 28, 28, 0.1) !important; color: #b91c1c !important; }
       @media (hover: none) { .company-home-initiative-delete { opacity: 1; } }
@@ -170,7 +179,6 @@ export default function CompanyHome() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--text-3)", fontSize: 11 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#15803d" }} /> Connected</span>
-          <button type="button" onClick={() => { if (window.confirm("Clear this conversation?")) void deleteCompanyMessage({ founderId, companyId }).then(setHome); }} style={{ border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-3)", padding: "7px 9px", cursor: "pointer", fontSize: 11 }}>Clear chat</button>
           <button type="button" aria-label={railOpen ? "Hide company status panel" : "Show company status panel"} onClick={() => setRailOpen(!railOpen)} className="company-home-rail-toggle" style={{ width: 32, height: 32, display: "grid", placeItems: "center", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg-surface)", color: "var(--text-3)", cursor: "pointer" }}>
             {railOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
           </button>
@@ -199,7 +207,7 @@ export default function CompanyHome() {
                 return (
                   <div key={turn.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>
                     {!isFounder && <span style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff" }}><Sparkles size={13} /></span>}
-                    <div style={{ maxWidth: "84%" }}><div style={{ padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--text)", border: isFounder ? "none" : "1px solid var(--border)" }}>{turn.message}</div><div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 10 }}><button type="button" disabled={editingMessage === turn.id} onClick={() => void updateMessage(turn.id, turn.message)} style={{ border: 0, background: "transparent", color: "var(--text-3)", cursor: "pointer" }}>Edit</button><button type="button" onClick={() => void deleteCompanyMessage({ founderId, companyId }, turn.id).then(setHome)} style={{ border: 0, background: "transparent", color: "var(--text-3)", cursor: "pointer" }}>Delete</button></div></div>
+                    <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--text)", border: isFounder ? "none" : "1px solid var(--border)" }}>{turn.message}</div>
                   </div>
                 );
               })}
@@ -220,7 +228,7 @@ export default function CompanyHome() {
           matching the width of the thread above it -- not a small floating
           box mid-page. */}
       <div style={{ flexShrink: 0, borderTop: "1px solid var(--border)", padding: "14px 20px" }}>
-        <div id="copilot" style={{ maxWidth: 760, margin: "0 auto" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
           <AstraCopilotComposer
             value={message}
             onChange={setMessage}
@@ -280,7 +288,7 @@ export default function CompanyHome() {
           {home.squads.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--border)", borderRadius: "var(--r)", color: "var(--text-3)", fontSize: 11.5 }}>No squads formed yet.</p>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} />)}</div>
+            <div style={{ display: "grid", gap: 8 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} deleting={deletingId === squad.id} onDelete={() => void handleDeleteSquad(squad.id)} />)}</div>
           )}
         </section>
 
