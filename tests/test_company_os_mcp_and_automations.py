@@ -4,6 +4,17 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 
+def test_company_os_replays_mcp_audit_events(tmp_path):
+    from backend import company_os
+
+    company_os.create_company_os("co", "founder", "Company", root=tmp_path)
+    company_os.append_event("co", "mcp.tool_called", {"call_id": "call", "tool": "astra_company_research"}, root=tmp_path)
+    company_os.append_event("co", "mcp.tool_completed", {"call_id": "call", "tool": "astra_company_research", "ok": True}, root=tmp_path)
+
+    state = company_os.get_company_os("co", root=tmp_path)
+    assert [entry["event_type"] for entry in state["mcp_audit"]] == ["mcp.tool_called", "mcp.tool_completed"]
+
+
 def test_company_mcp_bridge_audits_registered_tool(monkeypatch):
     from backend import company_os_mcp
 
