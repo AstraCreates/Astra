@@ -295,6 +295,19 @@ _TOPIC_NOISE_PATTERNS = (
     r"\busing run research pipeline\b",
 )
 
+_ENTITY_PROFILE_PREFIX = re.compile(r"^(?:what|who)\s+is\s+", re.IGNORECASE)
+
+
+def _is_entity_profile_request(topic: str) -> bool:
+    """Recognize short founder questions about one named organization.
+
+    Treating ``what is Acme?`` as a market-sizing request produces six nearly
+    identical searches and makes a well-known company look like a coverage
+    failure.  Entity profiles need authoritative company and third-party
+    corroboration first.
+    """
+    return bool(_ENTITY_PROFILE_PREFIX.match((topic or "").strip()))
+
 
 def _normalize_focus(focus: str) -> str:
     key = re.sub(r"[\s_]+", "-", (focus or "market").strip().lower())
@@ -441,7 +454,18 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = _RESE
         return {"topic": topic, "focus": focus, "queries": [], "error": "topic is required"}
     normalized_focus = _normalize_focus(focus)
     resource_topic = _resource_search_topic(clean_topic, normalized_focus)
-    queries = [template.format(topic=resource_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
+    entity_subject = _ENTITY_PROFILE_PREFIX.sub("", clean_topic).strip(" ?")
+    if _is_entity_profile_request(clean_topic) and entity_subject:
+        queries = [
+            f"{entity_subject} official website company about product",
+            f"{entity_subject} funding investors company profile",
+            f"{entity_subject} customers reviews alternatives",
+            f"{entity_subject} news launch partnerships",
+            f"{entity_subject} pricing product features",
+            f"{entity_subject} founder team company profile",
+        ]
+    else:
+        queries = [template.format(topic=resource_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
     deduped = []
     seen = set()
     for query in queries:
@@ -1571,6 +1595,27 @@ def _native_research_pass(topic: str, focus: str, queries: list[str], cancellati
         unique_sources.append(source)
     sources = [dict(source, id=_source_id(index)) for index, source in enumerate(unique_sources[:_RESEARCH_MAX_SOURCES], start=1)]
     parsed_answers = _parse_json_object(answer).get("answers")
+    # Some native-search providers return source URLs in the requested JSON but
+    # omit SDK annotations.  Preserve those URLs as citations so a grounded
+    # result does not become an empty-source failure solely due to transport
+    # shape. They remain visible in the artifact for review.
+    if isinstance(parsed_answers, list):
+        for item in parsed_answers:
+            if not isinstance(item, dict):
+                continue
+            for raw_url in item.get("citation_urls") or []:
+                normalized = _normalize_url(raw_url)
+                parsed_url = urlparse(normalized)
+                if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+                    continue
+                if normalized in seen_urls:
+                    continue
+                seen_urls.add(normalized)
+                sources.append({
+                    "url": normalized,
+                    "title": "Native research citation",
+                    "id": _source_id(len(sources) + 1),
+                })
     results_by_query = {}
     combined = []
     if isinstance(parsed_answers, list):

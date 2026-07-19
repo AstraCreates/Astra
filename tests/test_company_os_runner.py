@@ -12,7 +12,7 @@ async def test_research_mission_runs_to_a_durable_decision_brief(tmp_path, monke
     dispatch = dispatch_intent("acme", "Research the viability of an AI consulting company")
 
     monkeypatch.setattr(
-        "backend.company_os_runner.run_research_pipeline",
+        "backend.company_os_runner.invoke_mcp",
         lambda *_args, **_kwargs: {
             "combined_formatted": "Demand exists, but differentiation and specialist credibility are critical.",
             "sources": [

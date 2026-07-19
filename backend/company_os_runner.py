@@ -14,7 +14,7 @@ from backend.company_os import (
     update_squad,
 )
 from backend.company_os_dispatch import execute_task
-from backend.tools.browser_research import run_research_pipeline
+from backend.company_os_mcp import invoke as invoke_mcp
 
 logger = logging.getLogger(__name__)
 _ACTIVE_MISSIONS: dict[str, asyncio.Task[None]] = {}
@@ -102,10 +102,16 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
-        evidence = run_research_pipeline(_research_subject(str(mission["name"])), focus="market", max_results_each=6)
+        evidence = invoke_mcp(
+            company_id,
+            "astra_company_research",
+            {"subject": _research_subject(str(mission["name"])), "focus": "market"},
+        )
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
-        if evidence.get("error") or len(sources) < 3 or not evidence.get("coverage", {}).get("ready"):
-            raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources and coverage are required.")
+        domains = {str(source["url"]).split("/", 3)[2].lower() for source in sources if str(source["url"]).startswith(("http://", "https://"))}
+        content = str(evidence.get("combined_formatted") or "").strip()
+        if evidence.get("error") or len(sources) < 3 or len(domains) < 2 or not content:
+            raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources across two domains and usable evidence are required.")
         evidence["sources"] = sources
         return _store_artifact(company_id, task, "Research evidence", evidence, source="web research")
 

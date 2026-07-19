@@ -133,6 +133,14 @@ def test_canonicalize_search_query_compacts_natural_language_prompts():
     assert "(" not in normalized
 
 
+def test_entity_profile_queries_prioritize_the_named_company():
+    plan = browser_research.build_research_queries("What is Cofounder.co?", focus="market")
+
+    assert plan["topic"] == "What is Cofounder.co?"
+    assert plan["queries"][0] == "Cofounder.co official website company about product"
+    assert any("funding investors" in query for query in plan["queries"])
+
+
 def test_compact_research_evidence_prefers_late_relevant_numeric_sections():
     content = (
         ("Intro filler about generic collaboration workflows without specifics. " * 50)
@@ -376,6 +384,31 @@ def test_native_research_pass_uses_native_web_plugin_and_extracts_citations(monk
         assert captured["extra_body"]["plugins"] == [{"id": "web", "engine": "native"}]
     assert result["sources"] == [{"id": "src_1", "url": "https://example.com/report", "title": "Report"}]
     assert result["results_by_query"]["AI model aggregation platform competitors pricing"]["citations"] == ["src_1"]
+
+
+def test_native_research_pass_keeps_json_citations_when_annotations_are_missing(monkeypatch):
+    query = "Cofounder.co official website company about product"
+    payload = {
+        "answers": [{
+            "query": query,
+            "answer": "Cofounder.co is a company profile.",
+            "citation_urls": ["https://cofounder.co/about"],
+        }],
+    }
+
+    class _Completions:
+        def create(self, **_kwargs):
+            message = types.SimpleNamespace(content=__import__("json").dumps(payload), annotations=[])
+            return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)])
+
+    monkeypatch.setattr("backend.core.llm_client.get_or_client", lambda *args, **kwargs: types.SimpleNamespace(chat=types.SimpleNamespace(completions=_Completions())))
+    monkeypatch.setattr("backend.core.key_rotator.get_openrouter_key", lambda: "test-key")
+    monkeypatch.setattr("backend.core.llm_cache.openrouter_extra_body", lambda model, extra=None: extra or {})
+
+    result = browser_research._native_research_pass("Cofounder.co", "market", [query])
+
+    assert result["sources"] == [{"id": "src_1", "url": "https://cofounder.co/about", "title": "Native research citation"}]
+    assert result["results_by_query"][query]["citations"] == ["src_1"]
 
 
 def test_build_research_queries_requires_topic():
