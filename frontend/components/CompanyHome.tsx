@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, PanelRightClose, PanelRightOpen, ShieldCheck, Sparkles, Trash2, Users } from "lucide-react";
+import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, PanelRightClose, PanelRightOpen, Pencil, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { deleteArtifact, deleteInitiative, deleteSquad, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
+import { clearMessages, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -96,6 +96,9 @@ export default function CompanyHome() {
   const [deletingId, setDeletingId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState("");
+  const [editingText, setEditingText] = useState("");
+  const [messageBusyId, setMessageBusyId] = useState("");
   const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
@@ -178,6 +181,54 @@ export default function CompanyHome() {
     initiativesRailRef.current?.scrollBy({ left: direction * 260, behavior: "smooth" });
   };
 
+  const startEditingMessage = (turn: { id: string; message: string }) => {
+    setEditingMessageId(turn.id);
+    setEditingText(turn.message);
+  };
+
+  const cancelEditingMessage = () => { setEditingMessageId(""); setEditingText(""); };
+
+  const saveEditedMessage = async () => {
+    const value = editingText.trim();
+    if (!value) return;
+    setMessageBusyId(editingMessageId);
+    try {
+      const data = await editMessage({ founderId, companyId }, editingMessageId, value);
+      setHome(data);
+      cancelEditingMessage();
+    } catch {
+      setNotice("Could not save that edit — try again.");
+    } finally {
+      setMessageBusyId("");
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    setMessageBusyId(messageId);
+    try {
+      const data = await deleteMessage({ founderId, companyId }, messageId);
+      setHome(data);
+    } catch {
+      setNotice("Could not delete that message — try again.");
+    } finally {
+      setMessageBusyId("");
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!home.conversation.length) return;
+    if (typeof window !== "undefined" && !window.confirm("Clear the whole conversation? This can't be undone from here.")) return;
+    setMessageBusyId("clear-chat");
+    try {
+      const data = await clearMessages({ founderId, companyId });
+      setHome(data);
+    } catch {
+      setNotice("Could not clear the chat — try again.");
+    } finally {
+      setMessageBusyId("");
+    }
+  };
+
   const submitToCopilot = async (value: string) => {
     setSending(true);
     setNotice("Copilot is forming a squad and briefing the department lead...");
@@ -215,6 +266,10 @@ export default function CompanyHome() {
       .company-home-starter:hover { border-color: var(--accent) !important; background: var(--bdim) !important; color: var(--fg) !important; }
       .company-home-rail-toggle:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
       @media (max-width: 860px) { .company-home-rail { display: none !important; } }
+      .company-home-chat-actions { opacity: 0; transition: opacity .14s; }
+      .company-home-chat-turn:hover .company-home-chat-actions, .company-home-chat-actions:focus-within { opacity: 1; }
+      .company-home-chat-actions button:hover { background: var(--bdim) !important; color: var(--accent) !important; }
+      @media (hover: none) { .company-home-chat-actions { opacity: 1; } }
     `}</style>
 
     {/* Chat column -- the primary surface. Header stays minimal, thread fills
@@ -228,6 +283,11 @@ export default function CompanyHome() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span className="pill green" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><span className="live-dot" style={{ background: "var(--green)", boxShadow: "0 0 6px var(--gb)" }} /> Connected</span>
+          {chatTurns.length > 0 && (
+            <button type="button" className="btn sm" disabled={messageBusyId === "clear-chat"} onClick={() => void handleClearChat()}>
+              {messageBusyId === "clear-chat" ? "Clearing…" : "Clear chat"}
+            </button>
+          )}
           <button type="button" aria-label={railOpen ? "Hide company status panel" : "Show company status panel"} onClick={() => setRailOpen(!railOpen)} className="company-home-rail-toggle btn sm" style={{ width: 32, height: 32, padding: 0, display: "grid", placeItems: "center" }}>
             {railOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
           </button>
@@ -253,10 +313,33 @@ export default function CompanyHome() {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {chatTurns.map(turn => {
                 const isFounder = turn.author !== "copilot";
+                const editing = editingMessageId === turn.id;
+                const busy = messageBusyId === turn.id;
                 return (
-                  <div key={turn.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>
+                  <div key={turn.id} className="company-home-chat-turn" style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>
                     {!isFounder && <span style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff" }}><Sparkles size={13} /></span>}
-                    <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)" }}>{turn.message}</div>
+                    {isFounder && !editing && (
+                      <span className="company-home-chat-actions" style={{ display: "flex", gap: 2, flexShrink: 0, alignSelf: "center" }}>
+                        <button type="button" aria-label="Edit message" disabled={busy} onClick={() => startEditingMessage(turn)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer" }}><Pencil size={11} /></button>
+                        <button type="button" aria-label="Delete message" disabled={busy} onClick={() => void handleDeleteMessage(turn.id)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer" }}><Trash2 size={11} /></button>
+                      </span>
+                    )}
+                    {editing ? (
+                      <div style={{ maxWidth: "84%", width: 420, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <textarea autoFocus value={editingText} onChange={e => setEditingText(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEditedMessage(); } if (e.key === "Escape") cancelEditingMessage(); }}
+                          className="f-ta" style={{ minHeight: 60, fontSize: 13 }} />
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button type="button" className="btn sm" onClick={cancelEditingMessage}><X size={11} /></button>
+                          <button type="button" className="btn sm pri" disabled={busy || !editingText.trim()} onClick={() => void saveEditedMessage()}>{busy ? "Saving…" : "Save"}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
+                        {turn.message}
+                        {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
+                      </div>
+                    )}
                   </div>
                 );
               })}

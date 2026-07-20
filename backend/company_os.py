@@ -228,6 +228,13 @@ def append_message(company_id: str, message: str, *, scope: str = "company", sco
     return _create(company_id, "message", {"message_id": _id("message"), "message": message, "scope": scope, "scope_id": scope_id, "author": author, **data}, root)
 
 
+def update_message(company_id: str, message_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    """Persist a message edit or soft-delete (archived=True), same append-only
+    pattern as every other entity -- _apply_event already replays message.updated
+    events into the conversation list, so no new event kind is needed here."""
+    return _update(company_id, "message", "message_id", message_id, changes, root)
+
+
 def add_context_record(company_id: str, key: str, value: Any, *, scope: str = "company", scope_id: str | None = None,
                        root: str | Path | None = None, **data: Any) -> dict[str, Any]:
     _validate_scope(scope, scope_id)

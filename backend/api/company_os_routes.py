@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_squad
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_message, update_squad
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.tenant_auth import require_founder_access
@@ -32,6 +32,14 @@ class CopilotMessageBody(BaseModel):
 class MessageEditBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
+
+
+def _message(company_id: str, message_id: str) -> dict[str, Any]:
+    company = get_company_os(company_id) or {}
+    message = next((item for item in company.get("conversation", []) if item.get("message_id") == message_id), None)
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message
 
 
 def _artifact(company_id: str, artifact_id: str) -> dict[str, Any]:
@@ -132,6 +140,40 @@ async def copilot_message_route(company_id: str, body: CopilotMessageBody, reque
     append_message(company_id, body.message, author="founder", role="user")
     result = await coordinate_turn(company_id, body.message, proposed_spend=body.proposed_spend)
     return {"message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
+
+
+@router.patch("/companies/{company_id}/os/messages/{message_id}")
+async def edit_company_os_message(company_id: str, message_id: str, body: MessageEditBody, request: Request):
+    """Edit a founder's own chat message. Copilot replies aren't editable --
+    they're the durable record of what Astra actually said and did."""
+    _company(request, company_id, body.founder_id, operator=True)
+    message = _message(company_id, message_id)
+    if message.get("author") != "founder":
+        raise HTTPException(status_code=400, detail="Only your own messages can be edited")
+    update_message(company_id, message_id, message=body.message, edited=True)
+    return {"ok": True, "message_id": message_id, "company": get_company_os(company_id)}
+
+
+@router.delete("/companies/{company_id}/os/messages/{message_id}")
+async def delete_company_os_message(company_id: str, message_id: str, founder_id: str, request: Request):
+    """Soft-delete (archive) a single message, same pattern as every other entity."""
+    company = _company(request, company_id, founder_id, operator=True)
+    if not any(item.get("message_id") == message_id for item in company.get("conversation", [])):
+        raise HTTPException(status_code=404, detail="Message not found")
+    update_message(company_id, message_id, archived=True)
+    return {"ok": True, "message_id": message_id, "company": get_company_os(company_id)}
+
+
+@router.post("/companies/{company_id}/os/messages/clear")
+async def clear_company_os_messages(company_id: str, founder_id: str, request: Request):
+    """Archive the whole conversation thread. History still replays -- this
+    only changes what the dashboard shows going forward, same as every other
+    soft-delete in this store."""
+    company = _company(request, company_id, founder_id, operator=True)
+    for item in company.get("conversation", []):
+        if not item.get("archived"):
+            update_message(company_id, item["message_id"], archived=True)
+    return {"ok": True, "company": get_company_os(company_id)}
 
 
 @router.post("/companies/{company_id}/os/operations/tick")

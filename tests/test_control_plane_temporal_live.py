@@ -33,11 +33,25 @@ def _install_live_test_activities(monkeypatch, *, execute_impl, observe_impl=Non
     async def _execute(_input) -> dict:
         return await execute_impl(_input)
 
+    # AstraRunWorkflow.run calls LoadRunPlanActivity.load ("load_run_plan")
+    # before anything else, unconditionally -- it's how the workflow decides
+    # legacy-single-activity vs multi-phase. This helper's callers all want
+    # the legacy path, so an empty plan (no "phases") is correct here. Without
+    # registering *some* activity under this name, the real one would need a
+    # worker that has it -- none does in these tests -- so the workflow's
+    # `await workflow.execute_activity(LoadRunPlanActivity.load, ...)` sits in
+    # "scheduled" forever (no schedule_to_start_timeout is set) and every test
+    # using this helper hangs until pytest's hard per-test timeout kills it.
+    @activities_mod.activity.defn(name="load_run_plan")
+    async def _load_plan(_run_id: str) -> dict:
+        return {}
+
     monkeypatch.setattr(activities_mod.PublishEventActivity, "publish", _publish)
     monkeypatch.setattr(activities_mod.UpdateRunStatusActivity, "update", _update)
     monkeypatch.setattr(activities_mod.ObserveRunActivity, "record", _observe)
     monkeypatch.setattr(activities_mod.ExecuteOrchestratorActivity, "execute", _execute)
-    return activities_mod, [_execute, _observe, _publish, _update]
+    monkeypatch.setattr(activities_mod.LoadRunPlanActivity, "load", _load_plan)
+    return activities_mod, [_execute, _observe, _publish, _update, _load_plan]
 
 
 def _install_phase_gate_test_activities(monkeypatch, *, create_impl, expire_impl=None):
@@ -111,6 +125,7 @@ async def test_live_workflow_handles_query_signal_and_cancel(monkeypatch):
     if temporalio is None:
         pytest.skip("temporalio not installed in this environment")
 
+    from temporalio import activity
     from temporalio.worker import Worker
 
     from backend.control_plane.temporal.contracts import (
@@ -132,8 +147,18 @@ async def test_live_workflow_handles_query_signal_and_cancel(monkeypatch):
         return True
 
     async def _execute(_input) -> dict:
+        # The real ExecuteOrchestratorActivity heartbeats continuously while it
+        # runs (activities.py passes heartbeat=activity.heartbeat through to the
+        # orchestrator). Temporal's Python SDK only learns a cancel was
+        # requested -- and only then cancels the activity's asyncio task -- via
+        # that heartbeat channel; an activity that never heartbeats never
+        # receives the cancellation and the workflow's `await activity_handle`
+        # below hangs forever. Poll-and-heartbeat here so this fake behaves like
+        # the real activity instead of deadlocking the cancel path being tested.
         started.set()
-        await release.wait()
+        while not release.is_set():
+            activity.heartbeat()
+            await asyncio.sleep(0.05)
         return {"session_id": getattr(_input, "run_id", "run_live")}
 
     _, activities = _install_live_test_activities(monkeypatch, execute_impl=_execute, observe_impl=_observe)
