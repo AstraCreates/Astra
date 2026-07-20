@@ -185,21 +185,35 @@ def enforce_dispatch_policy(
             "policy_version": "company-os-dispatch-v1", "decided_at": _utcnow()}
 
 
-def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
-    """Create initiative, squad, mission, and specialist tasks for an intent."""
+def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0, forced_initiative_id: str | None = None) -> dict[str, Any]:
+    """Create initiative, squad, mission, and specialist tasks for an intent.
+
+    forced_initiative_id lets a caller that already knows this is a
+    continuation (e.g. the copilot's LLM turn router, which understands
+    typos and paraphrases the lexical matcher below can't) skip straight to
+    reusing that initiative instead of guessing from wording alone.
+    """
     company = _call("get_company_os", company_id=company_id) or {}
-    department, squad_name = choose_department(intent)
-    # Squads used to be reused across ANY active initiative in the same
-    # department, keyed only on department -- with no topic check. That silently
-    # merged unrelated asks (e.g. a fresh "cookie clicker monetization" question
-    # landing inside an existing "Big Pharma consulting" research initiative)
-    # into one initiative, corrupting the acknowledgement text and evidence
-    # trail. Now a new dispatch reuses an existing initiative + squad only when
-    # its wording is actually close to one already active in the same
-    # department (re-asking the same thing, or a light rephrasing of it);
-    # a genuinely different ask in the same department still gets its own.
-    same_department_active = [item for item in company.get("initiatives", []) if item.get("state") != "archived" and item.get("department") == department]
-    reuse = _find_continuation(intent, same_department_active)
+    reuse = None
+    if forced_initiative_id:
+        reuse = next((item for item in company.get("initiatives", [])
+                      if _entity_id(item, "initiative_id") == forced_initiative_id and item.get("state") != "archived"), None)
+    if reuse is not None:
+        department = reuse.get("department") or choose_department(intent)[0]
+        squad_name = _SQUADS.get(department, _SQUADS[_DEFAULT_DEPARTMENT])
+    else:
+        department, squad_name = choose_department(intent)
+        # Squads used to be reused across ANY active initiative in the same
+        # department, keyed only on department -- with no topic check. That silently
+        # merged unrelated asks (e.g. a fresh "cookie clicker monetization" question
+        # landing inside an existing "Big Pharma consulting" research initiative)
+        # into one initiative, corrupting the acknowledgement text and evidence
+        # trail. Now a new dispatch reuses an existing initiative + squad only when
+        # its wording is actually close to one already active in the same
+        # department (re-asking the same thing, or a light rephrasing of it);
+        # a genuinely different ask in the same department still gets its own.
+        same_department_active = [item for item in company.get("initiatives", []) if item.get("state") != "archived" and item.get("department") == department]
+        reuse = _find_continuation(intent, same_department_active)
     if reuse:
         initiative = reuse
         initiative_id = _entity_id(initiative, "initiative_id")
@@ -244,16 +258,30 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
     if existing:
         return {"status": "duplicate", "attempt": existing, "idempotency_key": key}
     task_id = _entity_id(task, "task_id")
-    attempt = _call("create_task_attempt", company_id=company_id, task_id=task_id, idempotency_key=key, state="running")
-    attempt_id = _entity_id(attempt, "attempt_id")
     _call("update_task", company_id=company_id, task_id=task_id, state="working")
-    try:
-        result = executor(task)
-    except Exception as exc:
-        _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="failed", error=str(exc))
-        _call("update_task", company_id=company_id, task_id=task_id, state="blocked", blocked_reason=str(exc))
-        raise
-    _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed")
+    # One inline retry before giving up. A research task fails whenever a
+    # single web search comes back thin (rate limit, one weak query) -- that's
+    # a flaky call, not a broken task, and terminally blocking the whole
+    # mission on the first attempt was flooding squads into "blocked" for
+    # transient reasons. A second consecutive failure still blocks for real.
+    attempt: Any = None
+    last_exc: Exception | None = None
+    for attempt_number in range(2):
+        attempt = _call("create_task_attempt", company_id=company_id, task_id=task_id,
+                        idempotency_key=key if attempt_number == 0 else f"{key}:retry", state="running")
+        attempt_id = _entity_id(attempt, "attempt_id")
+        try:
+            result = executor(task)
+        except Exception as exc:
+            last_exc = exc
+            _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="failed", error=str(exc))
+            continue
+        _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed")
+        last_exc = None
+        break
+    if last_exc is not None:
+        _call("update_task", company_id=company_id, task_id=task_id, state="blocked", blocked_reason=str(last_exc))
+        raise last_exc
     completed_at = _utcnow()
     if task.get("recurring") or task.get("cadence_seconds"):
         # A cadence task must re-arm for its next slot, not finish like a
