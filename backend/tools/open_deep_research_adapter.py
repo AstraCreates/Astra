@@ -47,9 +47,21 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
         # only replace the worker's external research surface.
         return [tool(ResearchComplete), think_tool, astra_company_research]
 
-    previous_key = os.environ.get("OPENAI_API_KEY")
-    previous_base = os.environ.get("OPENAI_BASE_URL")
-    os.environ["OPENAI_API_KEY"] = _or_api_key()
+    profile_env = {
+        "OPENAI_API_KEY": _or_api_key(),
+        "OPENAI_BASE_URL": research_base,
+        # Configuration.from_runnable_config gives environment variables
+        # precedence over LangGraph's configurable values. Pin every model
+        # field for this profile so a stale production lane cannot silently
+        # replace DeepSeek or re-enable a non-Astra search provider.
+        "RESEARCH_MODEL": "openai:deepseek/deepseek-v4-flash",
+        "COMPRESSION_MODEL": "openai:deepseek/deepseek-v4-flash",
+        "FINAL_REPORT_MODEL": "openai:deepseek/deepseek-v4-flash",
+        "SUMMARIZATION_MODEL": "openai:deepseek/deepseek-v4-flash",
+        "SEARCH_API": "none",
+        "ALLOW_CLARIFICATION": "false",
+    }
+    previous_env = {name: os.environ.get(name) for name in profile_env}
     # Headroom is the right transport for Astra's normal model lanes, but its
     # LiteLLM provider map does not understand the upstream graph's
     # ``openai:deepseek/...`` provider notation. Keep this profile isolated and
@@ -58,7 +70,7 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
     research_base = ("https://openrouter.ai/api/v1"
                      if "headroom" in configured_base.lower()
                      else configured_base)
-    os.environ["OPENAI_BASE_URL"] = research_base
+    os.environ.update(profile_env)
     await asyncio.to_thread(_GRAPH_PATCH_LOCK.acquire)
     try:
         original_get_all_tools = graph_module.get_all_tools
@@ -84,14 +96,11 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
             graph_module.get_all_tools = original_get_all_tools
     finally:
         _GRAPH_PATCH_LOCK.release()
-        if previous_key is None:
-            os.environ.pop("OPENAI_API_KEY", None)
-        else:
-            os.environ["OPENAI_API_KEY"] = previous_key
-        if previous_base is None:
-            os.environ.pop("OPENAI_BASE_URL", None)
-        else:
-            os.environ["OPENAI_BASE_URL"] = previous_base
+        for name, value in previous_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
     report = str(result.get("final_report") or "").strip()
     sources = [dict(source) for call in calls for source in call.get("sources", []) if isinstance(source, dict)]
