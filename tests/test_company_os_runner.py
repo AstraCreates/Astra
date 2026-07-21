@@ -33,8 +33,10 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
             "state": "working",
             "updated_at": "2020-01-01T00:00:00Z",
         }],
+        "task_attempts": [{"attempt_id": "attempt-1", "task_id": "task-1", "state": "running"}],
     }
     updates = []
+    attempt_updates = []
     messages = []
     launches = []
 
@@ -46,6 +48,7 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
     monkeypatch.setattr("backend.company_os_runner.company_recovery_lock", lambda *_args, **_kwargs: contextlib.nullcontext())
     monkeypatch.setattr("backend.company_os_runner.get_company_os", lambda *_args, **_kwargs: company)
     monkeypatch.setattr("backend.company_os_runner.update_task", lambda *args, **kwargs: updates.append((args, kwargs)))
+    monkeypatch.setattr("backend.company_os_runner.update_task_attempt", lambda *args, **kwargs: attempt_updates.append((args, kwargs)))
     monkeypatch.setattr("backend.company_os_runner.append_message", lambda *args, **kwargs: messages.append((args, kwargs)))
     async def _run_recovered(company_id, mission_id):
         launches.append((company_id, mission_id))
@@ -56,6 +59,8 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
     assert updates[0][0] == ("acme", "task-1")
     assert updates[0][1]["state"] == "pending"
     assert updates[0][1]["recovery_reason"] == "stale_working_task_after_process_restart"
+    assert attempt_updates[0][0] == ("acme", "attempt-1")
+    assert attempt_updates[0][1]["error"] == "orphaned_after_process_restart"
     assert launches == [("acme", "mission-1")]
     assert "Recovered stalled work" in messages[0][0][1]
 

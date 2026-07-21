@@ -17,6 +17,7 @@ from backend.company_os import (
     reconcile_initiatives,
     update_mission,
     update_task,
+    update_task_attempt,
     update_artifact,
     update_squad,
 )
@@ -146,6 +147,13 @@ async def recover_pending_missions() -> int:
                     current_pending = [task for task in current_tasks if task.get("state") in {"pending", "scheduled"}]
                     if not current_mission or not current_stale and not current_pending:
                         continue
+                    for task in [*current_stale, *current_pending]:
+                        for attempt in current.get("task_attempts", []):
+                            if attempt.get("task_id") != task.get("task_id") or attempt.get("state") != "running":
+                                continue
+                            update_task_attempt(company["company_id"], attempt["attempt_id"], state="failed",
+                                                error="orphaned_after_process_restart", transient=True,
+                                                finished_at=datetime.now(timezone.utc).isoformat())
                     for task in current_stale:
                         update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
                                     recovery_reason="stale_working_task_after_process_restart")
