@@ -440,8 +440,12 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
                 from backend.config import settings
                 time.sleep(float(settings.deep_research_backoff_seconds))
             continue
-        metadata = result.get("result") if isinstance(result, Mapping) else {}
-        metadata = metadata if isinstance(metadata, Mapping) else {}
+        # _store_artifact() (company_os_runner.py) returns research_metadata/
+        # evidence_validation as its own top-level keys, not nested under a
+        # "result" wrapper -- the erroneous .get("result") unwrap here always
+        # resolved to None, so every research attempt's metadata/model/
+        # provider/evidence_validation was silently persisted as empty.
+        metadata = result if isinstance(result, Mapping) else {}
         research_meta = metadata.get("research_metadata") if isinstance(metadata.get("research_metadata"), Mapping) else {}
         _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed",
               finished_at=_utcnow(), latency_ms=round((time.perf_counter() - started) * 1000),

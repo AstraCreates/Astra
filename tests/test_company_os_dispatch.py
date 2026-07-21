@@ -113,6 +113,7 @@ class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}
         self.missions = []
+        self.task_attempt_updates = []
 
     def get_company_os(self, **_): return self.company
     def create_initiative(self, **kwargs): return {"id": "initiative", **kwargs}
@@ -128,7 +129,9 @@ class FakeCompanyOS:
     def create_approval(self, **kwargs): return {"id": "approval", **kwargs}
     def update_mission(self, **kwargs): return kwargs
     def update_task(self, **kwargs): return kwargs
-    def update_task_attempt(self, **kwargs): return kwargs
+    def update_task_attempt(self, **kwargs):
+        self.task_attempt_updates.append(kwargs)
+        return kwargs
     def append_event(self, **kwargs): self.company["events"].append(kwargs); return kwargs
 
 
@@ -152,6 +155,32 @@ def test_all_execution_paths_use_the_policy_choke_point(monkeypatch):
     assert dispatch.scheduler_tick("co", lambda _: (_ for _ in ()).throw(AssertionError("must not execute")))[0]["status"] == "awaiting_approval"
     assert len(calls) == 2
     assert any(event["event_type"] == "policy.decided" for event in store.company["events"])
+
+
+def test_execute_task_persists_research_metadata_from_the_executor_result(monkeypatch):
+    """_store_artifact() (company_os_runner.py) returns research_metadata/
+    evidence_validation as top-level keys, not nested under a "result" key --
+    a prior version of this code read result.get("result") first, which
+    always resolved to None and silently persisted every research attempt's
+    metadata as empty."""
+    dispatch, store = _dispatch(monkeypatch)
+    task = {"id": "t1", "title": "Gather validated evidence", "status": "pending", "mcp_tool": "astra_company_research",
+            "operation": "internal_analysis", "execution_scope": "local"}
+    executor_result = {
+        "artifact_id": "art1", "source_count": 5,
+        "research_metadata": {"model": "deepseek/deepseek-v4-flash", "provider": "deepseek", "search_count": 6},
+        "evidence_validation": {"ok": True, "gaps": []},
+        "research_status": "validated",
+    }
+
+    result = dispatch.execute_task("co", task, lambda _: executor_result)
+
+    assert result["status"] == "completed"
+    completed_update = next(u for u in store.task_attempt_updates if u.get("state") == "completed")
+    assert completed_update["model"] == "deepseek/deepseek-v4-flash"
+    assert completed_update["provider"] == "deepseek"
+    assert completed_update["research_metadata"] == executor_result["research_metadata"]
+    assert completed_update["evidence_validation"] == executor_result["evidence_validation"]
 
 
 def test_local_publication_preparation_never_requires_approval():

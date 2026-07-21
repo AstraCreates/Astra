@@ -29,7 +29,11 @@ def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, m
     def fake_pipeline(topic, *, focus, max_results_each, on_search=None):
         for _ in range(3):
             on_search()
-        return {"combined_formatted": "evidence", "sources": []}
+        return {
+            "combined_formatted": "evidence", "queries_run": 3,
+            "sources": [{"url": "https://example.com/a", "retrieved_at": "2026-07-21T00:00:00Z"},
+                        {"url": "https://example.org/b", "retrieved_at": "2026-07-21T00:00:00Z"}],
+        }
     monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
 
     result = mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "instacart", "task_id": "t1"})
