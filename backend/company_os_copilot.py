@@ -82,7 +82,8 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
                                         proposed_spend=proposed_spend, forced_initiative_id=forced_id, work_request=request)
     reply = plan.get("reply") or _fallback_reply(dispatch)
     append_message(company_id, reply, author="copilot", role="assistant",
-                   scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="chat")
+                   scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="plan",
+                   squad_id=dispatch["squad"]["squad_id"])
     launch_mission(company_id, dispatch["mission"]["mission_id"])
     for handoff in dispatch.get("handoff_missions", []):
         launch_mission(company_id, handoff["mission_id"])

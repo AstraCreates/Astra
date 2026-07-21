@@ -132,6 +132,31 @@ async def test_ambiguous_new_work_asks_a_structured_question(tmp_path, monkeypat
     assert "iOS" in captured_intent["prompt"]
 
 
+@pytest.mark.asyncio
+async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    def fake_generate(prompt, *, model=None, **_kwargs):
+        if model == "fast":
+            return json.dumps({"action": "new", "initiative_id": None, "reply": "On it."})
+        return json.dumps({
+            "objective": "Research Instacart", "deliverables": [], "acceptance_criteria": [], "constraints": [],
+            "entities": [], "dependencies": [], "primary_capability": "research", "required_capabilities": ["research"],
+            "risk": "internal", "clarification_question": None, "clarification_options": None, "confidence": 0.9,
+        })
+    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+
+    result = await coordinate_turn("acme", "what is instacart")
+
+    assert result["dispatch"] is not None
+    state = company_os.get_company_os("acme")
+    last = state["conversation"][-1]
+    assert last["kind"] == "plan"
+    assert last["squad_id"] == result["dispatch"]["squad"]["squad_id"]
+
 def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "should not run")
     assert _classify_turn({}, "Compare Cofounder.co to AstraCreates.com")["action"] == "new"

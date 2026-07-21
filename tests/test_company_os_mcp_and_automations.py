@@ -15,6 +15,30 @@ def test_company_os_replays_mcp_audit_events(tmp_path):
     assert [entry["event_type"] for entry in state["mcp_audit"]] == ["mcp.tool_called", "mcp.tool_completed"]
 
 
+def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, monkeypatch):
+    from backend import company_os
+    import backend.astra_mcp as mcp
+
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("co", "founder", "Company")
+    initiative = company_os.create_initiative("co", "Research", initiative_id="i1")
+    squad = company_os.create_squad("co", "i1", "Insights", squad_id="s1")
+    task = company_os.create_task("co", "i1", "s1", "Gather validated evidence", task_id="t1", state="working")
+
+    def fake_pipeline(topic, *, focus, max_results_each, on_search=None):
+        for _ in range(3):
+            on_search()
+        return {"combined_formatted": "evidence", "sources": []}
+    monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
+
+    result = mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "instacart", "task_id": "t1"})
+
+    assert result["ok"] is True
+    updated_task = next(item for item in company_os.get_company_os("co")["tasks"] if item["task_id"] == "t1")
+    assert updated_task["search_count"] == 3
+
+
 def test_company_mcp_bridge_audits_registered_tool(monkeypatch):
     from backend import company_os_mcp
 

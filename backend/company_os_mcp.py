@@ -86,6 +86,12 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
     args = dict(arguments or {})
     args.setdefault("company_id", company_id)
     args.setdefault("founder_id", company["founder_id"])
+    if tool == "astra_company_research":
+        # Only this tool reads task_id (to persist a live search-count onto
+        # the task as evidence comes in) -- injecting it for every tool broke
+        # the generic runtime registry's strict unknown-argument check for
+        # handlers that don't accept **kwargs.
+        args.setdefault("task_id", task_id)
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
     call_id = hashlib.sha256(f"{company_id}:{tool}:{canonical}".encode()).hexdigest()[:20]
     append_event(company_id, "mcp.tool_called", {"call_id": call_id, "tool": tool,

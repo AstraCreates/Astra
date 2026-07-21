@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Brain, Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, Link2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Brain, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileText, LayoutDashboard, Link2, Loader2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
@@ -487,6 +487,45 @@ export default function CompanyHome() {
                           </div>
                         )}
                       </div>
+                    ) : turn.kind === "plan" && home.squads.find(s => s.id === turn.squadId) ? (
+                      (() => {
+                        const squad = home.squads.find(s => s.id === turn.squadId)!;
+                        const searches = squad.tasks.reduce((sum, task) => sum + (task.searchCount ?? 0), 0);
+                        const anyActive = squad.tasks.some(task => task.status === "active");
+                        const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
+                        return (
+                          <div style={{ maxWidth: "84%", width: 380, padding: "12px 13px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 10 }}>{squad.name}</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                              {squad.tasks.map(task => (
+                                <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                  <span style={{ flexShrink: 0, marginTop: 1, color: task.status === "complete" ? "#15803d" : task.status === "blocked" ? "#b91c1c" : "var(--fm)" }}>
+                                    {task.status === "complete" ? <Check size={15} /> : task.status === "active" ? <Loader2 size={15} className="company-home-spin" /> : <Circle size={13} />}
+                                  </span>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 12.5, color: "var(--fg)", textDecoration: task.status === "complete" ? "line-through" : "none", opacity: task.status === "complete" ? 0.7 : 1 }}>{task.title}</div>
+                                    {task.note && <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>}
+                                    {task.status === "blocked" && (
+                                      <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
+                                        onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
+                                        {retryingTaskId === task.id ? "Retrying…" : "Retry"}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10 }}>
+                              <small style={{ color: "var(--fm)", fontSize: 11 }}>{allDone ? "Done" : anyActive ? "Researching…" : "Queued"}</small>
+                              {searches > 0 && <small style={{ color: "var(--fm)", fontSize: 11 }}>{searches} search{searches === 1 ? "" : "es"}</small>}
+                            </div>
+                            <div style={{ marginTop: 6, height: 3, borderRadius: 999, background: "var(--bd)", overflow: "hidden" }}>
+                              <div className={allDone ? undefined : anyActive ? "company-home-progress-indeterminate" : undefined}
+                                style={{ height: "100%", borderRadius: 999, background: "var(--accent)", width: allDone ? "100%" : anyActive ? "40%" : "4%" }} />
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
                         <MarkdownDocument content={turn.message} compact inverse={isFounder} />
@@ -655,8 +694,14 @@ export default function CompanyHome() {
 
     <style>{`
       @keyframes chatDotPulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+      @keyframes companyHomeSpin { to { transform: rotate(360deg); } }
+      @keyframes companyHomeProgressSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+      .company-home-spin { animation: companyHomeSpin 1s linear infinite; }
+      .company-home-progress-indeterminate { width: 40% !important; animation: companyHomeProgressSlide 1.1s ease-in-out infinite; }
       @media (prefers-reduced-motion: reduce) {
         [style*="chatDotPulse"] { animation: none !important; }
+        .company-home-spin { animation: none !important; }
+        .company-home-progress-indeterminate { animation: none !important; width: 40% !important; transform: none !important; }
       }
     `}</style>
   </div>;

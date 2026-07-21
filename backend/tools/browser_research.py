@@ -1151,7 +1151,7 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     }
 
 
-def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None, include_fetched_results: bool = False) -> dict:
+def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None, include_fetched_results: bool = False, on_search=None) -> dict:
     """Run search+scrape for several queries against crw in parallel — the
     same output contract as batch_search (DDGS-backed), so the recursive
     sonar_research loop can call either interchangeably."""
@@ -1176,6 +1176,8 @@ def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None
                     results_by_query[q] = fut.result()
                 except Exception as e:
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(e)}
+                if on_search:
+                    on_search()
         except TimeoutError:
             timed_out = True
             _record_crw_result(False)
@@ -1183,6 +1185,8 @@ def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None
                 if q not in results_by_query:
                     fut.cancel()
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_timeout"}
+                    if on_search:
+                        on_search()
     finally:
         if timed_out or (cancel_event is not None and cancel_event.is_set()):
             for fut, q in futures.items():
@@ -1367,7 +1371,7 @@ def sonar_research(queries=None, cancellation_fence=None) -> dict:
     return _call_with_optional_cancellation(deep_research, queries, cancellation_fence=cancellation_fence)
 
 
-def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=None) -> dict:
+def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=None, on_search=None) -> dict:
     """Run search queries in parallel and return combined results."""
     if not queries:
         return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
@@ -1403,6 +1407,8 @@ def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=Non
                         results_by_query[q] = fut.result()
                     except Exception as e:
                         results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+                    if on_search:
+                        on_search()
             except TimeoutError:
                 for fut, q in futures.items():
                     if q in results_by_query:
@@ -1415,6 +1421,8 @@ def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=Non
                     else:
                         fut.cancel()
                         results_by_query[q] = {"query": q, "results": [], "error": "search_timeout"}
+                    if on_search:
+                        on_search()
 
     combined = []
     all_sources = []
@@ -1487,7 +1495,7 @@ def _research_coverage(focus: str, queries: list[str], search: dict) -> dict:
     }
 
 
-def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 8, cancellation_fence=None) -> dict:
+def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 8, cancellation_fence=None, on_search=None) -> dict:
     """Plan and run a complete source-diverse research pass.
 
     Agents should use this when they need reliable first-pass evidence quickly:
@@ -1523,6 +1531,7 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
                     queries,
                     max_results_each=max_results_each,
                     cancellation_fence=cancellation_fence,
+                    **({"on_search": on_search} if on_search else {}),
                 )
             )
     coverage = _research_coverage(plan["focus"], queries, search)
@@ -1566,7 +1575,7 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
     }
 
 
-def run_comparison_research(topic: str) -> dict:
+def run_comparison_research(topic: str, on_search=None) -> dict:
     """Build a fetched, balanced evidence ledger for an explicit comparison.
 
     Search snippets and provider citations are deliberately excluded. A ledger
@@ -1590,7 +1599,7 @@ def run_comparison_research(topic: str) -> dict:
         for _, _, query in pending:
             seen_queries.add(query.casefold())
         queries = [query for _, _, query in pending]
-        search = _crw_batch_search(queries, max_results_each=5, include_fetched_results=True)
+        search = _crw_batch_search(queries, max_results_each=5, include_fetched_results=True, on_search=on_search)
         rounds.append({"round": round_index + 1, "queries": queries, "queries_run": search.get("queries_run", 0)})
         if search.get("combined_formatted"):
             combined_blocks.append(search["combined_formatted"])

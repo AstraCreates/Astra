@@ -11,6 +11,7 @@ export type CompanyHomeTask = {
   status: "planned" | "active" | "waiting" | "complete" | "blocked";
   squad: string;
   note: string;
+  searchCount?: number;
 };
 
 export type CompanyInitiativeDependency = { id: string; name: string; status: string };
@@ -22,7 +23,7 @@ export type CompanyHomeApproval = { id: string; title: string; squad: string; de
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; initiativeId?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question"; edited: boolean; question?: string; options?: string[] };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string };
 
 export type CompanyHomeData = {
   companyName: string;
@@ -324,7 +325,10 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
       })
       .filter(initiative => !initiative.archived),
     squads: squads.map((squad, index) => {
-      const matching = tasks.filter(task => task.squad_id === squad.squad_id).map((task, taskIndex) => ({ id: text(task.task_id, `task-${index}-${taskIndex}`), title: text(task.name, "Untitled task"), status: taskStatus(task.state), squad: titleCase(text(squad.department, "Operations")), note: text(task.description) }));
+      const matching = tasks.filter(task => task.squad_id === squad.squad_id).map((task, taskIndex) => {
+        const searchCount = Number(task.search_count);
+        return { id: text(task.task_id, `task-${index}-${taskIndex}`), title: text(task.name, "Untitled task"), status: taskStatus(task.state), squad: titleCase(text(squad.department, "Operations")), note: text(task.description), searchCount: Number.isFinite(searchCount) && searchCount > 0 ? searchCount : undefined };
+      });
       const mission = missions.find(item => item.squad_id === squad.squad_id);
       const active = matching.find(task => task.status === "active") ?? matching[0];
       return { id: text(squad.squad_id, `squad-${index}`), initiativeId: text(squad.initiative_id), name: text(squad.name, "Squad"), lifecycle: titleCase(text(mission?.state ?? squad.lifecycle, "formed")), activity: active?.title ?? "Setting direction", members: members(squad.members ?? squad.roster ?? squad.agents), tasks: matching, archived: text(squad.state).toLowerCase() === "archived" };
@@ -334,12 +338,13 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
     conversation: list(root.conversation).filter(item => !record(item).archived).map((item, index) => {
       const message = record(item);
       const kindRaw = text(message.kind, "chat");
-      const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : "chat";
+      const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
       const options = list(message.options).map(option => text(option)).filter(Boolean);
       return {
         id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message),
         kind, edited: Boolean(message.edited),
         ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}),
+        ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}),
       };
     }),
   };

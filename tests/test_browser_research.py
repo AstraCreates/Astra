@@ -76,6 +76,18 @@ def test_batch_search_aggregates_unique_sources(monkeypatch):
     ]
 
 
+def test_batch_search_reports_on_search_once_per_completed_query(monkeypatch):
+    def fake_search_and_fetch(query, max_results):
+        return {"query": query, "total": 1, "formatted": query, "sources": []}
+
+    monkeypatch.setattr(browser_research, "search_and_fetch", fake_search_and_fetch)
+    calls = []
+
+    browser_research.batch_search(["a", "b", "c"], max_results_each=3, on_search=lambda: calls.append(1))
+
+    assert len(calls) == 3
+
+
 def test_batch_search_dedupes_repeated_queries_and_normalizes_source_urls(monkeypatch):
     calls = []
 

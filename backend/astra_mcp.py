@@ -613,7 +613,22 @@ def _company_research(args: dict) -> dict:
     if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
         return {"ok": False, "error": "Company not found"}
     subject = str(args["subject"])
-    evidence = run_comparison_research(subject) if "compare" in subject.lower() else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6)
+    company_id, task_id = str(args["company_id"]), args.get("task_id")
+    on_search = None
+    if task_id:
+        counter = {"n": 0}
+
+        def on_search() -> None:
+            counter["n"] += 1
+            try:
+                from backend.company_os import update_task
+                update_task(company_id, str(task_id), search_count=counter["n"])
+            except Exception:
+                pass
+    evidence = (
+        run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
+        else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search)
+    )
     return {"ok": not bool(evidence.get("error")), **evidence}
 
 def _company_tool_catalog(args: dict) -> dict:
