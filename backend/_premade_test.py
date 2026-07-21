@@ -53,11 +53,6 @@ BRAND_DIRECTION = ("Trustworthy, calm, productivity-forward. Chakra Petch headin
                    "Mono body. Square corners, generous whitespace, electric-blue primary.")
 
 
-def _research_md(agent: str, body: str) -> str:
-    return (f"---\nagent: {agent}\nfounder_id: {FOUNDER}\n---\n\n# {agent.title()} Notes\n\n"
-            f"## Summary\n{body}\n")
-
-
 def _seed_vault():
     from backend.tools.obsidian_logger import obsidian_log
     sid = "premade_seed"
