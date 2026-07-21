@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
     playwright install chromium && \
     playwright install-deps chromium
+# Astra supplies the search worker through Company OS MCP, so Open Deep
+# Research's optional provider integrations are intentionally not installed.
+RUN pip install --no-cache-dir --no-deps git+https://github.com/langchain-ai/open_deep_research.git
 # Headroom is an optional proxy add-on; the application dependencies above are
 # mandatory and must fail the image build when resolution or installation fails.
 RUN pip install --no-cache-dir headroom-ai==0.26.0 "transformers>=4.53.0" || true
