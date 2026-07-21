@@ -118,6 +118,8 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
+    if str(task.get("mcp_tool") or "") == "astra_company_research" and str(mission.get("department") or "") == "operations":
+        raise RuntimeError("Research task is attached to Company Operations; retry after routing repair.")
     mission_name = str(mission.get("name") or "this research")
     if task.get("operation") == "external_deploy":
         company = get_company_os(company_id) or {}

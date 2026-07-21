@@ -441,18 +441,27 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     work_request = dict(work_request or infer_work_request(intent))
     if work_request.get("requires_clarification"):
         return {"needs_clarification": True, "work_request": work_request}
+    route = route_work_request(company, work_request)
+    research_request = bool(set(work_request.get("required_capabilities") or []) & {"research", "evidence research", "competitive analysis", "compare"})
     reuse = None
     if forced_initiative_id:
         reuse = next((item for item in company.get("initiatives", [])
-                      if _entity_id(item, "initiative_id") == forced_initiative_id and item.get("state") != "archived"), None)
+                      if _entity_id(item, "initiative_id") == forced_initiative_id and item.get("state") != "archived"
+                      and not (research_request and item.get("system_key") == "company_operations")), None)
     if reuse is not None:
-        route = route_work_request(company, work_request)
-        department = reuse.get("director") or reuse.get("department") or route["department"]
+        # A continuation target is only a reuse hint. Its department must be
+        # compatible with the newly extracted work request.
+        compatible = reuse.get("department") == route["department"] or reuse.get("director") == route["department"]
+        if not compatible:
+            reuse = None
+        department = route["department"]
         squad_name = route["squad_name"]
-    else:
-        route = route_work_request(company, work_request)
+    if reuse is None:
         department, squad_name = route["department"], route["squad_name"]
-        reuse = _find_continuation(intent, [item for item in company.get("initiatives", []) if item.get("state") != "archived"])
+        candidates = [item for item in company.get("initiatives", []) if item.get("state") != "archived"
+                      and item.get("department") == department and item.get("director") == route["director"]
+                      and not (research_request and item.get("system_key") == "company_operations")]
+        reuse = _find_continuation(intent, candidates)
     if reuse:
         initiative = reuse
         initiative_id = _entity_id(initiative, "initiative_id")
@@ -481,6 +490,12 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent,
                     department=department, state="active", initiative_director=route["director"], handoff_requests=route.get("handoffs", []))
     mission_id = _entity_id(mission, "mission_id")
+    _call("append_event", company_id=company_id, event_type="dispatch.routed", payload={
+        "initiative_id": initiative_id, "squad_id": squad_id, "mission_id": mission_id,
+        "department": department, "research_profile": "company_os_deep_research" if research_request else None,
+        "mcp_tool": "astra_company_research" if research_request else None,
+        "continuation_target": forced_initiative_id, "continuation_reused": bool(reuse),
+    })
     created_tasks = []
     for spec in specialist_task_plan(department, intent, request=work_request):
         policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
@@ -538,7 +553,11 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
             else:
                 handoff_missions = [updated if _entity_id(item, "mission_id") == candidate_id else item for item in handoff_missions]
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
-            "work_request": work_request, "routing": route, "handoff_missions": handoff_missions}
+            "work_request": work_request, "routing": route, "handoff_missions": handoff_missions,
+            "dispatch_metadata": {"department": department, "initiative_reused": bool(reuse),
+                                  "squad_reuse_or_create": "reused_or_reopened" if reuse else "created",
+                                  "research_profile": "company_os_deep_research" if research_request else "quick_lookup_or_internal",
+                                  "mcp_tool": "astra_company_research" if research_request else None}}
 
 
 def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[Mapping[str, Any]], Any], *,
@@ -571,7 +590,9 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
         started = time.perf_counter()
         attempt = _call("create_task_attempt", company_id=company_id, task_id=task_id,
                         idempotency_key=key if attempt_number == 0 else f"{key}:retry", state="running",
-                        profile="company_os_deep_research" if is_research else "company_os_default")
+                        profile="company_os_deep_research" if is_research else "company_os_default",
+                        initiative_id=task.get("initiative_id"), squad_id=task.get("squad_id"),
+                        mission_id=task.get("mission_id"), model=("deepseek/deepseek-v4-flash" if is_research else None))
         attempt_id = _entity_id(attempt, "attempt_id")
         try:
             result = executor(task)

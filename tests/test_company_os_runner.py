@@ -93,6 +93,10 @@ async def test_research_mission_runs_to_a_durable_decision_brief(tmp_path, monke
                 {"title": "Customer evidence", "url": "https://customers.example/customer"},
                 {"title": "Competitor evidence", "url": "https://competitors.example/competitor"},
             ],
+            "queries_run": 1,
+            "structured": {"research": {"evidence": [{"retrieved_at": "2026-01-01T00:00:00Z"}]}},
+            "research_status": "validated",
+            "evidence_validation": {"ok": True, "gaps": [], "search_count": 1, "source_count": 3},
             "coverage": {"ready": True},
         },
     )
@@ -128,6 +132,10 @@ async def test_document_synthesis_falls_back_to_raw_excerpt_when_llm_fails(tmp_p
                 {"title": "Customer evidence", "url": "https://customers.example/customer"},
                 {"title": "Competitor evidence", "url": "https://competitors.example/competitor"},
             ],
+            "queries_run": 1,
+            "structured": {"research": {"evidence": [{"retrieved_at": "2026-01-01T00:00:00Z"}]}},
+            "research_status": "validated",
+            "evidence_validation": {"ok": True, "gaps": [], "search_count": 1, "source_count": 3},
         },
     )
 

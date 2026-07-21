@@ -99,7 +99,9 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
     call_id = hashlib.sha256(f"{company_id}:{tool}:{canonical}".encode()).hexdigest()[:20]
     append_event(company_id, "mcp.tool_called", {"call_id": call_id, "tool": tool,
-                  "task_id": task_id, "mission_id": mission_id, "arguments": _safe_args(args)})
+                  "task_id": task_id, "mission_id": mission_id,
+                  "profile": "company_os_deep_research" if tool == "astra_company_research" else "quick_lookup_or_specialist",
+                  "arguments": _safe_args(args)})
     try:
         from backend import astra_mcp
         try:

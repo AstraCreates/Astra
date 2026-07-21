@@ -20,6 +20,7 @@ from backend.core.json_store import cross_process_file_lock, read_json, write_js
 _COLLECTIONS = (
     "initiatives", "squads", "missions", "tasks", "task_attempts",
     "artifacts", "approvals", "conversation", "context_records", "policy_decisions", "mcp_audit",
+    "dispatch_audit",
 )
 _SEGMENT_LIMIT = 250
 logger = logging.getLogger(__name__)
@@ -345,7 +346,7 @@ def _update(company_id: str, kind: str, key: str, entity_id: str, changes: dict[
 def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
     kind, separator, action = event["type"].partition(".")
     allowed = {"initiative", "squad", "mission", "task", "task_attempt", "message", "context_record", "artifact", "approval"}
-    if separator != "." or kind not in allowed | {"policy", "mcp"}:
+    if separator != "." or kind not in allowed | {"policy", "mcp", "dispatch"}:
         raise ValueError(f"unsupported Company OS event: {event['type']}")
     if kind == "mcp" and action in {"tool_called", "tool_completed", "tool_failed"}:
         state.setdefault("mcp_audit", []).append({
@@ -357,6 +358,12 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         return
     if kind == "policy" and action == "decided":
         state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
+        state["updated_at"] = event["at"]
+        return
+    if kind == "dispatch" and action == "routed":
+        state.setdefault("dispatch_audit", []).append({
+            "event_type": event["type"], **copy.deepcopy(event["payload"]), "created_at": event["at"]
+        })
         state["updated_at"] = event["at"]
         return
     if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact", "message"}:
