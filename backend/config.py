@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     # comment: crw has no chrome/JS-renderer tier deployed, so anti-bot-heavy
     # pages routinely timed out under concurrent multi-lane research).
     native_research_model: str = "openai/gpt-4o-mini-search-preview"
-    native_research_enabled: bool = True
+    # Disabled: grounded-search LLM round trips per query got too expensive in
+    # practice. run_research_pipeline() falls back to the free DDGS-based
+    # batch_search/search_and_fetch path below (browser_research.py:1520-1527)
+    # when this is off -- same output shape, no paid model call.
+    native_research_enabled: bool = False
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"
