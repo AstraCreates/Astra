@@ -93,3 +93,22 @@ def test_canonical_context_requires_a_promoted_revision_to_override(tmp_path):
     company_os.add_context_record("acme", "brand", "bold", scope="initiative", scope_id="i1", root=root,
                                   promoted_revision=True, supersedes="company-brand-v1")
     assert company_os.resolve_context("acme", initiative_id="i1", root=root)["brand"] == "bold"
+
+
+def test_archived_artifacts_skip_the_library_mirror(tmp_path, monkeypatch):
+    # A research mission's raw evidence and mid-pipeline synthesis note are
+    # created already-archived (working material, not something a founder
+    # asked for) specifically so they don't clutter the Library with 2 extra
+    # downloadable files per request. The Library has no archived concept of
+    # its own, so this has to be enforced by never mirroring in the first
+    # place, not by hiding it after the fact.
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "f1", "Acme", root=root)
+    calls = []
+    monkeypatch.setattr(company_os, "_mirror_artifact_to_library", lambda *a, **k: (calls.append(1), None)[1])
+
+    company_os.create_artifact("acme", "Raw evidence", task_id="t1", state="archived", root=root)
+    assert calls == []
+
+    company_os.create_artifact("acme", "Findings", task_id="t2", root=root)
+    assert calls == [1]

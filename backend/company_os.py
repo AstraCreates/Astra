@@ -179,8 +179,17 @@ def create_task_attempt(company_id: str, task_id: str, *, attempt_id: str | None
 
 def create_artifact(company_id: str, name: str, *, artifact_id: str | None = None,
                     root: str | Path | None = None, **data: Any) -> dict[str, Any]:
+    """Mirrors to the Library unless created already-archived. The Library has
+    no archived/hidden concept of its own (a file exists or it's deleted), so
+    mirroring an internal, working-material artifact (e.g. a research
+    mission's raw evidence and mid-pipeline synthesis note) would leave it
+    permanently visible there even though it's intentionally hidden from the
+    Company OS artifacts rail -- founders were seeing 3 downloadable files
+    per research request instead of the one they actually asked for."""
     resolved_id = artifact_id or _id("artifact")
-    library_file_id = data.get("library_file_id") or _mirror_artifact_to_library(company_id, resolved_id, name, data, root=root)
+    library_file_id = data.get("library_file_id")
+    if not library_file_id and data.get("state") != "archived":
+        library_file_id = _mirror_artifact_to_library(company_id, resolved_id, name, data, root=root)
     payload = {"artifact_id": resolved_id, "name": name, **data}
     if library_file_id:
         payload["library_file_id"] = library_file_id

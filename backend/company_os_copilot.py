@@ -13,7 +13,6 @@ A classification failure (model hiccup, bad JSON) falls back to the old
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import Any
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_INITIATIVES_IN_CONTEXT = 5
 _MAX_CONVERSATION_TURNS = 8
-_ARTIFACT_EXCERPT_CHARS = 500
+_ARTIFACT_EXCERPT_CHARS = 2500
 
 
 async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
@@ -50,9 +49,9 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
 
 def _classify_turn(company: dict[str, Any], message: str) -> dict[str, Any]:
     try:
-        from backend.tools._llm import generate
-        raw = generate(_build_prompt(company, message), model="fast", json_mode=True, max_tokens=500, temperature=0.4)
-        plan = json.loads(_strip_json_fence(raw))
+        from backend.tools._llm import generate, parse_json_response
+        raw = generate(_build_prompt(company, message), model="fast", json_mode=True, max_tokens=900, temperature=0.4)
+        plan = parse_json_response(raw)
         action = plan.get("action")
         if action not in {"answer", "continue", "new"}:
             raise ValueError(f"bad action: {action!r}")
@@ -111,21 +110,10 @@ Recent conversation:
 
 Founder's new message: "{message}"
 
-Always write "reply" as a short, natural, first-person message (2-4 sentences, no bullet list, no "I formed the X Squad for Y" boilerplate) -- like a sharp assistant actually texting back, not a status log. For "answer", give the real answer using the findings above; if there's genuinely nothing relevant yet, say so plainly and ask what they'd like next. For "continue"/"new", just briefly say what you're doing, in your own words, without naming a squad you don't know the name of yet.
+Always write "reply" as a natural, first-person message -- like a sharp assistant actually texting back, not a status log, never "I formed the X Squad for Y" boilerplate. For "continue"/"new", keep it to 2-4 sentences briefly saying what you're doing, in your own words, without naming a squad you don't know the name of yet. For "answer", actually answer in full using the findings above -- if the founder asked you to explain, summarize, or compare something that's already in the findings, do that properly (a real paragraph or two, not a one-liner); if there's genuinely nothing relevant yet, say so plainly and ask what they'd like next.
 
 Respond with ONLY this JSON object, no prose, no markdown fence:
 {{"action": "answer|continue|new", "initiative_id": "<id or null>", "reply": "<your reply text>"}}"""
-
-
-def _strip_json_fence(raw: str) -> str:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text.split("\n", 1)[1] if "\n" in text else text
-        if text.lower().startswith("json"):
-            text = text[4:]
-    start, end = text.find("{"), text.rfind("}")
-    return text[start:end + 1] if start != -1 and end != -1 else text
 
 
 def _fallback_reply(dispatch: dict[str, Any]) -> str:

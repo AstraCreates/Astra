@@ -114,22 +114,29 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         if evidence.get("error") or len(sources) < 3 or len(domains) < 2 or not content:
             raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources across two domains and usable evidence are required.")
         evidence["sources"] = sources
-        return _store_artifact(company_id, task, f"Research evidence — {_short_title(mission_name)}", evidence, source="web research")
+        # Raw evidence and the mid-pipeline synthesis note are working
+        # material, not something a founder asked for -- every research
+        # mission was dropping 3 separate documents into the Library for
+        # what reads as "one request, one answer". Kept (archived, not
+        # deleted) so the later steps and citations still have them, just
+        # not surfaced as top-level artifacts.
+        return _store_artifact(company_id, task, f"Research evidence — {_short_title(mission_name)}", evidence, source="web research", internal=True)
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
     if task.get("name", "").lower().startswith("synthesize"):
         title, content = _synthesis(mission_name, evidence)
-        return _store_artifact(company_id, task, title, {"content": content}, source="internal analysis")
+        return _store_artifact(company_id, task, title, {"content": content}, source="internal analysis", internal=True)
     title, content = _decision_brief(mission_name, evidence)
     return _store_artifact(company_id, task, title, {"content": content}, source="internal analysis")
 
 
-def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str) -> dict[str, Any]:
+def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str, internal: bool = False) -> dict[str, Any]:
     # Research pipelines expose the human-readable evidence under
     # combined_formatted. Falling through to str(result) leaked raw tool JSON.
     content = str(result.get("content") or result.get("report") or result.get("combined_formatted") or result.get("formatted") or result)
     artifact = create_artifact(company_id, title, task_id=task["task_id"], source=source,
-                               content=content[:_MAX_ARTIFACT_CONTENT], source_references=result.get("sources", []))
+                               content=content[:_MAX_ARTIFACT_CONTENT], source_references=result.get("sources", []),
+                               state="archived" if internal else "active")
     return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", []))}
 
 
@@ -224,16 +231,16 @@ Write a genuinely useful markdown document that answers the founder's actual que
 - Open with a direct, specific answer to the question -- no throat-clearing, no "based on the research provided".
 - Organize with ## headings that fit what was ACTUALLY asked. A "what is X" question needs a clear overview, not a forced TAM/SAM/CAGR breakdown; a viability or market question does warrant that structure.
 - Pull real facts, numbers, and names from the evidence above. Skip anything the evidence doesn't actually support -- don't invent specifics.
+- Never repeat the raw sub-query headers verbatim (e.g. "X market size TAM SAM SOM 2025 report statistics") or paste sub-query blocks one after another -- synthesize across all of them into one coherent piece of writing.
 - Aim for 400-900 words of real substance -- long enough to be genuinely useful, never padded with filler.
 - End with a "## Bottom line" section: one specific, actionable takeaway grounded in what was actually found here. Never a generic template like "validate before scaling spend" unless the evidence specifically points there.
 
 Respond with ONLY this JSON object, no prose, no markdown fence:
 {{"title": "<a specific, concrete 4-9 word document title -- never generic labels like \\"Decision brief\\" or \\"Research synthesis\\">", "content": "<the full markdown document>"}}"""
     try:
-        import json
-        from backend.tools._llm import generate
-        raw_response = generate(prompt, model="large", json_mode=True, max_tokens=2200, temperature=0.5)
-        parsed = json.loads(_strip_json_fence(raw_response))
+        from backend.tools._llm import generate, parse_json_response
+        raw_response = generate(prompt, model="large", json_mode=True, max_tokens=2600, temperature=0.5)
+        parsed = parse_json_response(raw_response)
         title, content = str(parsed.get("title") or "").strip(), str(parsed.get("content") or "").strip()
         if title and content:
             return title, content
@@ -245,17 +252,6 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
 def _short_title(text: str, limit: int = 60) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
-
-
-def _strip_json_fence(raw: str) -> str:
-    text = raw.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text.split("\n", 1)[1] if "\n" in text else text
-        if text.lower().startswith("json"):
-            text = text[4:]
-    start, end = text.find("{"), text.rfind("}")
-    return text[start:end + 1] if start != -1 and end != -1 else text
 
 
 def _research_subject(intent: str) -> str:

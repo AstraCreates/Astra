@@ -15,6 +15,7 @@ import inspect
 import logging
 import re
 import time
+from typing import Any
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,33 @@ def _cache_set(key: str, value: str) -> None:
         r.setex(key, _CACHE_TTL, value)
     except Exception:
         pass
+
+
+def parse_json_response(raw: str) -> Any:
+    """Robustly extract a JSON value from an LLM's raw text response.
+
+    A naive text.find('{')..text.rfind('}') slice (what two callers used to
+    do independently) breaks whenever the model adds trailing prose after
+    the JSON object and that prose itself contains a brace -- rfind then
+    grabs the wrong closing brace, over-extending the slice and producing
+    `json.JSONDecodeError: Extra data`, which silently discarded real model
+    output (company_os_copilot's turn classifier and company_os_runner's
+    document synthesis both hit this in production). raw_decode parses
+    exactly one JSON value starting at the first '{' and ignores whatever
+    comes after it, regardless of what that trailing text contains.
+    """
+    import json
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        text = text.split("\n", 1)[1] if "\n" in text else text
+        if text.lower().startswith("json"):
+            text = text[4:]
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("no JSON object found in LLM response")
+    obj, _end = json.JSONDecoder().raw_decode(text[start:])
+    return obj
 
 
 def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False, model: str = "large", temperature: float = 0.7) -> str:
