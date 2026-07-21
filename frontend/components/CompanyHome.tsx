@@ -363,7 +363,13 @@ export default function CompanyHome() {
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
   const chatTurns = home.conversation.filter(turn => turn.kind !== "status");
-  const agentOptions = home.squads.map(s => ({ id: s.id.replace(/[^a-z0-9_]/gi, "_").toLowerCase(), label: s.name, status: s.lifecycle.toLowerCase() }));
+  // @mention insertion writes this id as literal visible text into the
+  // composer (AstraCopilotComposer.selectAgent) -- it must be a readable
+  // slug of the squad's name, never the raw internal squad_id. A founder
+  // who mentioned a squad once had "@squad_f00c7e5..." inserted verbatim,
+  // which then got sent to the copilot as the actual message text and
+  // corrupted classification/research-subject extraction downstream.
+  const agentOptions = home.squads.map((s, index) => ({ id: s.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `squad${index + 1}`, label: s.name, status: s.lifecycle.toLowerCase() }));
   const workbenchSquad = home.squads.find(s => s.id === workbenchSquadId) ?? null;
   const workspaceInitiative = home.initiatives.find(item => item.id === workspaceInitiativeId) ?? null;
 
