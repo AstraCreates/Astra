@@ -217,6 +217,10 @@ def create_approval(company_id: str, title: str, *, approval_id: str | None = No
                                                "task_id": task_id, "state": state, **data}, root)
 
 
+def update_approval(company_id: str, approval_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    return _update(company_id, "approval", "approval_id", approval_id, changes, root)
+
+
 def update_initiative(company_id: str, initiative_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
     """Persist an initiative lifecycle transition (e.g. state="archived" for a
     founder-requested delete -- soft, matching every other entity's pattern in

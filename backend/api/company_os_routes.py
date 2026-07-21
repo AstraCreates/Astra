@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_initiative, update_message, update_squad
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_squad, update_task
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.tenant_auth import require_founder_access
@@ -48,6 +48,12 @@ class InitiativeEditBody(BaseModel):
     dependencies: list[dict[str, Any]] | None = None
     decisions: list[dict[str, Any]] | None = None
     acceptance_confirmed: bool | None = None
+
+
+class ApprovalDecisionBody(BaseModel):
+    founder_id: str
+    approved: bool = True
+    note: str | None = Field(default=None, max_length=2_000)
 
 
 def _message(company_id: str, message_id: str) -> dict[str, Any]:
@@ -219,3 +225,23 @@ async def operations_tick_route(company_id: str, founder_id: str, request: Reque
     # deliberately produces a local audit artifact rather than performing I/O.
     results = scheduler_tick(company_id, lambda task: {"kind": "local_internal_update", "task": task.get("name")})
     return {"results": results, "company": get_company_os(company_id)}
+
+
+@router.post("/companies/{company_id}/os/approvals/{approval_id}")
+async def decide_company_os_approval(company_id: str, approval_id: str, body: ApprovalDecisionBody, request: Request):
+    from backend.company_os_runner import launch_mission
+    company = _company(request, company_id, body.founder_id, operator=True)
+    approval = next((item for item in company.get("approvals", []) if item.get("approval_id") == approval_id), None)
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if approval.get("state") != "pending":
+        raise HTTPException(status_code=409, detail="Approval is no longer pending")
+    task_id = approval.get("task_id")
+    task = next((item for item in company.get("tasks", []) if item.get("task_id") == task_id), None)
+    update_approval(company_id, approval_id, state="approved" if body.approved else "rejected", note=body.note)
+    if task:
+        update_task(company_id, task_id, state="pending" if body.approved else "blocked", approval_decision="approved" if body.approved else "rejected", approval_note=body.note)
+        if body.approved and task.get("mission_id"):
+            launch_mission(company_id, str(task["mission_id"]))
+    reconcile_initiatives(company_id)
+    return {"ok": True, "approval_id": approval_id, "approved": body.approved, "company": get_company_os(company_id)}

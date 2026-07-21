@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode 
 import { Brain, Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, Link2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { clearMessages, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -563,7 +563,7 @@ export default function CompanyHome() {
           {home.approvals.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>Nothing waiting on you.</p>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small></article>)}</div>
+            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small><button type="button" onClick={() => { void decideCompanyApproval({ founderId, companyId }, item.id, true).then(setHome).catch(error => setNotice(error instanceof Error ? error.message : "Approval failed.")); }} style={{ padding: "6px 9px", border: 0, borderRadius: 6, background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 10 }}>Approve</button></div></article>)}</div>
           )}
         </section>
 

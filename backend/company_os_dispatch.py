@@ -211,6 +211,7 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
             ("Define the local website brief", "internal_analysis", None),
             ("Create a local website preview", "local_preview", None),
             ("Prepare the publication decision", "internal_review", None),
+            ("Publish the website to Vercel", "external_deploy", "vercel_deploy"),
         ]
     elif research_capabilities & capabilities:
         steps = [
@@ -225,7 +226,8 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
             ("Review outcome and next actions", "internal_review", None),
         ]
     return [{"title": title, "description": f"{title}. Outcome: {intent}", "department": department,
-             "operation": operation, "mcp_tool": mcp_tool, "execution_scope": "local",
+             "operation": operation, "mcp_tool": mcp_tool,
+             "execution_scope": "external" if operation == "external_deploy" else "local",
              "required_capabilities": sorted(capabilities)}
             for title, operation, mcp_tool in steps]
 

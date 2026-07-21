@@ -14,6 +14,7 @@ from backend.company_os import (
     list_company_os,
     reconcile_initiatives,
     update_mission,
+    update_artifact,
     update_squad,
 )
 from backend.company_os_dispatch import execute_task
@@ -117,6 +118,26 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
     mission_name = str(mission.get("name") or "this research")
+    if task.get("operation") == "external_deploy":
+        company = get_company_os(company_id) or {}
+        artifact = next((item for item in reversed(company.get("artifacts", []))
+                         if item.get("task_id") and item.get("initiative_id") == mission.get("initiative_id")
+                         and str(item.get("name") or "").lower().startswith("website preview")
+                         and item.get("state") != "archived"), None)
+        if not artifact or not str(artifact.get("content") or "").strip():
+            raise RuntimeError("The website preview artifact is missing; nothing was published.")
+        domain, _brand = _website_identity(mission_name)
+        project_slug = re.sub(r"[^a-z0-9-]+", "-", domain.split(".", 1)[0].lower()).strip("-") or "astra-site"
+        result = invoke_mcp(
+            company_id,
+            str(task.get("mcp_tool") or "vercel_deploy"),
+            {"project_slug": project_slug, "html": str(artifact["content"])},
+            task_id=str(task.get("task_id") or ""), mission_id=str(mission.get("mission_id") or ""), approved=True,
+        )
+        if not result.get("deployed") or not result.get("url"):
+            raise RuntimeError(str(result.get("error") or result.get("note") or "Vercel deployment did not return a public URL."))
+        update_artifact(company_id, str(artifact["artifact_id"]), url=result["url"], hosting="vercel", hosting_project=project_slug, hosting_status="deployed")
+        return {"deployed": True, "url": result["url"], "artifact_id": artifact["artifact_id"]}
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
         evidence = invoke_mcp(
             company_id,

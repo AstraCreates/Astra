@@ -12,9 +12,10 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan(m
 
     assert choose_department("Make a website for a company that competes with both")[0] == "product_technical"
     assert [item["title"] for item in specialist_task_plan("product_technical", "Make a landing page")] == [
-        "Define the local website brief", "Create a local website preview", "Prepare the publication decision",
+        "Define the local website brief", "Create a local website preview", "Prepare the publication decision", "Publish the website to Vercel",
     ]
-    assert all(item["execution_scope"] == "local" for item in specialist_task_plan("product_technical", "Make a landing page"))
+    assert all(item["execution_scope"] == "local" for item in specialist_task_plan("product_technical", "Make a landing page")[:3])
+    assert specialist_task_plan("product_technical", "Make a landing page")[3]["execution_scope"] == "external"
 
 
 def test_genuine_ambiguity_triggers_clarification_with_options(monkeypatch):

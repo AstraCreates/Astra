@@ -176,7 +176,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
     const approval = record(item);
     const task = record(approval.task);
     return {
-      id: text(task.id ?? approval.id, `approval-${index}`),
+      id: text(task.task_id ?? task.id ?? approval.approval_id ?? approval.id, `approval-${index}`),
       title: text(task.title ?? approval.title, "Decision requested"),
       squad: titleCase(text(approval.department ?? task.owner_agent, "Operations")),
       detail: text(task.notes ?? approval.detail, "A teammate needs your direction before continuing."),
@@ -277,6 +277,13 @@ export async function deleteMessage(scope: CompanyScope, messageId: string, fetc
 
 export async function clearMessages(scope: CompanyScope, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/messages/clear`, scope), { method: "POST" });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
+}
+
+export async function decideCompanyApproval(scope: CompanyScope, approvalId: string, approved: boolean, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/approvals/${encodeURIComponent(approvalId)}`, scope), { method: "POST", body: JSON.stringify({ founder_id: scope.founderId, approved }) });
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());
   return normalizeCompanyOS(payload.company);
