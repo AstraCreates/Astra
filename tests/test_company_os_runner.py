@@ -43,6 +43,9 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
     monkeypatch.setattr("backend.company_os_runner.list_company_os", lambda: [company])
     monkeypatch.setattr("backend.company_os_runner.update_task", lambda *args, **kwargs: updates.append((args, kwargs)))
     monkeypatch.setattr("backend.company_os_runner.append_message", lambda *args, **kwargs: messages.append((args, kwargs)))
+    async def _run_recovered(company_id, mission_id):
+        launches.append((company_id, mission_id))
+    monkeypatch.setattr("backend.company_os_runner.run_mission", _run_recovered)
     monkeypatch.setattr("backend.company_os_runner.launch_mission", lambda company_id, mission_id: launches.append((company_id, mission_id)) or True)
 
     assert await recover_pending_missions() == 1

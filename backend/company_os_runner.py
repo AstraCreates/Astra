@@ -136,7 +136,14 @@ async def recover_pending_missions() -> int:
                             recovery_reason="stale_working_task_after_process_restart")
                 append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
                                author="copilot", scope="task", scope_id=task["task_id"], kind="status")
-            if stale_tasks or any(task.get("state") in {"pending", "scheduled"} for task in mission_tasks):
+            if stale_tasks:
+                # Do not hand an orphaned task to a fire-and-forget task at
+                # startup: that task can be lost during multi-worker lifespan
+                # initialization. Await the recovered mission here so the
+                # durable state transition and first attempt are guaranteed.
+                await run_mission(company["company_id"], mission["mission_id"])
+                recovered += 1
+            elif any(task.get("state") in {"pending", "scheduled"} for task in mission_tasks):
                 recovered += int(launch_mission(company["company_id"], mission["mission_id"]))
     return recovered
 
