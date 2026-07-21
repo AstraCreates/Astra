@@ -25,7 +25,7 @@ _INTENT_KEYWORDS = {
                  "profitable", "profitability", "worth it", "is it possible", "possible"),
     "marketing": ("marketing", "campaign", "brand", "seo", "content", "audience"),
     "sales": ("sales", "lead", "prospect", "pipeline", "outreach", "close"),
-    "product_technical": ("product", "feature", "bug", "api", "code", "technical", "engineering"),
+    "product_technical": ("product", "feature", "bug", "api", "code", "technical", "engineering", "website", "web site", "landing page", "web app", "frontend"),
     "design": ("design", "ux", "ui", "wireframe", "prototype", "visual"),
     "finance": ("finance", "budget", "forecast", "revenue", "invoice", "pricing"),
     "legal": ("legal", "contract", "privacy", "terms", "compliance", "trademark"),
@@ -55,6 +55,8 @@ _PLANS = {
     "legal": ("Research applicable requirements", "Draft internal issue list or document redlines", "Escalate decisions needing counsel or approval"),
     "operations": ("Assess process, cadence, and capacity", "Draft operating procedures or schedules", "Prepare reversible internal updates"),
 }
+
+_WEBSITE_TERMS = ("website", "web site", "landing page", "web app", "frontend")
 
 _APPROVAL_TERMS = (
     "send", "email", "message", "contact", "outreach", "publish", "post", "deploy",
@@ -123,6 +125,8 @@ def _find_continuation(intent: str, candidates: list[dict[str, Any]]) -> dict[st
 def choose_department(intent: str) -> tuple[str, str]:
     """Choose a department head and its default specialist squad from intent."""
     words = (intent or "").lower()
+    if any(term in words for term in _WEBSITE_TERMS):
+        return "product_technical", "website_build"
     scores = {head: sum(term in words for term in _INTENT_KEYWORDS[head]) for head in DEPARTMENT_HEADS}
     winner = max(DEPARTMENT_HEADS, key=lambda head: scores[head])
     if scores[winner] == 0:
@@ -134,10 +138,11 @@ def specialist_task_plan(department: str, intent: str) -> list[dict[str, Any]]:
     """Return a safe, reviewable specialist plan before any external action."""
     if department not in DEPARTMENT_HEADS:
         raise ValueError(f"Unknown department head: {department}")
+    plan = ("Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval") if department == "product_technical" and any(term in intent.lower() for term in _WEBSITE_TERMS) else _PLANS[department]
     return [
         {"title": title, "description": f"{title}. Intent: {intent}", "department": department,
          "operation": "internal_analysis" if index == 0 else "draft"}
-        for index, title in enumerate(_PLANS[department])
+        for index, title in enumerate(plan)
     ]
 
 

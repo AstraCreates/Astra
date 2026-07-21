@@ -4,6 +4,7 @@ import pytest
 
 from backend import company_os
 from backend.company_os_copilot import coordinate_turn
+from backend.company_os_copilot import _classify_turn
 
 
 def _no_launch(monkeypatch):
@@ -69,3 +70,9 @@ async def test_malformed_llm_output_falls_back_to_starting_new_work(tmp_path, mo
     assert result["dispatch"] is not None
     state = company_os.get_company_os("acme")
     assert len(state["initiatives"]) == 1
+
+
+def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "should not run")
+    assert _classify_turn({}, "Compare Cofounder.co to AstraCreates.com")["action"] == "new"
+    assert _classify_turn({}, "Make a website for a competing company")["action"] == "new"

@@ -3,7 +3,7 @@ import pytest
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_runner import run_mission
-from backend.company_os_runner import _complete_chat_reply, _fallback_summary, _is_comparison_request
+from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
@@ -14,9 +14,16 @@ def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=Non
 
 def test_chat_reply_rejects_a_cutoff_provider_response_and_has_a_clean_fallback():
     assert not _complete_chat_reply("Cofounder has a free")
-    assert _complete_chat_reply("Cofounder has a free trial.\n\n- Astra has a setup fee.")
+    assert _complete_chat_reply("Cofounder has a free trial for founders testing the product.\n\n- Astra has a setup fee before a founder can begin using the product.")
     assert _fallback_summary("## Context\n\nAstra is aimed at founders building an operating system.").endswith(".")
     assert _is_comparison_request("Compare Cofounder.co to AstraCreates.com")
+
+
+def test_comparison_document_never_recommends_with_unbalanced_evidence():
+    title, content = _comparison_document("Compare Cofounder to Astra", {"evidence_ledger": {"Cofounder": {"product": [{"title": "About", "url": "https://cofounder.example/about"}], "pricing": [], "privacy": []}, "Astra": {"product": [], "pricing": [], "privacy": []}}})
+    assert "comparison" in title.lower()
+    assert "No winner is declared" in content
+    assert "Not verified from available public evidence" in content
 
 
 @pytest.mark.asyncio

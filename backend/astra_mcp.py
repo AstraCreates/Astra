@@ -603,11 +603,12 @@ def _company_os_context(args: dict) -> dict:
 
 def _company_research(args: dict) -> dict:
     from backend.company_os import get_company_os
-    from backend.tools.browser_research import run_research_pipeline
+    from backend.tools.browser_research import run_comparison_research, run_research_pipeline
     company = get_company_os(str(args["company_id"]))
     if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
         return {"ok": False, "error": "Company not found"}
-    evidence = run_research_pipeline(str(args["subject"]), focus=str(args.get("focus") or "market"), max_results_each=6)
+    subject = str(args["subject"])
+    evidence = run_comparison_research(subject) if "compare" in subject.lower() else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6)
     return {"ok": not bool(evidence.get("error")), **evidence}
 
 _DISPATCH: dict[str, Any] = {

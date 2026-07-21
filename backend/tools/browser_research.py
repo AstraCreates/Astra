@@ -296,7 +296,7 @@ _TOPIC_NOISE_PATTERNS = (
 )
 
 _ENTITY_PROFILE_PREFIX = re.compile(r"^(?:what|who)\s+is\s+", re.IGNORECASE)
-_COMPARISON_PATTERN = re.compile(r"\bcompare\s+(.+?)\s+(?:to|with|vs\.?|versus)\s+(.+?)(?:[?.!]|$)", re.IGNORECASE)
+_COMPARISON_PATTERN = re.compile(r"\bcompare\s+(.+?)\s+(?:to|with|vs\.?|versus)\s+(.+?)(?:[?!]|$)", re.IGNORECASE)
 
 
 def _is_entity_profile_request(topic: str) -> bool:
@@ -1553,6 +1553,38 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             else "Evidence is thin. Fill coverage gaps before making strong claims, or explicitly label uncertainty."
         ),
     }
+
+
+def run_comparison_research(topic: str) -> dict:
+    """Fetch both sides of a comparison and return claim-safe coverage.
+
+    This deliberately bypasses provider-native citations: each accepted source
+    comes from CRW's fetched markdown, not a model's self-reported URL.
+    """
+    plan = build_research_queries(topic, focus="market", limit=6)
+    subjects = _comparison_subjects(topic)
+    if not subjects:
+        return {"error": "comparison subjects could not be identified"}
+    left, right = subjects
+    search = _crw_batch_search(plan["queries"], max_results_each=5)
+    dimensions = ("pricing", "product", "privacy")
+    ledger = {subject: {dimension: [] for dimension in dimensions} for subject in subjects}
+    for query, result in (search.get("results_by_query") or {}).items():
+        lowered = query.lower()
+        subject = left if left.lower() in lowered else right if right.lower() in lowered else None
+        dimension = "pricing" if "pricing" in lowered else "privacy" if "privacy" in lowered or "terms" in lowered else "product"
+        if not subject:
+            continue
+        for source in result.get("sources") or []:
+            if source.get("url") and source.get("title"):
+                ledger[subject][dimension].append({"url": source["url"], "title": source["title"], "source_type": "fetched"})
+    for dimensions_for_subject in ledger.values():
+        for dimension, entries in dimensions_for_subject.items():
+            seen = set()
+            dimensions_for_subject[dimension] = [entry for entry in entries if not (entry["url"] in seen or seen.add(entry["url"]))][:3]
+    gaps = [f"{subject}: {dimension}" for subject, rows in ledger.items() for dimension, entries in rows.items() if not entries]
+    sources = [entry for rows in ledger.values() for entries in rows.values() for entry in entries]
+    return {"topic": topic, "comparison_subjects": subjects, "evidence_ledger": ledger, "coverage": {"ready": not gaps, "gaps": gaps}, "sources": sources, "combined_formatted": search.get("combined_formatted", "")}
 
 
 def _native_research_pass(topic: str, focus: str, queries: list[str], cancellation_fence=None) -> dict:

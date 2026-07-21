@@ -2,6 +2,15 @@ import sys
 import types
 
 
+def test_website_requests_route_to_product_technical_with_a_local_preview_plan():
+    from backend.company_os_dispatch import choose_department, specialist_task_plan
+
+    assert choose_department("Make a website for a company that competes with both")[0] == "product_technical"
+    assert [item["title"] for item in specialist_task_plan("product_technical", "Make a landing page")] == [
+        "Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval",
+    ]
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}

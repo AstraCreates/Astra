@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _MAX_INITIATIVES_IN_CONTEXT = 5
 _MAX_CONVERSATION_TURNS = 8
 _ARTIFACT_EXCERPT_CHARS = 2500
+_DIRECT_WORK_PREFIXES = ("compare", "research", "build", "make a website", "create a website", "create a landing page", "make a landing page")
 
 
 async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
@@ -48,6 +49,8 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
 
 
 def _classify_turn(company: dict[str, Any], message: str) -> dict[str, Any]:
+    if message.strip().lower().startswith(_DIRECT_WORK_PREFIXES):
+        return {"action": "new", "initiative_id": None, "reply": ""}
     try:
         from backend.tools._llm import generate, parse_json_response
         raw = generate(_build_prompt(company, message), model="fast", json_mode=True, max_tokens=900, temperature=0.4)

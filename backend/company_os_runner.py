@@ -122,12 +122,20 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         # not surfaced as top-level artifacts.
         return _store_artifact(company_id, task, f"Research evidence — {_short_title(mission_name)}", evidence, source="web research", internal=True)
 
+    if mission.get("department") == "product_technical" and _is_website_request(mission_name):
+        title = str(task.get("name") or "")
+        if "local website preview" in title.lower():
+            return _store_artifact(company_id, task, f"Website preview — {_short_title(mission_name)}", {"content": _website_preview(mission_name)}, source="local website", internal=False)
+        if "publish approval" in title.lower():
+            return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Review ready\n\nA local website preview is ready in the Library. Publishing or deployment requires your approval."}, source="internal analysis")
+        return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}", {"content": f"## Website brief\n\n**Request:** {mission_name}\n\nA local preview will be created next. It will not be published without approval."}, source="internal analysis", internal=True)
+
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
     if task.get("name", "").lower().startswith("synthesize"):
         title, content = _synthesis(mission_name, evidence)
-        return _store_artifact(company_id, task, title, {"content": content}, source="internal analysis", internal=True)
+        return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
     title, content = _decision_brief(mission_name, evidence)
-    return _store_artifact(company_id, task, title, {"content": content}, source="internal analysis")
+    return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis")
 
 
 def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str, internal: bool = False) -> dict[str, Any]:
@@ -136,6 +144,7 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result
     content = str(result.get("content") or result.get("report") or result.get("combined_formatted") or result.get("formatted") or result)
     artifact = create_artifact(company_id, title, task_id=task["task_id"], source=source,
                                content=content[:_MAX_ARTIFACT_CONTENT], source_references=result.get("sources", []),
+                               evidence_ledger=result.get("evidence_ledger"),
                                state="archived" if internal else "active")
     return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", []))}
 
@@ -221,8 +230,46 @@ def _synthesis(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str
 def _decision_brief(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:
     if not evidence.get("source_references"):
         raise RuntimeError("Cannot produce a decision brief without cited evidence.")
+    if _is_comparison_request(mission_name):
+        return _comparison_document(mission_name, evidence)
     return _synthesize_document(mission_name, evidence, purpose="writing a decision-ready brief",
                                 fallback_title=f"Findings — {_short_title(mission_name)}")
+
+
+def _comparison_document(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:
+    ledger = evidence.get("evidence_ledger") or {}
+    subjects = list(ledger)
+    if len(subjects) != 2:
+        return "Comparison evidence incomplete", "## Evidence incomplete\n\nThe requested products could not be identified reliably. No recommendation was made."
+    left, right = subjects
+    dimensions = (("Product and target user", "product"), ("Pricing and packaging", "pricing"), ("Privacy and compliance", "privacy"))
+    rows = []
+    gaps = []
+    for label, key in dimensions:
+        values = []
+        for subject in subjects:
+            sources = ledger.get(subject, {}).get(key) or []
+            if sources:
+                values.append("; ".join(f"[{item.get('title') or 'Source'}]({item.get('url')})" for item in sources[:2]))
+            else:
+                values.append("Not verified from available public evidence")
+                gaps.append(f"{subject}: {label}")
+        rows.append(f"| {label} | {values[0]} | {values[1]} |")
+    title = f"{_short_title(left)} and {_short_title(right)} comparison"
+    body = ["## Direct answer", "A recommendation is withheld because Astra only compares products when both sides have verified evidence for every core dimension.", "", "## Verified evidence", f"| Dimension | {left} | {right} |", "| --- | --- | --- |", *rows, "", "## Evidence gaps"]
+    body.extend(f"- {gap}" for gap in gaps) if gaps else body.extend(["- Both products met the balanced evidence gate."])
+    body.extend(["", "## Bottom line", "No winner is declared until the evidence gaps above are filled with direct, publicly verifiable sources."])
+    return title, "\n".join(body)
+
+
+def _is_website_request(value: str) -> bool:
+    return any(term in value.lower() for term in ("website", "web site", "landing page", "web app", "frontend"))
+
+
+def _website_preview(request: str) -> str:
+    escaped = request.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<!doctype html>
+<html><head><meta charset=\"utf-8\"><title>Website preview</title><style>body{{margin:0;font-family:ui-sans-serif,system-ui;background:#07111f;color:#edf4ff}}main{{max-width:900px;margin:auto;padding:88px 28px}}small{{color:#7dd3fc;letter-spacing:.12em;text-transform:uppercase}}h1{{font-size:clamp(42px,8vw,78px);line-height:1;margin:16px 0}}p{{max-width:620px;font-size:20px;line-height:1.6;color:#b9c9dc}}a{{display:inline-block;margin-top:22px;padding:14px 20px;border-radius:999px;background:#38bdf8;color:#042f4b;font-weight:700}}</style></head><body><main><small>Local preview</small><h1>Built for the next move.</h1><p>{escaped}</p><a>Request access</a></main></body></html>"""
 
 
 def _synthesize_document(mission_name: str, evidence: Mapping[str, Any], *, purpose: str, fallback_title: str) -> tuple[str, str]:
