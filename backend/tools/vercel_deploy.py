@@ -693,7 +693,7 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "", ses
 
 def _local_fallback(project_slug: str, html: str, css: str, js: str) -> dict:
     import os
-    out_dir = f"/tmp/astra_sites/{project_slug}"
+    out_dir = os.path.join(os.environ.get("ASTRA_HOSTED_SITE_ROOT", "/tmp/astra_sites"), project_slug)
     os.makedirs(out_dir, exist_ok=True)
     with open(f"{out_dir}/index.html", "w") as f:
         f.write(html)
@@ -704,9 +704,11 @@ def _local_fallback(project_slug: str, html: str, css: str, js: str) -> dict:
         with open(f"{out_dir}/app.js", "w") as f:
             f.write(js)
     return {
-        "deployed": False,
+        "deployed": True,
+        "hosting": "astra-server",
+        "url": f"{os.environ.get('ASTRA_SERVER_PREVIEW_BASE_URL', 'http://localhost:8000/hosted-preview').rstrip('/')}/{project_slug}",
         "local_path": out_dir,
-        "note": "VERCEL_TOKEN not set — files saved locally. Set VERCEL_TOKEN to auto-deploy.",
+        "note": "Published on the Astra server because no Vercel integration was available.",
     }
 
 

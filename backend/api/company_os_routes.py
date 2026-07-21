@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_squad, update_task
@@ -15,6 +18,7 @@ from backend.tenant_auth import require_founder_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["company-os"])
+_HOSTED_PREVIEW_ROOT = Path(os.environ.get("ASTRA_HOSTED_SITE_ROOT", "/tmp/astra_sites"))
 
 
 class CompanyOSCreateBody(BaseModel):
@@ -60,6 +64,21 @@ class ApprovalDecisionBody(BaseModel):
     founder_id: str
     approved: bool = True
     note: str | None = Field(default=None, max_length=2_000)
+
+
+@router.get("/hosted-preview/{project_slug}/{asset_path:path}")
+@router.get("/hosted-preview/{project_slug}")
+async def hosted_company_preview(project_slug: str, asset_path: str = ""):
+    """Serve a published server fallback without exposing arbitrary files."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", project_slug):
+        raise HTTPException(status_code=404, detail="Preview not found")
+    root = (_HOSTED_PREVIEW_ROOT / project_slug).resolve()
+    candidate = (root / (asset_path or "index.html")).resolve()
+    if root not in candidate.parents and candidate != root:
+        raise HTTPException(status_code=404, detail="Preview not found")
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Preview not found")
+    return FileResponse(candidate)
 
 
 def _message(company_id: str, message_id: str) -> dict[str, Any]:

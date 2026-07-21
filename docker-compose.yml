@@ -119,6 +119,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - OBSIDIAN_VAULT=/data/astra_docs
       - ASTRA_WORKSPACE=/data/astra-workspaces
+      - ASTRA_HOSTED_SITE_ROOT=/data/astra-workspaces/hosted-sites
+      - ASTRA_SERVER_PREVIEW_BASE_URL=${ASTRA_SERVER_PREVIEW_BASE_URL:-https://api.astracreates.com/hosted-preview}
       - AGENT_MODEL_BASE_URL=http://headroom:8787/v1
       - OPENROUTER_BASE_URL=http://headroom:8787/v1
       - TOOLUSE_MODEL_BASE_URL=http://headroom:8787/v1
