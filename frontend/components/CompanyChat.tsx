@@ -163,25 +163,29 @@ export default function CompanyChat({
   return (
     <LiquidGlass contentStyle={{ padding: "0", display: "flex", flexDirection: "column", height: 560 }}>
       {/* Header */}
-      <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 16 }}>◈</span>
+      <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--apple-glass-border, rgba(255,255,255,0.10))", display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{
+          width: 28, height: 28, display: "grid", placeItems: "center",
+          borderRadius: 9, fontSize: 14,
+          background: "linear-gradient(180deg, var(--accent), var(--accent-hover))",
+          color: "#fff", boxShadow: "0 3px 8px rgba(11,49,255,0.30), inset 0 1px 0 rgba(255,255,255,0.30)"
+        }}>◈</span>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{company || "Your company"}</div>
-          <div style={{ fontSize: 11, color: "var(--text-2)" }}>Tell the team what to do next</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.01em" }}>{company || "Your company"}</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 1 }}>Tell the team what to do next</div>
         </div>
       </div>
 
       {/* Thread */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", display: "flex", flexDirection: "column", gap: 18 }}>
         {messages.length === 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
-            <p style={{ fontSize: 13, color: "var(--text-2)", margin: 0 }}>
+            <p style={{ fontSize: 13.5, color: "var(--text-2)", margin: 0, lineHeight: 1.55 }}>
               Your agents know everything they built. Tell them what to do next.
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {SUGGESTIONS.map(s => (
-                <button key={s} onClick={() => send(s)} disabled={busy}
-                  style={{ fontSize: 12, padding: "6px 14px", borderRadius: 999, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", color: "var(--text-2)", textAlign: "left" }}>
+                <button key={s} onClick={() => send(s)} disabled={busy} className="ch-suggestion-pill">
                   {s}
                 </button>
               ))}
@@ -190,69 +194,57 @@ export default function CompanyChat({
         )}
 
         {messages.map(msg => (
-          <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", gap: 4 }}>
+          <div key={msg.id} className={`ch-chat-row ${msg.role === "user" ? "is-founder" : ""}`}>
             {msg.role === "user" ? (
-              <div style={{
-                maxWidth: "72%", padding: "10px 16px", borderRadius: "18px 18px 4px 18px",
-                background: "var(--action)", color: "var(--action-text)", fontSize: 14, lineHeight: 1.5,
-              }}>
-                {msg.text}
-              </div>
+              <div className="ch-chat-bubble">{msg.text}</div>
             ) : msg.role === "report" ? (
-              <div style={{ width: "100%", display: "grid", gap: 8 }}>
-                <div style={{ padding: "12px 14px", borderRadius: 16, border: "1px solid var(--line)", background: "rgba(255,255,255,0.035)", display: "grid", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Company Brain report</span>
-                    {typeof msg.confidence === "number" && (
-                      <span style={{ fontSize: 10, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{Math.round(msg.confidence * 100)}% confidence</span>
-                    )}
-                  </div>
-                  <p style={{ fontSize: 13, color: "var(--text-2)", margin: 0, lineHeight: 1.55 }}>{msg.text}</p>
-                  {!!msg.citations?.length && (
-                    <div style={{ display: "grid", gap: 5, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
-                      {msg.citations.map(citation => (
-                        <span key={`${citation.index}-${citation.title}`} style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
-                          [{citation.index}] {citation.title} · {citation.source}{citation.canonical ? " · canonical" : ""}
-                        </span>
-                      ))}
-                    </div>
+              <div className="cc-report-card" style={{ maxWidth: "min(640px, 92%)" }}>
+                <header>
+                  <span className="label">Company Brain report</span>
+                  {typeof msg.confidence === "number" && (
+                    <span className="confidence">{Math.round(msg.confidence * 100)}% confidence</span>
                   )}
-                </div>
+                </header>
+                <p>{msg.text}</p>
+                {!!msg.citations?.length && (
+                  <div className="citations">
+                    {msg.citations.map(citation => (
+                      <span key={`${citation.index}-${citation.title}`}>
+                        [{citation.index}] {citation.title} · {citation.source}{citation.canonical ? " · canonical" : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
                 {(msg.runs ?? []).map(run => (
-                  <div key={run.agent} style={{
-                    display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
-                    borderRadius: 12, border: "1px solid var(--line)",
-                    background: run.status === "done" ? "rgba(61,158,95,0.05)" : run.status === "error" ? "rgba(192,57,43,0.05)" : "rgba(37,99,235,0.05)",
-                  }}>
-                    <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{AGENT_ICONS[run.agent] ?? "⚙"}</span>
+                  <div key={run.agent} className="copilot-activity-item">
+                    <span style={{ fontSize: 14, fontWeight: 600, color: run.status === "done" ? "var(--green)" : run.status === "error" ? "var(--red)" : "var(--accent)" }}>{AGENT_ICONS[run.agent] ?? "⚙"}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
-                          {AGENT_LABELS[run.agent] ?? run.agent}
-                        </span>
+                        <strong>{AGENT_LABELS[run.agent] ?? run.agent}</strong>
                         <span style={{
-                          fontSize: 10, padding: "1px 8px", borderRadius: 999,
-                          color: run.status === "done" ? "#3D9E5F" : run.status === "error" ? "#C0392B" : "#002EFF",
-                          background: run.status === "done" ? "rgba(61,158,95,0.12)" : run.status === "error" ? "rgba(192,57,43,0.12)" : "rgba(37,99,235,0.12)",
+                          fontSize: 10, padding: "2px 8px", borderRadius: 999,
+                          color: run.status === "done" ? "var(--green)" : run.status === "error" ? "var(--red)" : "var(--accent)",
+                          background: run.status === "done" ? "rgba(22,163,74,0.10)" : run.status === "error" ? "rgba(220,38,38,0.10)" : "rgba(11,49,255,0.12)",
+                          fontWeight: 500,
                         }}>
                           {run.status === "running" ? "working…" : run.status}
                         </span>
                       </div>
-                      {run.summary && <p style={{ fontSize: 12, color: "var(--text-2)", margin: "3px 0 0", lineHeight: 1.5 }}>{run.summary}</p>}
+                      {run.summary && <p>{run.summary}</p>}
                     </div>
                   </div>
                 ))}
                 {!msg.done && (msg.runs ?? []).length === 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-2)", padding: "6px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#002EFF", flexShrink: 0 }} className="animate-pulse" />
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12, color: "var(--text-2)", padding: "6px 0" }}>
+                    <span className="ch-thinking-dot" style={{ background: "var(--accent)" }} />
                     Dispatching agents…
                   </div>
                 )}
                 {msg.done && (msg.runs ?? []).length > 0 && (
-                  <p style={{ fontSize: 11, color: "var(--text-2)", margin: 0 }}>
+                  <p style={{ fontSize: 11.5, color: "var(--text-3)", margin: "4px 4px 0", fontWeight: 500 }}>
                     ✓ {(msg.runs ?? []).filter(r => r.status === "done").length} agent{(msg.runs ?? []).filter(r => r.status === "done").length !== 1 ? "s" : ""} completed
                   </p>
                 )}
@@ -264,7 +256,7 @@ export default function CompanyChat({
       </div>
 
       {/* Input */}
-      <div style={{ padding: "14px 20px", borderTop: "1px solid var(--line)" }}>
+      <div style={{ padding: "14px 20px", borderTop: "1px solid var(--apple-glass-border, rgba(255,255,255,0.10))" }}>
         <form onSubmit={e => { e.preventDefault(); send(input); }} style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
           <textarea
             value={input}
@@ -273,11 +265,13 @@ export default function CompanyChat({
             placeholder="Update the landing page, write blog posts, add payments…"
             rows={2}
             className="site-textarea"
-            style={{ flex: 1, padding: "10px 14px", fontSize: 14, lineHeight: 1.5, resize: "none" }}
+            style={{ flex: 1, padding: "12px 16px", fontSize: 14, lineHeight: 1.55, resize: "none", letterSpacing: "-0.005em" }}
             disabled={busy}
           />
-          <button type="submit" disabled={busy || !input.trim()} className="site-btn site-btn-primary" style={{ padding: "0 20px", height: 42, flexShrink: 0 }}>
-            {busy ? "…" : "→"}
+          <button type="submit" disabled={busy || !input.trim()} className="astra-composer-submit" style={{ width: 40, height: 40 }} aria-label="Send message">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 3v10M8 3l-4 4M8 3l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </button>
         </form>
       </div>

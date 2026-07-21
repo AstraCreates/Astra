@@ -429,120 +429,121 @@ export default function CompanyHome() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {chatTurns.map(turn => {
-                const isFounder = turn.author !== "copilot";
-                const editing = editingMessageId === turn.id;
-                const busy = messageBusyId === turn.id;
-                return (
-                  <div key={turn.id} className="company-home-chat-turn" style={{ display: "flex", alignItems: "flex-start", gap: 9, justifyContent: isFounder ? "flex-end" : "flex-start" }}>
-                    {!isFounder && <span style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff" }}><Sparkles size={13} /></span>}
-                    {isFounder && !editing && (
-                      <span className="company-home-chat-actions" style={{ display: "flex", gap: 2, flexShrink: 0, alignSelf: "center" }}>
-                        <button type="button" aria-label="Edit message" disabled={busy} onClick={() => startEditingMessage(turn)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer" }}><Pencil size={11} /></button>
-                        <button type="button" aria-label="Delete message" disabled={busy} onClick={() => void handleDeleteMessage(turn.id)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer" }}><Trash2 size={11} /></button>
-                      </span>
-                    )}
-                    {editing ? (
-                      <div style={{ maxWidth: "84%", width: 420, display: "flex", flexDirection: "column", gap: 6 }}>
-                        <textarea autoFocus value={editingText} onChange={e => setEditingText(e.target.value)}
-                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEditedMessage(); } if (e.key === "Escape") cancelEditingMessage(); }}
-                          className="f-ta" style={{ minHeight: 60, fontSize: 13 }} />
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button type="button" className="btn sm" onClick={cancelEditingMessage}><X size={11} /></button>
-                          <button type="button" className="btn sm pri" disabled={busy || !editingText.trim()} onClick={() => void saveEditedMessage()}>{busy ? "Saving…" : "Save"}</button>
-                        </div>
-                      </div>
-                    ) : turn.kind === "question" ? (
-                      <div style={{ maxWidth: "84%", width: 380, padding: "10px 13px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>
-                        <div style={{ fontSize: 13, color: "var(--fg)", marginBottom: 10 }}>{turn.question || turn.message}</div>
-                        {turn.options && turn.options.length > 0 ? (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {turn.options.map(option => (
-                              <button key={option} type="button" disabled={sending} className="company-home-starter"
-                                onClick={() => void submitToCopilot(option)}
-                                style={{ padding: "8px 13px", border: "1px solid var(--bd)", borderRadius: 999, background: "var(--bg)", color: "var(--fg)", fontSize: 12.5, cursor: sending ? "default" : "pointer", opacity: sending ? 0.6 : 1 }}>
-                                {option}
-                              </button>
-                            ))}
+              {chatTurns.map(turn => {                    const isFounder = turn.author !== "copilot";
+                    const editing = editingMessageId === turn.id;
+                    const busy = messageBusyId === turn.id;
+                    return (
+                      <div key={turn.id} className={`ch-chat-row company-home-chat-turn ${isFounder ? "is-founder" : ""}`}>
+                        {!isFounder && <span className="ch-chat-avatar"><Sparkles size={13} /></span>}
+                        {isFounder && !editing && (
+                          <span className="company-home-chat-actions" style={{ display: "flex", gap: 2, flexShrink: 0, alignSelf: "center" }}>
+                            <button type="button" aria-label="Edit message" disabled={busy} onClick={() => startEditingMessage(turn)} style={{ width: 24, height: 24, display: "grid", placeItems: "center", border: 0, borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.78)", cursor: "pointer" }}><Pencil size={11} /></button>
+                            <button type="button" aria-label="Delete message" disabled={busy} onClick={() => void handleDeleteMessage(turn.id)} style={{ width: 24, height: 24, display: "grid", placeItems: "center", border: 0, borderRadius: 6, background: "transparent", color: "rgba(255,255,255,0.78)", cursor: "pointer" }}><Trash2 size={11} /></button>
+                          </span>
+                        )}
+                        {editing ? (
+                          <div className="ch-chat-bubble" style={{ maxWidth: "min(560px, 84%)", borderRadius: 20, padding: 12 }}>
+                            <textarea autoFocus value={editingText} onChange={e => setEditingText(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEditedMessage(); } if (e.key === "Escape") cancelEditingMessage(); }}
+                              className="f-ta" style={{ minHeight: 60, fontSize: 13, background: "transparent", border: 0, padding: 0, color: "inherit" }} />
+                            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 8 }}>
+                              <button type="button" className="btn sm" onClick={cancelEditingMessage}><X size={11} /></button>
+                              <button type="button" className="btn sm pri" disabled={busy || !editingText.trim()} onClick={() => void saveEditedMessage()}>{busy ? "Saving…" : "Save"}</button>
+                            </div>
                           </div>
+                        ) : turn.kind === "question" ? (
+                          <div className="ch-chat-bubble" style={{ maxWidth: "min(420px, 84%)" }}>
+                            <div style={{ fontSize: 13.5, color: "var(--fg)", marginBottom: 10 }}>{turn.question || turn.message}</div>
+                            {turn.options && turn.options.length > 0 ? (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {turn.options.map(option => (
+                                  <button key={option} type="button" disabled={sending} className="company-home-starter"
+                                    onClick={() => void submitToCopilot(option)}
+                                    style={{ padding: "8px 14px", border: "1px solid var(--apple-glass-border, rgba(255,255,255,0.10))", borderRadius: 999, background: "var(--apple-glass-bg-soft, rgba(255,255,255,0.045))", color: "var(--fg)", fontSize: 12.5, fontWeight: 500, cursor: sending ? "default" : "pointer", opacity: sending ? 0.6 : 1, boxShadow: "0 2px 8px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.10)" }}>
+                                    {option}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input value={questionDrafts[turn.id] ?? ""} disabled={sending}
+                                  onChange={e => setQuestionDrafts(prev => ({ ...prev, [turn.id]: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key !== "Enter") return;
+                                    const draft = (questionDrafts[turn.id] ?? "").trim();
+                                    if (!draft) return;
+                                    void submitToCopilot(draft);
+                                    setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
+                                  }}
+                                  placeholder="Type your answer..." className="f-ta" style={{ flex: 1, minHeight: "unset", fontSize: 13, padding: "7px 12px" }} />
+                                <button type="button" className="btn sm pri" disabled={sending || !(questionDrafts[turn.id] ?? "").trim()}
+                                  onClick={() => {
+                                    const draft = (questionDrafts[turn.id] ?? "").trim();
+                                    if (!draft) return;
+                                    void submitToCopilot(draft);
+                                    setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
+                                  }}>Send</button>
+                              </div>
+                            )}
+                          </div>
+                        ) : turn.kind === "plan" && home.squads.find(s => s.id === turn.squadId) ? (
+                          (() => {
+                            const squad = home.squads.find(s => s.id === turn.squadId)!;
+                            const searches = squad.tasks.reduce((sum, task) => sum + (task.searchCount ?? 0), 0);
+                            const anyActive = squad.tasks.some(task => task.status === "active");
+                            const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
+                            return (
+                              <div className="ch-chat-bubble" style={{ maxWidth: "min(420px, 84%)" }}>
+                                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg)", marginBottom: 10, letterSpacing: "-0.005em" }}>{squad.name}</div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                                  {squad.tasks.map(task => (
+                                    <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                      <span style={{ flexShrink: 0, marginTop: 1, color: task.status === "complete" ? "var(--green)" : task.status === "blocked" ? "var(--red)" : "var(--fm)" }}>
+                                        {task.status === "complete" ? <Check size={15} /> : task.status === "active" ? <Loader2 size={15} className="company-home-spin" /> : <Circle size={13} />}
+                                      </span>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, color: "var(--fg)", textDecoration: task.status === "complete" ? "line-through" : "none", opacity: task.status === "complete" ? 0.7 : 1, letterSpacing: "-0.005em" }}>{task.title}</div>
+                                        {task.note && <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>}
+                                        {task.status === "blocked" && (
+                                          <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
+                                            onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
+                                            {retryingTaskId === task.id ? "Retrying…" : "Retry"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10 }}>
+                                  <small style={{ color: "var(--fm)", fontSize: 11 }}>{allDone ? "Done" : anyActive ? "Researching…" : "Queued"}</small>
+                                  {searches > 0 && <small style={{ color: "var(--fm)", fontSize: 11 }}>{searches} search{searches === 1 ? "" : "es"}</small>}
+                                </div>
+                                <div style={{ marginTop: 6, height: 3, borderRadius: 999, background: "var(--bd)", overflow: "hidden" }}>
+                                  <div className={allDone ? undefined : anyActive ? "company-home-progress-indeterminate" : undefined}
+                                    style={{ height: "100%", borderRadius: 999, background: "var(--accent)", width: allDone ? "100%" : anyActive ? "40%" : "4%" }} />
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : (
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <input value={questionDrafts[turn.id] ?? ""} disabled={sending}
-                              onChange={e => setQuestionDrafts(prev => ({ ...prev, [turn.id]: e.target.value }))}
-                              onKeyDown={e => {
-                                if (e.key !== "Enter") return;
-                                const draft = (questionDrafts[turn.id] ?? "").trim();
-                                if (!draft) return;
-                                void submitToCopilot(draft);
-                                setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
-                              }}
-                              placeholder="Type your answer..." className="f-ta" style={{ flex: 1, minHeight: "unset", fontSize: 13, padding: "7px 10px" }} />
-                            <button type="button" className="btn sm pri" disabled={sending || !(questionDrafts[turn.id] ?? "").trim()}
-                              onClick={() => {
-                                const draft = (questionDrafts[turn.id] ?? "").trim();
-                                if (!draft) return;
-                                void submitToCopilot(draft);
-                                setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
-                              }}>Send</button>
+                          <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1 }}>
+                            <MarkdownDocument content={turn.message} compact inverse={isFounder} />
+                            {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
                           </div>
                         )}
                       </div>
-                    ) : turn.kind === "plan" && home.squads.find(s => s.id === turn.squadId) ? (
-                      (() => {
-                        const squad = home.squads.find(s => s.id === turn.squadId)!;
-                        const searches = squad.tasks.reduce((sum, task) => sum + (task.searchCount ?? 0), 0);
-                        const anyActive = squad.tasks.some(task => task.status === "active");
-                        const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
-                        return (
-                          <div style={{ maxWidth: "84%", width: 380, padding: "12px 13px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 10 }}>{squad.name}</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                              {squad.tasks.map(task => (
-                                <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                                  <span style={{ flexShrink: 0, marginTop: 1, color: task.status === "complete" ? "#15803d" : task.status === "blocked" ? "#b91c1c" : "var(--fm)" }}>
-                                    {task.status === "complete" ? <Check size={15} /> : task.status === "active" ? <Loader2 size={15} className="company-home-spin" /> : <Circle size={13} />}
-                                  </span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 12.5, color: "var(--fg)", textDecoration: task.status === "complete" ? "line-through" : "none", opacity: task.status === "complete" ? 0.7 : 1 }}>{task.title}</div>
-                                    {task.note && <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>}
-                                    {task.status === "blocked" && (
-                                      <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
-                                        onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
-                                        {retryingTaskId === task.id ? "Retrying…" : "Retry"}
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10 }}>
-                              <small style={{ color: "var(--fm)", fontSize: 11 }}>{allDone ? "Done" : anyActive ? "Researching…" : "Queued"}</small>
-                              {searches > 0 && <small style={{ color: "var(--fm)", fontSize: 11 }}>{searches} search{searches === 1 ? "" : "es"}</small>}
-                            </div>
-                            <div style={{ marginTop: 6, height: 3, borderRadius: 999, background: "var(--bd)", overflow: "hidden" }}>
-                              <div className={allDone ? undefined : anyActive ? "company-home-progress-indeterminate" : undefined}
-                                style={{ height: "100%", borderRadius: 999, background: "var(--accent)", width: allDone ? "100%" : anyActive ? "40%" : "4%" }} />
-                            </div>
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
-                        <MarkdownDocument content={turn.message} compact inverse={isFounder} />
-                        {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
+                    );
+                  })}
+                  {sending && (
+                    <div className="ch-chat-row">
+                      <span className="ch-chat-avatar"><Sparkles size={13} /></span>
+                      <div className="ch-chat-bubble" style={{ maxWidth: "min(180px, 60%)", padding: "12px 16px" }} aria-label="Copilot is thinking">
+                        <span className="ch-thinking-dot" />
+                        <span className="ch-thinking-dot" />
+                        <span className="ch-thinking-dot" />
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-              {sending && (
-                <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                  <span style={{ width: 26, height: 26, flexShrink: 0, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff" }}><Sparkles size={13} /></span>
-                  <div style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "10px 13px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>
-                    {[0, 150, 300].map(d => <span key={d} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--fm)", opacity: 0.5, animation: `chatDotPulse 1s ease-in-out ${d}ms infinite` }} />)}
-                  </div>
-                </div>
-              )}
+                    </div>
+                  )}
             </div>
           )}
         </div>
@@ -693,13 +694,11 @@ export default function CompanyHome() {
     {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--fg)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--fm)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--fm)", cursor: "pointer" }}>Close</button></div><ArtifactDocument content={artifact.content || "This artifact has no previewable text."} /><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{artifact.url && <a href={artifact.url} target="_blank" rel="noreferrer" style={{ padding: "9px 13px", borderRadius: 7, background: "var(--panel)", color: "var(--fg)", textDecoration: "none", border: "1px solid var(--bd)" }}>Open hosted preview</a>}<button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Download artifact</button></div></> : <><p style={{ color: "var(--fg)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}
 
     <style>{`
-      @keyframes chatDotPulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
       @keyframes companyHomeSpin { to { transform: rotate(360deg); } }
       @keyframes companyHomeProgressSlide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
       .company-home-spin { animation: companyHomeSpin 1s linear infinite; }
       .company-home-progress-indeterminate { width: 40% !important; animation: companyHomeProgressSlide 1.1s ease-in-out infinite; }
       @media (prefers-reduced-motion: reduce) {
-        [style*="chatDotPulse"] { animation: none !important; }
         .company-home-spin { animation: none !important; }
         .company-home-progress-indeterminate { animation: none !important; width: 40% !important; transform: none !important; }
       }
