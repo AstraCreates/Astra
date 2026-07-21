@@ -132,16 +132,19 @@ async def recover_pending_missions() -> int:
                 continue
             mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
             stale_tasks = [task for task in mission_tasks if is_stale(task)]
-            if stale_tasks:
+            pending_tasks = [task for task in mission_tasks if task.get("state") in {"pending", "scheduled"}]
+            if stale_tasks or pending_tasks:
                 # Startup runs once per web worker. Re-read under a shared
                 # company lock so only one worker can claim and execute an
-                # orphaned task; the other workers observe the fresh state.
+                # orphaned or previously re-queued task; the other workers
+                # observe the fresh state.
                 with company_recovery_lock(company["company_id"]):
                     current = get_company_os(company["company_id"]) or {}
                     current_mission = _find(current.get("missions", []), "mission_id", mission["mission_id"])
                     current_tasks = [task for task in current.get("tasks", []) if task.get("mission_id") == mission["mission_id"]]
                     current_stale = [task for task in current_tasks if is_stale(task)]
-                    if not current_mission or not current_stale:
+                    current_pending = [task for task in current_tasks if task.get("state") in {"pending", "scheduled"}]
+                    if not current_mission or not current_stale and not current_pending:
                         continue
                     for task in current_stale:
                         update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
@@ -152,8 +155,6 @@ async def recover_pending_missions() -> int:
                     # the claim and first attempt cannot be lost.
                     await run_mission(company["company_id"], mission["mission_id"])
                     recovered += 1
-            elif any(task.get("state") in {"pending", "scheduled"} for task in mission_tasks):
-                recovered += int(launch_mission(company["company_id"], mission["mission_id"]))
     return recovered
 
 
