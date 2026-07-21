@@ -6,7 +6,7 @@ websockets>=13,<16
 redis==5.0.4
 google-generativeai==0.7.0
 google-cloud-aiplatform==1.60.0
-openai>=1.91.0,<2
+openai>=2.45.0,<3
 python-dotenv==1.0.1
 pytest==8.2.0
 pytest-asyncio==0.23.7
