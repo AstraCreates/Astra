@@ -1,8 +1,10 @@
 import json
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from backend import company_os
+from backend.config import settings
 
 
 def test_company_os_lifecycle_and_context_inheritance(tmp_path):
@@ -135,3 +137,60 @@ def test_archived_artifacts_skip_the_library_mirror(tmp_path, monkeypatch):
 
     company_os.create_artifact("acme", "Findings", task_id="t2", root=root)
     assert calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_retry_route_unblocks_a_task_and_relaunches_its_mission(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    initiative = company_os.create_initiative("acme", "Research", initiative_id="i1")
+    squad = company_os.create_squad("acme", "i1", "Insights", squad_id="s1")
+    mission = company_os.create_mission("acme", "i1", "s1", "Research mission", mission_id="m1")
+    task = company_os.create_task("acme", "i1", "s1", "Gather validated evidence", task_id="t1", mission_id="m1",
+                                  state="blocked", blocked_reason="Research evidence did not meet the source-quality gate.")
+
+    relaunched = []
+    monkeypatch.setattr("backend.company_os_runner.launch_mission", lambda company_id, mission_id: relaunched.append((company_id, mission_id)))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/companies/acme/os/tasks/t1/retry",
+            params={"founder_id": "founder"},
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    updated_task = next(item for item in body["company"]["tasks"] if item["task_id"] == "t1")
+    assert updated_task["state"] == "pending"
+    assert updated_task.get("blocked_reason") is None
+    assert relaunched == [("acme", "m1")]
+
+
+@pytest.mark.asyncio
+async def test_retry_route_rejects_a_task_that_is_not_blocked(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.create_initiative("acme", "Research", initiative_id="i1")
+    company_os.create_squad("acme", "i1", "Insights", squad_id="s1")
+    company_os.create_task("acme", "i1", "s1", "Gather validated evidence", task_id="t1", state="done")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/companies/acme/os/tasks/t1/retry",
+            params={"founder_id": "founder"},
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 409

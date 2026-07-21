@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode 
 import { Brain, Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, Link2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -68,7 +68,7 @@ function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: Comp
 const WORKBENCH_STATE = { complete: "done", active: "run", blocked: "err", waiting: "que", planned: "que" } as const;
 const WORKBENCH_LABEL = { complete: "Done", active: "In progress", blocked: "Blocked", waiting: "Waiting on you", planned: "Queued" } as const;
 
-function SquadWorkbench({ squad, onClose }: { squad: CompanyHomeSquad; onClose: () => void }) {
+function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad: CompanyHomeSquad; onClose: () => void; onRetryTask: (taskId: string) => void; retryingTaskId: string }) {
   const [selectedId, setSelectedId] = useState(() => squad.tasks.find(t => t.status === "active")?.id ?? squad.tasks[0]?.id ?? "");
   const selected = squad.tasks.find(t => t.id === selectedId) ?? squad.tasks[0] ?? null;
   return <div role="dialog" aria-modal="true" aria-label={`${squad.name} workbench`} onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.72)" }}>
@@ -101,7 +101,14 @@ function SquadWorkbench({ squad, onClose }: { squad: CompanyHomeSquad; onClose: 
           {selected && <>
             <div className="sec-label" style={{ marginBottom: 8 }}>{selected.squad}</div>
             <h3 style={{ margin: "0 0 10px", fontSize: 15, color: "var(--fg)" }}>{selected.title}</h3>
-            <span className={`dc-badge ${WORKBENCH_STATE[selected.status]}`}>{WORKBENCH_LABEL[selected.status]}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className={`dc-badge ${WORKBENCH_STATE[selected.status]}`}>{WORKBENCH_LABEL[selected.status]}</span>
+              {selected.status === "blocked" && (
+                <button type="button" className="btn sm" disabled={retryingTaskId === selected.id} onClick={() => onRetryTask(selected.id)}>
+                  {retryingTaskId === selected.id ? "Retrying…" : "Retry"}
+                </button>
+              )}
+            </div>
             <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
           </>}
         </div>
@@ -143,6 +150,7 @@ export default function CompanyHome() {
   const [artifact, setArtifact] = useState<CompanyArtifactDetail | null>(null);
   const [artifactError, setArtifactError] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [retryingTaskId, setRetryingTaskId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
   const [workspaceInitiativeId, setWorkspaceInitiativeId] = useState("");
@@ -231,6 +239,18 @@ export default function CompanyHome() {
       setNotice("Could not delete that squad — try again.");
     } finally {
       setDeletingId("");
+    }
+  };
+
+  const handleRetryTask = async (taskId: string) => {
+    setRetryingTaskId(taskId);
+    try {
+      const data = await retryTask({ founderId, companyId }, taskId);
+      setHome(data);
+    } catch {
+      setNotice("Could not retry that task — try again.");
+    } finally {
+      setRetryingTaskId("");
     }
   };
 
@@ -586,7 +606,7 @@ export default function CompanyHome() {
       </aside>
     )}
 
-    {workbenchSquad && <SquadWorkbench squad={workbenchSquad} onClose={() => setWorkbenchSquadId("")} />}
+    {workbenchSquad && <SquadWorkbench squad={workbenchSquad} onClose={() => setWorkbenchSquadId("")} onRetryTask={(taskId) => void handleRetryTask(taskId)} retryingTaskId={retryingTaskId} />}
     {workspaceInitiative && <InitiativeWorkspace key={workspaceInitiative.id} initiative={workspaceInitiative} squads={home.squads.filter(squad => squad.initiativeId === workspaceInitiative.id)} artifacts={home.brain.artifacts} saving={savingInitiative} onSave={(update) => void handleSaveInitiative(workspaceInitiative.id, update)} onClose={() => setWorkspaceInitiativeId("")} onOpenSquad={(id) => { setWorkspaceInitiativeId(""); setWorkbenchSquadId(id); }} onOpenArtifact={(id) => { setWorkspaceInitiativeId(""); openArtifact(id); }} />}
 
     {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--fg)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--fm)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--fm)", cursor: "pointer" }}>Close</button></div><ArtifactDocument content={artifact.content || "This artifact has no previewable text."} /><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{artifact.url && <a href={artifact.url} target="_blank" rel="noreferrer" style={{ padding: "9px 13px", borderRadius: 7, background: "var(--panel)", color: "var(--fg)", textDecoration: "none", border: "1px solid var(--bd)" }}>Open hosted preview</a>}<button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Download artifact</button></div></> : <><p style={{ color: "var(--fg)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}

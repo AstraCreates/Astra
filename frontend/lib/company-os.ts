@@ -282,6 +282,13 @@ export async function clearMessages(scope: CompanyScope, fetcher: typeof apiFetc
   return normalizeCompanyOS(payload.company);
 }
 
+export async function retryTask(scope: CompanyScope, taskId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/tasks/${encodeURIComponent(taskId)}/retry`, scope), { method: "POST" });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
+}
+
 export async function decideCompanyApproval(scope: CompanyScope, approvalId: string, approved: boolean, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/approvals/${encodeURIComponent(approvalId)}`, scope), { method: "POST", body: JSON.stringify({ founder_id: scope.founderId, approved }) });
   if (!response.ok) throw new Error(await response.text());

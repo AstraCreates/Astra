@@ -227,6 +227,28 @@ async def operations_tick_route(company_id: str, founder_id: str, request: Reque
     return {"results": results, "company": get_company_os(company_id)}
 
 
+@router.post("/companies/{company_id}/os/tasks/{task_id}/retry")
+async def retry_company_os_task(company_id: str, task_id: str, founder_id: str, request: Request):
+    """Give a blocked task another shot: execute_task() permanently blocks a task
+    after two failed attempts (e.g. a research call that couldn't clear the
+    source-quality gate) with no automatic recovery -- this is the founder's
+    manual retry. Resets it to pending and relaunches its mission, same as an
+    approval decision does."""
+    from backend.company_os_runner import launch_mission
+    company = _company(request, company_id, founder_id, operator=True)
+    task = next((item for item in company.get("tasks", []) if item.get("task_id") == task_id), None)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.get("state") != "blocked":
+        raise HTTPException(status_code=409, detail="Task is not blocked")
+    update_task(company_id, task_id, state="pending", blocked_reason=None)
+    mission_id = task.get("mission_id")
+    if mission_id:
+        launch_mission(company_id, str(mission_id))
+    reconcile_initiatives(company_id)
+    return {"ok": True, "task_id": task_id, "company": get_company_os(company_id)}
+
+
 @router.post("/companies/{company_id}/os/approvals/{approval_id}")
 async def decide_company_os_approval(company_id: str, approval_id: str, body: ApprovalDecisionBody, request: Request):
     from backend.company_os_runner import launch_mission
