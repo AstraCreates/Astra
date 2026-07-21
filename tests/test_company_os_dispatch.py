@@ -2,8 +2,13 @@ import sys
 import types
 
 
-def test_website_requests_route_to_product_technical_with_a_local_preview_plan():
+def test_website_requests_route_to_product_technical_with_a_local_preview_plan(monkeypatch):
     from backend.company_os_dispatch import choose_department, specialist_task_plan
+
+    monkeypatch.setattr("backend.company_os_dispatch._extract_work_request_with_model", lambda _intent: {
+        "version": 1, "outcome": "Build a website", "deliverables": [], "constraints": [], "entities": [],
+        "risk": "internal", "required_capabilities": ["website"], "confidence": 0.9, "requires_triage": False,
+    })
 
     assert choose_department("Make a website for a company that competes with both")[0] == "product_technical"
     assert [item["title"] for item in specialist_task_plan("product_technical", "Make a landing page")] == [
@@ -14,7 +19,10 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan()
 def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch):
     from backend.company_os_dispatch import infer_work_request, route_work_request
 
-    monkeypatch.setattr("backend.company_os_dispatch._extract_work_request_with_model", lambda _intent: None)
+    monkeypatch.setattr("backend.company_os_dispatch._extract_work_request_with_model", lambda _intent: {
+        "version": 1, "outcome": "Compare Cofounder and Astra", "deliverables": ["comparison"], "constraints": [], "entities": ["Cofounder", "Astra"],
+        "risk": "internal", "required_capabilities": ["compare", "research"], "confidence": 0.95, "requires_triage": False,
+    })
     request = infer_work_request("comparre cofounder.co and astracreates.com")
     route = route_work_request({}, request)
 

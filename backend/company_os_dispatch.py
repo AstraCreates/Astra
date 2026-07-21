@@ -10,7 +10,6 @@ import hashlib
 import importlib
 import inspect
 import re
-from difflib import get_close_matches
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -97,37 +96,13 @@ def _tokens(value: str) -> set[str]:
 
 
 def infer_work_request(intent: str) -> dict[str, Any]:
-    """Create an auditable, capability-first request without phrase routing.
-
-    The registry contains capabilities, not intent keywords. A future model
-    extractor may populate richer requirements; this local extraction remains
-    deterministic and safe during model outages.
-    """
-    words = _tokens(intent)
+    """Create a validated semantic work request from the founder's outcome."""
     model_request = _extract_work_request_with_model(intent)
     if model_request is not None:
         return model_request
-    capability_tokens = {token for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"] for token in _tokens(capability)}
-    # Misspellings should not turn an otherwise clear work request into a
-    # blocked "clarify" task. This normalizes only toward declared
-    # capabilities, never toward arbitrary intent phrases.
-    words = {get_close_matches(word, capability_tokens, n=1, cutoff=0.82)[0] if get_close_matches(word, capability_tokens, n=1, cutoff=0.82) else word for word in words}
-    matches: list[tuple[int, str, set[str]]] = []
-    for department, profile in CAPABILITY_REGISTRY.items():
-        # Composite labels need at least two matching words. This stops the
-        # word "research" in "account research" from hijacking a general
-        # research request while preserving intentionally single-word skills.
-        matched = {capability for capability in profile["capabilities"]
-                   if (len(_tokens(capability)) == 1 and _tokens(capability) & words)
-                   or len(_tokens(capability) & words) >= 2}
-        if matched:
-            matches.append((len(matched), department, matched))
-    matches.sort(key=lambda item: (-item[0], item[1]))
-    required = sorted({capability for _, _, values in matches for capability in values})
-    confidence = min(0.95, 0.35 + 0.2 * (matches[0][0] if matches else 0))
     return {"version": 1, "outcome": intent.strip(), "deliverables": [], "constraints": [], "entities": [],
-            "risk": "internal", "required_capabilities": required, "confidence": confidence,
-            "requires_triage": not matches}
+            "risk": "internal", "required_capabilities": [], "confidence": 0.0,
+            "requires_triage": True, "triage_reason": "semantic_extraction_unavailable"}
 
 
 def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
@@ -146,14 +121,6 @@ Requests to compare products require the compare and research capabilities. Webs
         payload = parse_json_response(raw)
         known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
         capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
-        # Preserve unambiguous declared capability words found in the request
-        # so a planner cannot accidentally drop "website" while focusing on a
-        # secondary comparison or research deliverable.
-        message_words = _tokens(intent)
-        capabilities.update(
-            capability for capability in known
-            if len(_tokens(capability)) == 1 and _tokens(capability) & message_words
-        )
         confidence = float(payload.get("confidence", 0) or 0)
         if not capabilities or confidence < 0.45:
             return None
