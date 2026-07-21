@@ -1469,7 +1469,11 @@ def _research_coverage(focus: str, queries: list[str], search: dict) -> dict:
 
     required_sources = 8 if focus in {"market", "competitors"} else 6
     required_domains = 4 if focus in {"market", "competitors"} else 3
-    required_query_coverage = min(5, len(queries))
+    # A single weak/rate-limited lane must not invalidate an otherwise useful
+    # deep pass. Three covered lanes provide breadth while keeping the gate
+    # achievable when providers return uneven results; source and domain gates
+    # still enforce evidence quality.
+    required_query_coverage = min(3, len(queries))
 
     gaps = []
     if len(sources) < required_sources:

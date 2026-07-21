@@ -556,7 +556,7 @@ def test_run_research_pipeline_reports_coverage_gaps(monkeypatch):
     assert result["coverage"]["ready"] is False
     assert "source_count_below_8" in result["coverage"]["gaps"]
     assert "domain_diversity_below_4" in result["coverage"]["gaps"]
-    assert "query_coverage_below_5" in result["coverage"]["gaps"]
+    assert "query_coverage_below_3" in result["coverage"]["gaps"]
     assert "Evidence is thin" in result["next_step"]
 
 
