@@ -150,6 +150,7 @@ export default function CompanyHome() {
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingText, setEditingText] = useState("");
   const [messageBusyId, setMessageBusyId] = useState("");
+  const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
@@ -406,6 +407,41 @@ export default function CompanyHome() {
                           <button type="button" className="btn sm pri" disabled={busy || !editingText.trim()} onClick={() => void saveEditedMessage()}>{busy ? "Saving…" : "Save"}</button>
                         </div>
                       </div>
+                    ) : turn.kind === "question" ? (
+                      <div style={{ maxWidth: "84%", width: 380, padding: "10px 13px", borderRadius: 10, background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>
+                        <div style={{ fontSize: 13, color: "var(--fg)", marginBottom: 10 }}>{turn.question || turn.message}</div>
+                        {turn.options && turn.options.length > 0 ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {turn.options.map(option => (
+                              <button key={option} type="button" disabled={sending} className="company-home-starter"
+                                onClick={() => void submitToCopilot(option)}
+                                style={{ padding: "8px 13px", border: "1px solid var(--bd)", borderRadius: 999, background: "var(--bg)", color: "var(--fg)", fontSize: 12.5, cursor: sending ? "default" : "pointer", opacity: sending ? 0.6 : 1 }}>
+                                {option}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input value={questionDrafts[turn.id] ?? ""} disabled={sending}
+                              onChange={e => setQuestionDrafts(prev => ({ ...prev, [turn.id]: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key !== "Enter") return;
+                                const draft = (questionDrafts[turn.id] ?? "").trim();
+                                if (!draft) return;
+                                void submitToCopilot(draft);
+                                setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
+                              }}
+                              placeholder="Type your answer..." className="f-ta" style={{ flex: 1, minHeight: "unset", fontSize: 13, padding: "7px 10px" }} />
+                            <button type="button" className="btn sm pri" disabled={sending || !(questionDrafts[turn.id] ?? "").trim()}
+                              onClick={() => {
+                                const draft = (questionDrafts[turn.id] ?? "").trim();
+                                if (!draft) return;
+                                void submitToCopilot(draft);
+                                setQuestionDrafts(prev => ({ ...prev, [turn.id]: "" }));
+                              }}>Send</button>
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
                         <MarkdownDocument content={turn.message} compact inverse={isFounder} />
@@ -552,7 +588,7 @@ export default function CompanyHome() {
     {workbenchSquad && <SquadWorkbench squad={workbenchSquad} onClose={() => setWorkbenchSquadId("")} />}
     {workspaceInitiative && <InitiativeWorkspace key={workspaceInitiative.id} initiative={workspaceInitiative} squads={home.squads.filter(squad => squad.initiativeId === workspaceInitiative.id)} artifacts={home.brain.artifacts} saving={savingInitiative} onSave={(update) => void handleSaveInitiative(workspaceInitiative.id, update)} onClose={() => setWorkspaceInitiativeId("")} onOpenSquad={(id) => { setWorkspaceInitiativeId(""); setWorkbenchSquadId(id); }} onOpenArtifact={(id) => { setWorkspaceInitiativeId(""); openArtifact(id); }} />}
 
-    {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--fg)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--fm)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--fm)", cursor: "pointer" }}>Close</button></div><ArtifactDocument content={artifact.content || "This artifact has no previewable text."} /><button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Download artifact</button></> : <><p style={{ color: "var(--fg)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}
+    {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--fg)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--fm)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--fm)", cursor: "pointer" }}>Close</button></div><ArtifactDocument content={artifact.content || "This artifact has no previewable text."} /><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{artifact.url && <a href={artifact.url} target="_blank" rel="noreferrer" style={{ padding: "9px 13px", borderRadius: 7, background: "var(--panel)", color: "var(--fg)", textDecoration: "none", border: "1px solid var(--bd)" }}>Open hosted preview</a>}<button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Download artifact</button></div></> : <><p style={{ color: "var(--fg)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}
 
     <style>{`
       @keyframes chatDotPulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }

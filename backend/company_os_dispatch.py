@@ -107,6 +107,7 @@ def infer_work_request(intent: str) -> dict[str, Any]:
             "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
             "risk": "internal", "required_capabilities": [], "primary_capability": None, "confidence": 0.0,
             "requires_clarification": True, "clarification_question": "What concrete outcome should this work produce?",
+            "clarification_options": None,
             "triage_reason": "semantic_extraction_unavailable"}
 
 
@@ -117,8 +118,9 @@ def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     prompt = f"""Extract a compact work request for an AI company operating system.
 Founder message: {intent!r}
 Available capabilities: {catalog}
-Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "risk": "internal|external|approval", "clarification_question": string|null, "confidence": number 0-1}}.
-Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities."""
+Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
+Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities.
+Set clarification_question only when a genuine ambiguity would change the work (e.g. which platform, which audience) -- not for things you can reasonably assume. When you do, and the ambiguity is naturally a short list of choices (e.g. "iOS, Android, or both"), also set clarification_options to 2-5 short answer strings; otherwise leave clarification_options null for an open-ended answer."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
     failures: list[str] = []
     # The strict instruction model is materially more reliable for a small
@@ -133,6 +135,9 @@ Reason over the meaning of the whole request, including misspellings and multipl
             if not capabilities or confidence < 0.45:
                 failures.append(f"{model}: insufficient validated capabilities")
                 continue
+            clarification_question = payload.get("clarification_question") if isinstance(payload.get("clarification_question"), str) and payload.get("clarification_question").strip() else None
+            raw_options = payload.get("clarification_options")
+            clarification_options = [str(value) for value in raw_options if isinstance(value, str) and value.strip()] if isinstance(raw_options, list) else None
             return {"version": 1, "objective": str(payload.get("objective") or intent).strip(), "outcome": str(payload.get("objective") or intent).strip(),
                     "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
                     "acceptance_criteria": [str(value) for value in payload.get("acceptance_criteria", []) if isinstance(value, str)],
@@ -140,7 +145,10 @@ Reason over the meaning of the whole request, including misspellings and multipl
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
                     "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
                     "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
-                    "requires_clarification": False, "clarification_question": payload.get("clarification_question") if isinstance(payload.get("clarification_question"), str) else None, "router_model": model,
+                    "requires_clarification": clarification_question is not None,
+                    "clarification_question": clarification_question,
+                    "clarification_options": clarification_options or None,
+                    "router_model": model,
                     "primary_capability": payload.get("primary_capability") if payload.get("primary_capability") in known else None}
         except Exception as exc:
             failures.append(f"{model}: {type(exc).__name__}")
@@ -187,25 +195,26 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
         # These are local, reversible deliverables. A later explicit
         # publish/deploy task is the only action that may require approval.
         steps = [
-            ("Define the local website brief", "internal_analysis"),
-            ("Create a local website preview", "local_preview"),
-            ("Prepare the publication decision", "internal_review"),
+            ("Define the local website brief", "internal_analysis", None),
+            ("Create a local website preview", "local_preview", None),
+            ("Prepare the publication decision", "internal_review", None),
         ]
     elif {"research", "compare", "evidence research", "competitive analysis"} & capabilities:
         steps = [
-            ("Gather validated evidence", "internal_analysis"),
-            ("Synthesize findings and uncertainties", "draft"),
-            ("Produce a decision brief", "draft"),
+            ("Gather validated evidence", "internal_analysis", "astra_company_research"),
+            ("Synthesize findings and uncertainties", "draft", None),
+            ("Produce a decision brief", "draft", None),
         ]
     else:
         steps = [
-            ("Define acceptance criteria and constraints", "internal_analysis"),
-            ("Create a reviewable local deliverable", "draft"),
-            ("Review outcome and next actions", "internal_review"),
+            ("Define acceptance criteria and constraints", "internal_analysis", None),
+            ("Create a reviewable local deliverable", "draft", None),
+            ("Review outcome and next actions", "internal_review", None),
         ]
     return [{"title": title, "description": f"{title}. Outcome: {intent}", "department": department,
-             "operation": operation, "execution_scope": "local", "required_capabilities": sorted(capabilities)}
-            for title, operation in steps]
+             "operation": operation, "mcp_tool": mcp_tool, "execution_scope": "local",
+             "required_capabilities": sorted(capabilities)}
+            for title, operation, mcp_tool in steps]
 
 
 def enforce_dispatch_policy(
@@ -317,6 +326,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
         task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, mission_id=mission_id,
                      name=spec["title"], description=spec["description"], department=department, operation=spec["operation"],
+                     mcp_tool=spec.get("mcp_tool"),
                      state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
         _record_policy(company_id, task, policy)
         if policy["decision"] == "require_approval":
@@ -337,7 +347,8 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
             policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
             task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=_entity_id(handoff_squad, "squad_id"),
                          mission_id=_entity_id(handoff_mission, "mission_id"), name=spec["title"], description=spec["description"],
-                         department=handoff_department, operation=spec["operation"], state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
+                         department=handoff_department, operation=spec["operation"], mcp_tool=spec.get("mcp_tool"),
+                         state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
             _record_policy(company_id, task, policy)
             if policy["decision"] == "require_approval":
                 _create_approval_card(company_id, task, policy)

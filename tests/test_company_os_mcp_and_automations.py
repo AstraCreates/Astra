@@ -30,6 +30,32 @@ def test_company_mcp_bridge_audits_registered_tool(monkeypatch):
     assert [event[1] for event in events] == ["mcp.tool_called", "mcp.tool_completed"]
 
 
+def test_company_mcp_bridge_falls_through_to_runtime_registry(monkeypatch):
+    from backend import company_os_mcp
+    from backend.runtime.tool_registry import ToolEntry, registry
+
+    events = []
+    monkeypatch.setattr(company_os_mcp, "get_company_os", lambda _: {"company_id": "co", "founder_id": "founder"})
+    monkeypatch.setattr(company_os_mcp, "append_event", lambda *args: events.append(args))
+    registry.register(ToolEntry(
+        name="specialist_read", toolset="research", schema={"name": "specialist_read", "parameters": {}},
+        handler=lambda founder_id="": {"founder": founder_id}, context_fields=frozenset({"founder_id"}),
+    ), override=True)
+
+    result = company_os_mcp.invoke("co", "specialist_read", task_id="task", mission_id="mission")
+    assert result == {"founder": "founder"}
+    assert events[0][2]["task_id"] == "task"
+    assert events[-1][2]["mission_id"] == "mission"
+
+
+def test_stdio_mcp_rejects_removed_run_tools():
+    from backend import astra_mcp
+
+    response = astra_mcp.handle_request({"id": 1, "method": "tools/call", "params": {"name": "astra_submit_goal", "arguments": {}}})
+    assert response["error"]["code"] == -32000
+    assert "removed" in response["error"]["message"]
+
+
 def test_automation_external_node_becomes_company_approval(monkeypatch):
     from backend import company_os_automations as bridge
 

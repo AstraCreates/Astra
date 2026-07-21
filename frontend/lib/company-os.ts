@@ -22,7 +22,7 @@ export type CompanyHomeApproval = { id: string; title: string; squad: string; de
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; initiativeId?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status"; edited: boolean };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question"; edited: boolean; question?: string; options?: string[] };
 
 export type CompanyHomeData = {
   companyName: string;
@@ -286,7 +286,7 @@ export async function getCompanyArtifact(scope: CompanyScope, artifactId: string
   const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/artifacts/${encodeURIComponent(artifactId)}`, scope));
   if (!response.ok) throw new Error(await response.text());
   const artifact = record(await response.json());
-  return { id: text(artifact.artifact_id, artifactId), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), initiativeId: text(artifact.initiative_id) || undefined, content: text(artifact.content), sourceReferences: list(artifact.source_references), archived: text(artifact.state).toLowerCase() === "archived" };
+  return { id: text(artifact.artifact_id, artifactId), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, content: text(artifact.content), sourceReferences: list(artifact.source_references), archived: text(artifact.state).toLowerCase() === "archived" };
 }
 
 function normalizeCompanyOS(payload: unknown): CompanyHomeData {
@@ -317,6 +317,16 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
     }).filter(squad => !squad.archived),
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
     brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
-    conversation: list(root.conversation).filter(item => !record(item).archived).map((item, index) => { const message = record(item); return { id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind: text(message.kind, "chat") === "status" ? "status" : "chat", edited: Boolean(message.edited) }; }),
+    conversation: list(root.conversation).filter(item => !record(item).archived).map((item, index) => {
+      const message = record(item);
+      const kindRaw = text(message.kind, "chat");
+      const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : "chat";
+      const options = list(message.options).map(option => text(option)).filter(Boolean);
+      return {
+        id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message),
+        kind, edited: Boolean(message.edited),
+        ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}),
+      };
+    }),
   };
 }

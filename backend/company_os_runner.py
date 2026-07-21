@@ -120,8 +120,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
         evidence = invoke_mcp(
             company_id,
-            "astra_company_research",
+            str(task.get("mcp_tool") or "astra_company_research"),
             {"subject": _research_subject(mission_name), "focus": "market"},
+            task_id=str(task.get("task_id") or ""), mission_id=str(mission.get("mission_id") or ""),
         )
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
         domains = {str(source["url"]).split("/", 3)[2].lower() for source in sources if str(source["url"]).startswith(("http://", "https://"))}

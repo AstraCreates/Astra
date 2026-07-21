@@ -349,6 +349,14 @@ async def mcp_http(request: Request):
     method = req.get("method")
     params = req.get("params") or {}
 
+    # Retired run/session tools return a deterministic removal response even
+    # without authentication. This avoids making clients interpret an auth
+    # challenge as a missing compatibility migration.
+    if method == "tools/call" and params.get("name") in {"astra_submit_goal", "astra_session_status", "astra_session_digest", "astra_session_artifacts", "astra_chat_agent", "astra_steer", "astra_message_agent", "astra_stop_agent", "astra_approve", "astra_session_workboard", "astra_company_goal", "astra_approve_next_goal", "astra_run_cycle"}:
+        payload = {"ok": False, "error": "legacy_run_session_removed", "message": "Use Company OS tools instead."}
+        result = {"content": [{"type": "text", "text": _json.dumps(payload)}], "structuredContent": payload, "isError": True}
+        return Response(content=_json.dumps({"jsonrpc": "2.0", "id": req.get("id"), "result": result}), media_type="application/json")
+
     def _tool_result(payload: dict) -> dict:
         return {
             "content": [{"type": "text", "text": _json.dumps(payload, indent=2, sort_keys=True)}],
@@ -393,6 +401,17 @@ async def mcp_http(request: Request):
                     media_type="application/json", status_code=403,
                 )
             args.pop("founder_id", None)  # strip — will be injected from auth context
+            # The HTTP adapter must use the same Company OS MCP boundary as
+            # stdio and in-process callers. Do not maintain a second legacy
+            # dispatcher here: it could resurrect run/session actions or drift
+            # from the tools/list contract.
+            from backend import astra_mcp as _astra_mcp
+            if name in _astra_mcp._LEGACY_MCP_TOOLS:
+                result = _tool_result({"ok": False, "error": "This MCP run/session tool was removed. Use Company OS tools instead."})
+            else:
+                result = _tool_result(await _asyncio.to_thread(_astra_mcp.call_tool, name, args, founder_id))
+            content = _json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}, separators=(",", ":"))
+            return Response(content=content, media_type="application/json")
             if name == "astra_submit_goal":
                 from backend.api.schemas import RunCreateRequest
                 from backend.control_plane.start_run import start_run as control_plane_start_run

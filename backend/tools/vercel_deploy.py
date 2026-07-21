@@ -91,10 +91,7 @@ def _deploy_trigger_with_idempotency(
 
 
 def _resolve_vercel_token(founder_id: str = "") -> str:
-    """Return Vercel token: global settings first, then per-founder credentials store."""
-    token = getattr(settings, "vercel_token", "") or ""
-    if token:
-        return token
+    """Resolve the founder integration first, with the server token as fallback."""
     if founder_id:
         try:
             from backend.provisioning.credentials_store import load_credentials
@@ -103,6 +100,9 @@ def _resolve_vercel_token(founder_id: str = "") -> str:
                 return creds["token"]
         except Exception as e:
             logger.debug("vercel token lookup from credentials store failed for %s: %s", founder_id, e)
+    token = getattr(settings, "vercel_token", "") or ""
+    if token:
+        return token
     return ""
 
 
@@ -118,13 +118,12 @@ def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "",
         return {"deployed": False, "error": "VERCEL_TOKEN not set"}
 
     vercel_bin = subprocess.run(["which", "vercel"], capture_output=True, text=True).stdout.strip()
-    if not vercel_bin:
-        return {"deployed": False, "error": "vercel CLI not found"}
+    command_prefix = [vercel_bin] if vercel_bin else ["npx", "--yes", "vercel@latest"]
 
     env = os.environ.copy()
     env["VERCEL_TOKEN"] = token
 
-    cmd = [vercel_bin, "deploy", "--prod", "--yes", "--token", token, "--scope", "astratestingmail-9022s-projects"]
+    cmd = [*command_prefix, "deploy", "--prod", "--yes", "--token", token, "--scope", "astratestingmail-9022s-projects"]
     # --name is deprecated; set project name via vercel.json instead
     if project_name:
         import json as _json
@@ -626,8 +625,7 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "", ses
         return _local_fallback(project_slug, html, css, js)
 
     vercel_bin = subprocess.run(["which", "vercel"], capture_output=True, text=True).stdout.strip()
-    if not vercel_bin:
-        return _local_fallback(project_slug, html, css, js)
+    command_prefix = [vercel_bin] if vercel_bin else ["npx", "--yes", "vercel@latest"]
 
     import json as _json
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -647,7 +645,7 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "", ses
         env["VERCEL_TOKEN"] = token
         try:
             r = subprocess.run(
-                [vercel_bin, "--prod", "--yes",
+                [*command_prefix, "--prod", "--yes",
                  "--name", project_slug,
                  "--scope", "astratestingmail-9022s-projects"],
                 cwd=tmpdir, capture_output=True, text=True, timeout=120, env=env,

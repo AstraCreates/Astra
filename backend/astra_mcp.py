@@ -348,6 +348,11 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Run cited web research for a Company OS mission. This is internal research only; it creates no external side effect.",
         "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
     },
+    {
+        "name": "astra_company_tool_catalog",
+        "description": "List the MCP and specialist tools available to Copilot and Company OS squads, including capability, availability, mutability, and approval risk.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "include_external": {"type": "boolean", "default": True}, "founder_id": {"type": "string"}}, ["company_id"]),
+    },
 ]
 
 # The old MCP actions were session/run commands. Phase 3 keeps only tools that
@@ -611,6 +616,14 @@ def _company_research(args: dict) -> dict:
     evidence = run_comparison_research(subject) if "compare" in subject.lower() else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6)
     return {"ok": not bool(evidence.get("error")), **evidence}
 
+def _company_tool_catalog(args: dict) -> dict:
+    from backend.company_os import get_company_os
+    company = get_company_os(str(args["company_id"]))
+    if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
+        return {"ok": False, "error": "Company not found"}
+    from backend.company_os_mcp import available_tools
+    return {"ok": True, "tools": available_tools(include_external=bool(args.get("include_external", True)))}
+
 _DISPATCH: dict[str, Any] = {
     "astra_submit_goal": _submit_goal,
     "astra_session_status": _session_status,
@@ -634,6 +647,7 @@ _DISPATCH: dict[str, Any] = {
     "astra_credits": _credits,
     "astra_company_os_context": _company_os_context,
     "astra_company_research": _company_research,
+    "astra_company_tool_catalog": _company_tool_catalog,
 }
 
 # ── JSON-RPC handler ──────────────────────────────────────────────────────────
@@ -664,10 +678,10 @@ def handle_request(request: dict) -> dict | None:
         elif method == "tools/call":
             name = params.get("name")
             arguments = params.get("arguments") or {}
-            fn = _DISPATCH.get(name)
-            if fn is None:
-                raise ValueError(f"Unknown tool: {name}")
-            result = _tool_result(fn(arguments))
+            # Keep stdio and in-process clients on the same allowlist. Calling
+            # _DISPATCH directly here previously let removed run/session tools
+            # back in through MCP even though tools/list hid them.
+            result = _tool_result(call_tool(name, arguments, arguments.get("founder_id")))
         else:
             raise ValueError(f"Unsupported method: {method}")
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
