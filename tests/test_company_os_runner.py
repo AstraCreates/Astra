@@ -3,7 +3,7 @@ import pytest
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_runner import run_mission
-from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request
+from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request, _website_preview
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
@@ -24,6 +24,14 @@ def test_comparison_document_never_recommends_with_unbalanced_evidence():
     assert "comparison" in title.lower()
     assert "No winner is declared" in content
     assert "Not verified from available public evidence" in content
+
+
+def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():
+    preview = _website_preview("compare cofounder.co and astracreates.com and create a website for goon.com that has the best of both worlds", [{"title": "Source", "url": "https://example.com"}])
+    assert "Goon" in preview
+    assert "goon.com" in preview
+    assert "Informed by 1 cited research source" in preview
+    assert "compare cofounder.co and astracreates.com" not in preview
 
 
 @pytest.mark.asyncio

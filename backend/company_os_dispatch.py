@@ -184,14 +184,28 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
     request = request or infer_work_request(intent)
     capabilities = set(request.get("required_capabilities") or [])
     if {"website", "landing page", "website delivery", "local preview"} & capabilities:
-        titles = ["Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval"]
+        # These are local, reversible deliverables. A later explicit
+        # publish/deploy task is the only action that may require approval.
+        steps = [
+            ("Define the local website brief", "internal_analysis"),
+            ("Create a local website preview", "local_preview"),
+            ("Prepare the publication decision", "internal_review"),
+        ]
     elif {"research", "compare", "evidence research", "competitive analysis"} & capabilities:
-        titles = ["Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief"]
+        steps = [
+            ("Gather validated evidence", "internal_analysis"),
+            ("Synthesize findings and uncertainties", "draft"),
+            ("Produce a decision brief", "draft"),
+        ]
     else:
-        titles = ["Define acceptance criteria and constraints", "Create a reviewable local deliverable", "Review outcome and next actions"]
+        steps = [
+            ("Define acceptance criteria and constraints", "internal_analysis"),
+            ("Create a reviewable local deliverable", "draft"),
+            ("Review outcome and next actions", "internal_review"),
+        ]
     return [{"title": title, "description": f"{title}. Outcome: {intent}", "department": department,
-             "operation": "internal_analysis" if index == 0 else "draft", "required_capabilities": sorted(capabilities)}
-            for index, title in enumerate(titles)]
+             "operation": operation, "execution_scope": "local", "required_capabilities": sorted(capabilities)}
+            for title, operation in steps]
 
 
 def enforce_dispatch_policy(
@@ -204,7 +218,14 @@ def enforce_dispatch_policy(
     risk categories override benign wording so callers cannot label a deployment
     as a draft to bypass the gate.
     """
-    text = " ".join(str(task.get(key, "")) for key in ("title", "description", "operation", "action")).lower()
+    operation = str(task.get("operation") or task.get("action") or "").lower()
+    local_operations = {"internal_analysis", "draft", "local_preview", "internal_review", "prepare_approval"}
+    # A local task label may describe a future action (for example,
+    # "prepare the publication decision") without performing it. For typed
+    # local operations the operation is authoritative; explicit side-effect
+    # flags below still override this classification.
+    text_fields = ("operation", "action") if operation in local_operations else ("title", "description", "operation", "action")
+    text = " ".join(str(task.get(key, "")) for key in text_fields).lower()
     budget = (company or {}).get("budget") or {}
     remaining = budget.get("remaining_usd", budget.get("available_usd", budget.get("max_usd")))
     if remaining is None:
@@ -321,6 +342,17 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
             if policy["decision"] == "require_approval":
                 _create_approval_card(company_id, task, policy)
         handoff_missions.append(handoff_mission)
+    # A website that incorporates comparison findings must not race ahead of
+    # the research handoff with a generic placeholder.
+    if {"website", "landing page", "website delivery", "local preview"} & set(work_request.get("required_capabilities") or []):
+        research_dependencies = [
+            _entity_id(item, "mission_id") for item in handoff_missions
+            if item.get("department") == "research" and _entity_id(item, "mission_id")
+        ]
+        if research_dependencies:
+            _call("update_mission", company_id=company_id, mission_id=mission_id,
+                  depends_on_mission_ids=research_dependencies)
+            mission = {**mission, "depends_on_mission_ids": research_dependencies}
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
             "work_request": work_request, "routing": route, "handoff_missions": handoff_missions}
 

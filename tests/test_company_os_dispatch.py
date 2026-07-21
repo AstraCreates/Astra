@@ -12,8 +12,9 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan(m
 
     assert choose_department("Make a website for a company that competes with both")[0] == "product_technical"
     assert [item["title"] for item in specialist_task_plan("product_technical", "Make a landing page")] == [
-        "Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval",
+        "Define the local website brief", "Create a local website preview", "Prepare the publication decision",
     ]
+    assert all(item["execution_scope"] == "local" for item in specialist_task_plan("product_technical", "Make a landing page"))
 
 
 def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch):
@@ -41,6 +42,7 @@ def test_multi_capability_request_forms_a_real_handoff_squad(monkeypatch):
 
     assert result["department"] == "product_technical"
     assert [mission["department"] for mission in result["handoff_missions"]] == ["research"]
+    assert result["mission"]["depends_on_mission_ids"] == [result["handoff_missions"][0]["id"]]
 
 
 class FakeCompanyOS:
@@ -56,6 +58,7 @@ class FakeCompanyOS:
     def create_task_attempt(self, **kwargs):
         attempt = {"id": f"attempt-{len(self.company['task_attempts'])}", **kwargs}; self.company["task_attempts"].append(attempt); return attempt
     def create_approval(self, **kwargs): return {"id": "approval", **kwargs}
+    def update_mission(self, **kwargs): return kwargs
     def update_task(self, **kwargs): return kwargs
     def update_task_attempt(self, **kwargs): return kwargs
     def append_event(self, **kwargs): self.company["events"].append(kwargs); return kwargs
@@ -64,7 +67,7 @@ class FakeCompanyOS:
 def _dispatch(monkeypatch):
     fake = FakeCompanyOS()
     monkeypatch.setitem(sys.modules, "backend.company_os", types.SimpleNamespace(**{
-        name: getattr(fake, name) for name in ("get_company_os", "create_initiative", "create_squad", "create_mission", "create_task", "create_task_attempt", "create_approval", "update_task", "update_task_attempt", "append_event")
+        name: getattr(fake, name) for name in ("get_company_os", "create_initiative", "create_squad", "create_mission", "create_task", "create_task_attempt", "create_approval", "update_mission", "update_task", "update_task_attempt", "append_event")
     }))
     from backend import company_os_dispatch as dispatch
     return dispatch, fake
@@ -81,6 +84,13 @@ def test_all_execution_paths_use_the_policy_choke_point(monkeypatch):
     assert dispatch.scheduler_tick("co", lambda _: (_ for _ in ()).throw(AssertionError("must not execute")))[0]["status"] == "awaiting_approval"
     assert len(calls) == 2
     assert any(event["event_type"] == "policy.decided" for event in store.company["events"])
+
+
+def test_local_publication_preparation_never_requires_approval():
+    from backend.company_os_dispatch import enforce_dispatch_policy
+
+    decision = enforce_dispatch_policy({"title": "Prepare the publication decision", "operation": "internal_review", "execution_scope": "local"})
+    assert decision["decision"] == "auto"
 
 
 def test_restart_duplicate_protection_reads_durable_attempts(monkeypatch):

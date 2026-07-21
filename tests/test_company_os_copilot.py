@@ -42,9 +42,8 @@ async def test_continue_without_a_valid_work_request_asks_for_clarification(tmp_
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
-    from backend.company_os_dispatch import dispatch_intent
-    first = dispatch_intent("acme", "is a Big Pharma ML consulting company viable")
-    initiative_id = first["initiative"]["initiative_id"]
+    first = company_os.create_initiative("acme", "Big Pharma ML consulting viability", department="research", director="research")
+    initiative_id = first["initiative_id"]
 
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
         {"action": "continue", "initiative_id": initiative_id, "reply": "Digging further into that now."}
