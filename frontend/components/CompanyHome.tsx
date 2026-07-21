@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, PanelRightClose, PanelRightOpen, Pencil, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
@@ -12,15 +12,40 @@ const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_BACKOFF_MS = 60000;
 const STARTER_PROMPTS = ["What needs my attention?", "Summarize where things stand.", "What's blocked right now?"];
 
+function InlineMarkdown({ text, inverse = false }: { text: string; inverse?: boolean }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^\s)]+\))/g);
+  return <>{parts.map((part, index): ReactNode => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index} style={{ padding: "1px 4px", borderRadius: 4, background: inverse ? "rgba(255,255,255,.16)" : "rgba(15,23,42,.08)", fontSize: ".9em" }}>{part.slice(1, -1)}</code>;
+    const link = /^\[([^\]]+)\]\(([^\s)]+)\)$/.exec(part);
+    if (link) return <a key={index} href={link[2]} target="_blank" rel="noreferrer" style={{ color: inverse ? "#fff" : "#2563eb", textDecoration: "underline", textUnderlineOffset: 2 }}>{link[1]}</a>;
+    return <Fragment key={index}>{part}</Fragment>;
+  })}</>;
+}
+
+function MarkdownDocument({ content, compact = false, inverse = false }: { content: string; compact?: boolean; inverse?: boolean }) {
+  const textColor = inverse ? "#fff" : "#1e293b";
+  const muted = inverse ? "rgba(255,255,255,.82)" : "#475569";
+  return <>{content.split(/\n{2,}/).map((raw, index) => {
+    const block = raw.trim();
+    if (!block) return null;
+    if (block.startsWith("# ")) return <h1 key={index} style={{ margin: "0 0 16px", color: textColor, fontSize: compact ? 19 : 30, lineHeight: 1.15, letterSpacing: "-.03em" }}><InlineMarkdown text={block.slice(2)} inverse={inverse} /></h1>;
+    if (block.startsWith("## ")) return <h2 key={index} style={{ margin: index ? (compact ? "18px 0 7px" : "30px 0 12px") : "0 0 10px", paddingBottom: compact ? 0 : 8, borderBottom: compact ? 0 : "1px solid #dbe3ea", color: textColor, fontSize: compact ? 14 : 21, lineHeight: 1.25 }}><InlineMarkdown text={block.slice(3)} inverse={inverse} /></h2>;
+    if (block.startsWith("### ")) return <h3 key={index} style={{ margin: "18px 0 7px", color: textColor, fontSize: compact ? 13 : 16 }}><InlineMarkdown text={block.slice(4)} inverse={inverse} /></h3>;
+    const lines = block.split("\n");
+    if (lines.length >= 2 && lines[0].includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[1])) {
+      const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+      const header = cells(lines[0]);
+      return <div key={index} style={{ margin: "14px 0", overflowX: "auto", border: inverse ? "1px solid rgba(255,255,255,.2)" : "1px solid #dbe3ea", borderRadius: 9 }}><table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse", fontSize: compact ? 12 : 13.5 }}><thead><tr>{header.map(cell => <th key={cell} style={{ padding: "9px 10px", color: textColor, background: inverse ? "rgba(255,255,255,.12)" : "#eef4f8", textAlign: "left", fontWeight: 700 }}><InlineMarkdown text={cell} inverse={inverse} /></th>)}</tr></thead><tbody>{lines.slice(2).filter(line => line.includes("|")).map((line, rowIndex) => <tr key={rowIndex}>{cells(line).map((cell, cellIndex) => <td key={cellIndex} style={{ padding: "9px 10px", verticalAlign: "top", color: muted, borderTop: inverse ? "1px solid rgba(255,255,255,.13)" : "1px solid #e2e8f0", lineHeight: 1.45 }}><InlineMarkdown text={cell} inverse={inverse} /></td>)}</tr>)}</tbody></table></div>;
+    }
+    if (lines.every(line => /^[-*]\s+/.test(line))) return <ul key={index} style={{ margin: "10px 0", paddingLeft: 20, color: muted, lineHeight: 1.65 }}>{lines.map((line, lineIndex) => <li key={lineIndex} style={{ paddingLeft: 2, marginBottom: 3 }}><InlineMarkdown text={line.replace(/^[-*]\s+/, "")} inverse={inverse} /></li>)}</ul>;
+    if (lines.every(line => /^\d+\.\s+/.test(line))) return <ol key={index} style={{ margin: "10px 0", paddingLeft: 22, color: muted, lineHeight: 1.65 }}>{lines.map((line, lineIndex) => <li key={lineIndex} style={{ paddingLeft: 2, marginBottom: 3 }}><InlineMarkdown text={line.replace(/^\d+\.\s+/, "")} inverse={inverse} /></li>)}</ol>;
+    return <p key={index} style={{ margin: "0 0 12px", color: muted, whiteSpace: "pre-wrap", fontSize: compact ? 13 : 15, lineHeight: compact ? 1.6 : 1.75 }}><InlineMarkdown text={block} inverse={inverse} /></p>;
+  })}</>;
+}
+
 function ArtifactDocument({ content }: { content: string }) {
-  return <article style={{ margin: "22px 0", padding: "clamp(18px, 4vw, 34px)", borderRadius: 14, background: "linear-gradient(135deg, #fffdf7, #f8fafc)", color: "#1e293b", boxShadow: "0 14px 40px rgba(15,23,42,.1)", fontFamily: "Georgia, 'Times New Roman', serif" }}>{content.split(/\n{2,}/).map((block, index) => {
-    const text = block.trim();
-    if (!text) return null;
-    if (text.startsWith("## ")) return <h2 key={index} style={{ margin: index ? "30px 0 12px" : "0 0 12px", paddingBottom: 8, borderBottom: "1px solid #dbe3ea", color: "#0f172a", fontSize: 21 }}>{text.slice(3)}</h2>;
-    if (text.startsWith("# ")) return <h1 key={index} style={{ margin: "0 0 16px", color: "#0f172a", fontSize: 28 }}>{text.slice(2)}</h1>;
-    if (text.split("\n").every(line => line.startsWith("- "))) return <ul key={index} style={{ margin: "12px 0", paddingLeft: 22, lineHeight: 1.75 }}>{text.split("\n").map(line => <li key={line}>{line.slice(2)}</li>)}</ul>;
-    return <p key={index} style={{ margin: "0 0 15px", whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.75 }}>{text}</p>;
-  })}</article>;
+  return <article style={{ margin: "22px 0", padding: "clamp(18px, 4vw, 34px)", borderRadius: 14, background: "linear-gradient(135deg, #fffdf7, #f8fafc)", color: "#1e293b", boxShadow: "0 14px 40px rgba(15,23,42,.1)", fontFamily: "Georgia, 'Times New Roman', serif" }}><MarkdownDocument content={content} /></article>;
 }
 
 function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: CompanyHomeSquad; deleting: boolean; onDelete: () => void; onOpenWorkbench: () => void }) {
@@ -335,8 +360,8 @@ export default function CompanyHome() {
                         </div>
                       </div>
                     ) : (
-                      <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
-                        {turn.message}
+                      <div style={{ maxWidth: "84%", padding: "10px 13px", borderRadius: 10, background: isFounder ? "var(--accent)" : "var(--bg-surface)", color: isFounder ? "#fff" : "var(--fg)", border: isFounder ? "none" : "1px solid var(--bd)", opacity: busy ? 0.6 : 1 }}>
+                        <MarkdownDocument content={turn.message} compact inverse={isFounder} />
                         {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
                       </div>
                     )}

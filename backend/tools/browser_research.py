@@ -296,6 +296,7 @@ _TOPIC_NOISE_PATTERNS = (
 )
 
 _ENTITY_PROFILE_PREFIX = re.compile(r"^(?:what|who)\s+is\s+", re.IGNORECASE)
+_COMPARISON_PATTERN = re.compile(r"\bcompare\s+(.+?)\s+(?:to|with|vs\.?|versus)\s+(.+?)(?:[?.!]|$)", re.IGNORECASE)
 
 
 def _is_entity_profile_request(topic: str) -> bool:
@@ -307,6 +308,15 @@ def _is_entity_profile_request(topic: str) -> bool:
     corroboration first.
     """
     return bool(_ENTITY_PROFILE_PREFIX.match((topic or "").strip()))
+
+
+def _comparison_subjects(topic: str) -> tuple[str, str] | None:
+    """Extract the two explicit subjects from a founder comparison request."""
+    match = _COMPARISON_PATTERN.search((topic or "").strip())
+    if not match:
+        return None
+    left, right = (part.strip(" ,? ") for part in match.groups())
+    return (left, right) if left and right else None
 
 
 def _normalize_focus(focus: str) -> str:
@@ -455,7 +465,18 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = _RESE
     normalized_focus = _normalize_focus(focus)
     resource_topic = _resource_search_topic(clean_topic, normalized_focus)
     entity_subject = _ENTITY_PROFILE_PREFIX.sub("", clean_topic).strip(" ?")
-    if _is_entity_profile_request(clean_topic) and entity_subject:
+    comparison = _comparison_subjects(clean_topic)
+    if comparison:
+        left, right = comparison
+        queries = [
+            f"{left} pricing plans official",
+            f"{right} pricing plans official",
+            f"{left} product features target customers official",
+            f"{right} product features target customers official",
+            f"{left} terms privacy security official",
+            f"{right} terms privacy security official",
+        ]
+    elif _is_entity_profile_request(clean_topic) and entity_subject:
         queries = [
             f"{entity_subject} official website company about product",
             f"{entity_subject} funding investors company profile",

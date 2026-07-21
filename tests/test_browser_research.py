@@ -141,6 +141,14 @@ def test_entity_profile_queries_prioritize_the_named_company():
     assert any("funding investors" in query for query in plan["queries"])
 
 
+def test_comparison_queries_collect_evidence_for_both_named_products():
+    plan = browser_research.build_research_queries("Compare Cofounder.co to AstraCreates.com", focus="market")
+
+    assert plan["queries"][:2] == ["Cofounder.co pricing plans official", "AstraCreates.com pricing plans official"]
+    assert any("Cofounder.co terms privacy" in query for query in plan["queries"])
+    assert any("AstraCreates.com terms privacy" in query for query in plan["queries"])
+
+
 def test_compact_research_evidence_prefers_late_relevant_numeric_sections():
     content = (
         ("Intro filler about generic collaboration workflows without specifics. " * 50)

@@ -180,16 +180,35 @@ Their question: "{mission_name}"
 The document you produced ("{doc_name}"):
 {content[:6000]}
 
-Write a short, natural, first-person chat reply (3-5 sentences) that actually answers their question using the real findings above -- specific facts and numbers, not a restatement of the document's structure or headings. End by pointing them to "{doc_name}" if they want the full write-up. No headers, no bullet lists, no generic disclaimers about hypotheses or validating before scaling unless the evidence genuinely warrants that specific caveat.
+Write a concise, polished markdown update that actually answers their question using the real findings above. Use this exact shape:
+- One direct opening sentence.
+- 2-4 short bullet points with the most decision-relevant facts, numbers, or caveats.
+- One final sentence linking them to "{doc_name}" for the full write-up.
+
+Never repeat the document's headings or raw research queries. Do not make generic disclaimers unless the evidence genuinely warrants that caveat. Every sentence must end cleanly; do not stop mid-thought.
 
 Respond with ONLY the reply text, nothing else, no quotes around it."""
-        reply = generate(prompt, model="fast", max_tokens=400, temperature=0.5).strip().strip('"')
-        if reply:
+        reply = generate(prompt, model="fast", max_tokens=700, temperature=0.35).strip().strip('"')
+        if _complete_chat_reply(reply):
             return reply
     except Exception:
         logger.warning("Chat-reply synthesis failed for mission=%r", mission_name, exc_info=True)
-    excerpt = content[:500].strip()
-    return f"I finished looking into {mission_name.lower()}. Here's a start:\n\n{excerpt}\n\nFull write-up is in \"{doc_name}\" if you want more detail."
+    summary = _fallback_summary(content)
+    return f"I finished looking into {mission_name.lower()}.\n\n{summary}\n\nFull write-up: **{doc_name}**."
+
+
+def _complete_chat_reply(reply: str) -> bool:
+    """Never surface a provider response that stopped in the middle of a thought."""
+    compact = " ".join(reply.split())
+    return len(compact) >= 80 and compact[-1:] in {".", "!", "?"} and len(compact) <= 3_000
+
+
+def _fallback_summary(content: str) -> str:
+    """Keep a provider hiccup useful without dumping arbitrary raw text into chat."""
+    blocks = [block.strip() for block in content.split("\n\n") if block.strip() and not block.strip().startswith("#")]
+    first = next((block for block in blocks if len(block) >= 40), "The completed brief contains the available findings and caveats.")
+    sentence = first.split(". ", 1)[0].rstrip(".") + "."
+    return f"- {sentence}"
 
 
 def _synthesis(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:
@@ -217,6 +236,9 @@ def _synthesize_document(mission_name: str, evidence: Mapping[str, Any], *, purp
     raw = str(evidence.get("content") or evidence.get("combined_formatted") or "").strip() or "No evidence content was captured."
     source_refs = evidence.get("source_references") or evidence.get("sources") or []
     source_lines = [f"- {source.get('title') or 'Source'}: {source.get('url') or ''}" for source in source_refs[:12] if isinstance(source, Mapping)]
+    comparison = _is_comparison_request(mission_name)
+    comparison_requirements = """\n- This is a comparison. Include a compact markdown table with these rows: Product and target user, Core workflow, Pricing and packaging, Evidence and maturity, Privacy/compliance signals, and Key uncertainty. Use the two products as columns.
+- Directly answer which option is better for the founder's stated goal, and why. If the evidence does not establish a fact, write "Not verified from available public evidence" rather than guessing.\n""" if comparison else ""
     prompt = f"""You are a sharp research analyst {purpose} for a founder inside Astra.
 
 The founder's actual question: "{mission_name}"
@@ -234,6 +256,7 @@ Write a genuinely useful markdown document that answers the founder's actual que
 - Never repeat the raw sub-query headers verbatim (e.g. "X market size TAM SAM SOM 2025 report statistics") or paste sub-query blocks one after another -- synthesize across all of them into one coherent piece of writing.
 - Aim for 400-900 words of real substance -- long enough to be genuinely useful, never padded with filler.
 - End with a "## Bottom line" section: one specific, actionable takeaway grounded in what was actually found here. Never a generic template like "validate before scaling spend" unless the evidence specifically points there.
+{comparison_requirements}
 
 Respond with ONLY this JSON object, no prose, no markdown fence:
 {{"title": "<a specific, concrete 4-9 word document title -- never generic labels like \\"Decision brief\\" or \\"Research synthesis\\">", "content": "<the full markdown document>"}}"""
@@ -247,6 +270,11 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
     except Exception:
         logger.warning("Document synthesis failed for mission=%r, falling back to raw excerpt", mission_name, exc_info=True)
     return fallback_title, f"## {fallback_title}\n\n{raw[:8000]}"
+
+
+def _is_comparison_request(value: str) -> bool:
+    lowered = value.lower()
+    return "compare" in lowered or " vs " in lowered or " versus " in lowered
 
 
 def _short_title(text: str, limit: int = 60) -> str:

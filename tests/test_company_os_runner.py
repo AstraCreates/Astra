@@ -3,12 +3,20 @@ import pytest
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_runner import run_mission
+from backend.company_os_runner import _complete_chat_reply, _fallback_summary, _is_comparison_request
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
     if json_mode:
         return '{"title": "AI Consulting Viability Brief", "content": "## Direct answer\\n\\nDemand exists, but differentiation and specialist credibility are the real risk.\\n\\n## Bottom line\\nNarrow to one vertical before selling."}'
     return "Demand's there for AI consulting, but differentiation and specialist credibility are the real risk. Full write-up is in the brief if you want more."
+
+
+def test_chat_reply_rejects_a_cutoff_provider_response_and_has_a_clean_fallback():
+    assert not _complete_chat_reply("Cofounder has a free")
+    assert _complete_chat_reply("Cofounder has a free trial.\n\n- Astra has a setup fee.")
+    assert _fallback_summary("## Context\n\nAstra is aimed at founders building an operating system.").endswith(".")
+    assert _is_comparison_request("Compare Cofounder.co to AstraCreates.com")
 
 
 @pytest.mark.asyncio
