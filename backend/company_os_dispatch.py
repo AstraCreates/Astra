@@ -185,14 +185,19 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
     scored.sort(reverse=True)
     score, matched, department, load = scored[0]
     primary_capability = request.get("primary_capability")
+    primary_resolved = False
     if isinstance(primary_capability, str):
         primary_candidates = [entry for entry in scored if primary_capability in CAPABILITY_REGISTRY[entry[2]]["capabilities"]]
         if primary_candidates:
             score, matched, department, load = primary_candidates[0]
+            primary_resolved = True
     # Research is a first-class department capability. If the planner emits a
-    # research/evidence capability, never let a tie or missing primary field
-    # fall through to the Company Operations default.
-    if required & {"research", "evidence research", "competitive analysis", "compare"}:
+    # research/evidence capability with no explicit primary_capability to
+    # steer routing instead, never let a tie or missing primary field fall
+    # through to the Company Operations default. An explicit primary_capability
+    # (e.g. "website" on a research-informed website request) still wins --
+    # research becomes a supporting handoff, not the lead, in that case.
+    if not primary_resolved and required & {"research", "evidence research", "competitive analysis", "compare"}:
         department = "research"
         profile = CAPABILITY_REGISTRY[department]
         matched = len(required & set(profile["capabilities"]))
