@@ -44,6 +44,8 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     append_message(company_id, reply, author="copilot", role="assistant",
                    scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="chat")
     launch_mission(company_id, dispatch["mission"]["mission_id"])
+    for handoff in dispatch.get("handoff_missions", []):
+        launch_mission(company_id, handoff["mission_id"])
     return {"message": reply, "dispatch": dispatch}
 
 

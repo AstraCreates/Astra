@@ -31,6 +31,18 @@ def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch)
     assert route["department"] == "research"
 
 
+def test_multi_capability_request_forms_a_real_handoff_squad(monkeypatch):
+    dispatch, store = _dispatch(monkeypatch)
+    monkeypatch.setattr(dispatch, "infer_work_request", lambda _intent: {
+        "version": 1, "outcome": "Compare products and build a website", "deliverables": [], "constraints": [], "entities": [],
+        "risk": "internal", "primary_capability": "website", "required_capabilities": ["compare", "research", "website"], "confidence": 0.95, "requires_triage": False,
+    })
+    result = dispatch.dispatch_intent("co", "Compare products and build a website")
+
+    assert result["department"] == "product_technical"
+    assert [mission["department"] for mission in result["handoff_missions"]] == ["research"]
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}

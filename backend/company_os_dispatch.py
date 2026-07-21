@@ -9,9 +9,12 @@ from __future__ import annotations
 import hashlib
 import importlib
 import inspect
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
+
+logger = logging.getLogger(__name__)
 
 
 CAPABILITY_REGISTRY: dict[str, dict[str, Any]] = {
@@ -107,32 +110,38 @@ def infer_work_request(intent: str) -> dict[str, Any]:
 
 def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     """Use the planner to describe work, then validate it against local capabilities."""
-    try:
-        from backend.tools._llm import generate, parse_json_response
-        catalog = {head: sorted(profile["capabilities"]) for head, profile in CAPABILITY_REGISTRY.items()}
-        raw = generate(
-            f"""Extract a compact work request for an AI company operating system.
+    from backend.tools._llm import generate, parse_json_response
+    catalog = {head: sorted(profile["capabilities"]) for head, profile in CAPABILITY_REGISTRY.items()}
+    prompt = f"""Extract a compact work request for an AI company operating system.
 Founder message: {intent!r}
 Available capabilities: {catalog}
-Return JSON only: {{\"outcome\": string, \"deliverables\": [string], \"constraints\": [string], \"entities\": [string], \"required_capabilities\": [exact capabilities from the catalog], \"confidence\": number 0-1}}.
-Requests to compare products require the compare and research capabilities. Website requests require website delivery or website. Do not invent capabilities.""",
-            model="fast", json_mode=True, max_tokens=500, temperature=0.1,
-        )
-        payload = parse_json_response(raw)
-        known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
-        capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
-        confidence = float(payload.get("confidence", 0) or 0)
-        if not capabilities or confidence < 0.45:
-            return None
-        return {"version": 1, "outcome": str(payload.get("outcome") or intent).strip(),
-                "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
-                "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
-                "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
-                "risk": "internal", "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
-                "requires_triage": False}
-    except Exception:
-        return None
-
+Return JSON only: {{"outcome": string, "deliverables": [string], "constraints": [string], "entities": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "confidence": number 0-1}}.
+Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities."""
+    known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
+    failures: list[str] = []
+    # The strict instruction model is materially more reliable for a small
+    # schema than the chat/fast model. Retry once rather than silently sending
+    # a clear request into Operations because a provider emitted malformed JSON.
+    for model in ("instruct", "large"):
+        try:
+            raw = generate(prompt, model=model, json_mode=True, max_tokens=650, temperature=0.0)
+            payload = parse_json_response(raw)
+            capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
+            confidence = float(payload.get("confidence", 0) or 0)
+            if not capabilities or confidence < 0.45:
+                failures.append(f"{model}: insufficient validated capabilities")
+                continue
+            return {"version": 1, "outcome": str(payload.get("outcome") or intent).strip(),
+                    "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
+                    "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
+                    "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
+                    "risk": "internal", "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
+                    "requires_triage": False, "router_model": model,
+                    "primary_capability": payload.get("primary_capability") if payload.get("primary_capability") in known else None}
+        except Exception as exc:
+            failures.append(f"{model}: {type(exc).__name__}")
+    logger.warning("Semantic work-request extraction failed: %s", "; ".join(failures))
+    return None
 
 def _active_load(company: Mapping[str, Any], department: str) -> int:
     return sum(1 for squad in company.get("squads", []) if squad.get("department") == department and squad.get("state") in {"active", "working", "review"})
@@ -148,14 +157,19 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         scored.append((score, capability_score, department, load))
     scored.sort(reverse=True)
     score, matched, department, load = scored[0]
+    primary_capability = request.get("primary_capability")
+    if isinstance(primary_capability, str):
+        primary_candidates = [entry for entry in scored if primary_capability in CAPABILITY_REGISTRY[entry[2]]["capabilities"]]
+        if primary_candidates:
+            score, matched, department, load = primary_candidates[0]
     profile = CAPABILITY_REGISTRY[department]
     triage = bool(request.get("requires_triage")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     if triage:
         department = _DEFAULT_DEPARTMENT
         profile = CAPABILITY_REGISTRY[department]
-    handoffs = [entry[2] for entry in scored[1:] if entry[1] > 0 and entry[2] != department][:2]
+    handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
-            "load": load, "requires_triage": triage, "director": department, "handoffs": handoffs}
+            "load": load, "requires_triage": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
 
 
 def choose_department(intent: str) -> tuple[str, str]:
@@ -172,7 +186,7 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
         titles = ["Clarify the requested outcome and required capabilities"]
     elif {"website", "landing page", "website delivery", "local preview"} & capabilities:
         titles = ["Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval"]
-    elif "evidence research" in capabilities or "competitive analysis" in capabilities:
+    elif {"research", "compare", "evidence research", "competitive analysis"} & capabilities:
         titles = ["Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief"]
     else:
         titles = ["Define acceptance criteria and constraints", "Create a reviewable local deliverable", "Review outcome and next actions"]
@@ -285,8 +299,28 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         if policy["decision"] == "require_approval":
             _create_approval_card(company_id, task, policy)
         created_tasks.append(task)
+    handoff_missions = []
+    # A handoff is real work, not a label on the primary mission. Form a
+    # bounded sibling squad under the same initiative so its lead owns the
+    # work and Copilot can report one integrated initiative outcome.
+    for handoff_department in route.get("handoffs", []):
+        profile = CAPABILITY_REGISTRY[handoff_department]
+        handoff_squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=profile["squad"],
+                              department=handoff_department, capabilities=sorted(profile["capabilities"]), lead=handoff_department, lifecycle="formed")
+        handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id,
+                                squad_id=_entity_id(handoff_squad, "squad_id"), name=f"{profile['squad']} support: {intent}",
+                                department=handoff_department, state="active", initiative_director=route["director"], handoff_for=mission_id)
+        for spec in specialist_task_plan(handoff_department, intent, request=work_request):
+            policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
+            task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=_entity_id(handoff_squad, "squad_id"),
+                         mission_id=_entity_id(handoff_mission, "mission_id"), name=spec["title"], description=spec["description"],
+                         department=handoff_department, operation=spec["operation"], state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
+            _record_policy(company_id, task, policy)
+            if policy["decision"] == "require_approval":
+                _create_approval_card(company_id, task, policy)
+        handoff_missions.append(handoff_mission)
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
-            "work_request": work_request, "routing": route}
+            "work_request": work_request, "routing": route, "handoff_missions": handoff_missions}
 
 
 def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[Mapping[str, Any]], Any], *,
