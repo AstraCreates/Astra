@@ -1,8 +1,11 @@
+import contextlib
+
 import pytest
 
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
-from backend.company_os_runner import run_mission
+from backend.company_os_dispatch import _existing_attempt
+from backend.company_os_runner import recover_pending_missions, run_mission
 from backend.company_os_runner import _comparison_document, _complete_chat_reply, _decision_brief, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
 
 
@@ -17,6 +20,59 @@ def test_chat_reply_rejects_a_cutoff_provider_response_and_has_a_clean_fallback(
     assert _complete_chat_reply("Cofounder has a free trial for founders testing the product.\n\n- Astra has a setup fee before a founder can begin using the product.")
     assert _fallback_summary("## Context\n\nAstra is aimed at founders building an operating system.").endswith(".")
     assert _is_comparison_request("Compare Cofounder.co to AstraCreates.com")
+
+
+def test_failed_attempts_are_retryable_but_active_attempts_are_idempotent():
+    attempts = [
+        {"idempotency_key": "research", "state": "failed"},
+        {"idempotency_key": "active", "state": "running"},
+    ]
+    assert _existing_attempt({"task_attempts": attempts}, "research") is None
+    assert _existing_attempt({"task_attempts": attempts}, "active")["state"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch):
+    company = {
+        "company_id": "acme",
+        "missions": [{"mission_id": "mission-1", "state": "working"}],
+        "tasks": [{
+            "task_id": "task-1",
+            "mission_id": "mission-1",
+            "name": "Deep research",
+            "state": "working",
+            "updated_at": "2020-01-01T00:00:00Z",
+        }],
+        "task_attempts": [{"attempt_id": "attempt-1", "task_id": "task-1", "state": "running"}],
+    }
+    updates = []
+    attempt_updates = []
+    messages = []
+    launches = []
+
+    class _Settings:
+        company_os_stale_task_seconds = 60
+
+    monkeypatch.setattr("backend.config.settings", _Settings())
+    monkeypatch.setattr("backend.company_os_runner.list_company_os", lambda: [company])
+    monkeypatch.setattr("backend.company_os_runner.company_recovery_lock", lambda *_args, **_kwargs: contextlib.nullcontext())
+    monkeypatch.setattr("backend.company_os_runner.get_company_os", lambda *_args, **_kwargs: company)
+    monkeypatch.setattr("backend.company_os_runner.update_task", lambda *args, **kwargs: updates.append((args, kwargs)))
+    monkeypatch.setattr("backend.company_os_runner.update_task_attempt", lambda *args, **kwargs: attempt_updates.append((args, kwargs)))
+    monkeypatch.setattr("backend.company_os_runner.append_message", lambda *args, **kwargs: messages.append((args, kwargs)))
+    async def _run_recovered(company_id, mission_id):
+        launches.append((company_id, mission_id))
+    monkeypatch.setattr("backend.company_os_runner.run_mission", _run_recovered)
+    monkeypatch.setattr("backend.company_os_runner.launch_mission", lambda company_id, mission_id: launches.append((company_id, mission_id)) or True)
+
+    assert await recover_pending_missions() == 1
+    assert updates[0][0] == ("acme", "task-1")
+    assert updates[0][1]["state"] == "pending"
+    assert updates[0][1]["recovery_reason"] == "stale_working_task_after_process_restart"
+    assert attempt_updates[0][0] == ("acme", "attempt-1")
+    assert attempt_updates[0][1]["error"] == "orphaned_after_process_restart"
+    assert launches == [("acme", "mission-1")]
+    assert "Recovered stalled work" in messages[0][0][1]
 
 
 def test_comparison_document_never_recommends_with_unbalanced_evidence():

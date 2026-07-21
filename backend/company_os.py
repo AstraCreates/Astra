@@ -91,6 +91,11 @@ def get_company_os(company_id: str, *, root: str | Path | None = None) -> dict[s
         return state
 
 
+def company_recovery_lock(company_id: str, *, root: str | Path | None = None):
+    """Return the cross-worker lock used while recovering one company."""
+    return cross_process_file_lock(_company_dir(company_id, root) / ".recovery.lock")
+
+
 def list_company_os(founder_id: str | None = None, *, root: str | Path | None = None) -> list[dict[str, Any]]:
     base = _root(root)
     if not base.exists():

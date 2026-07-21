@@ -5,15 +5,19 @@ import asyncio
 import html
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from backend.company_os import (
     append_message,
+    company_recovery_lock,
     create_artifact,
     get_company_os,
     list_company_os,
     reconcile_initiatives,
     update_mission,
+    update_task,
+    update_task_attempt,
     update_artifact,
     update_squad,
 )
@@ -100,14 +104,65 @@ async def run_mission(company_id: str, mission_id: str) -> None:
 
 
 async def recover_pending_missions() -> int:
-    """Resume policy-approved work after a process restart from local Company OS state."""
+    """Resume policy-approved work after a process restart from local Company OS state.
+
+    A process can die after persisting ``working`` but before its in-memory
+    asyncio task finishes. Those records used to remain working forever,
+    because recovery only considered pending tasks. Reset only records older
+    than the bounded stale threshold so a genuinely active deep-research pass
+    is not duplicated.
+    """
+    from backend.config import settings
+
+    def is_stale(task: Mapping[str, Any]) -> bool:
+        if task.get("state") != "working":
+            return False
+        timestamp = str(task.get("updated_at") or task.get("started_at") or "")
+        try:
+            updated = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - updated).total_seconds() >= max(60, int(settings.company_os_stale_task_seconds))
+
     recovered = 0
     for company in await asyncio.to_thread(list_company_os):
         for mission in company.get("missions", []):
             if mission.get("state") not in {"active", "working", "review"}:
                 continue
-            if any(task.get("state") in {"pending", "scheduled"} for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")):
-                recovered += int(launch_mission(company["company_id"], mission["mission_id"]))
+            mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
+            stale_tasks = [task for task in mission_tasks if is_stale(task)]
+            pending_tasks = [task for task in mission_tasks if task.get("state") in {"pending", "scheduled"}]
+            if stale_tasks or pending_tasks:
+                # Startup runs once per web worker. Re-read under a shared
+                # company lock so only one worker can claim and execute an
+                # orphaned or previously re-queued task; the other workers
+                # observe the fresh state.
+                with company_recovery_lock(company["company_id"]):
+                    current = get_company_os(company["company_id"]) or {}
+                    current_mission = _find(current.get("missions", []), "mission_id", mission["mission_id"])
+                    current_tasks = [task for task in current.get("tasks", []) if task.get("mission_id") == mission["mission_id"]]
+                    current_stale = [task for task in current_tasks if is_stale(task)]
+                    current_pending = [task for task in current_tasks if task.get("state") in {"pending", "scheduled"}]
+                    if not current_mission or not current_stale and not current_pending:
+                        continue
+                    for task in [*current_stale, *current_pending]:
+                        for attempt in current.get("task_attempts", []):
+                            if attempt.get("task_id") != task.get("task_id") or attempt.get("state") != "running":
+                                continue
+                            update_task_attempt(company["company_id"], attempt["attempt_id"], state="failed",
+                                                error="orphaned_after_process_restart", transient=True,
+                                                finished_at=datetime.now(timezone.utc).isoformat())
+                    for task in current_stale:
+                        update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
+                                    recovery_reason="stale_working_task_after_process_restart")
+                        append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
+                                       author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+                    # Await instead of using fire-and-forget startup work so
+                    # the claim and first attempt cannot be lost.
+                    await run_mission(company["company_id"], mission["mission_id"])
+                    recovered += 1
     return recovered
 
 
