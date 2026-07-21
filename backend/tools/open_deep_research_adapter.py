@@ -47,6 +47,14 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
         # only replace the worker's external research surface.
         return [tool(ResearchComplete), think_tool, astra_company_research]
 
+    # Headroom is the right transport for Astra's normal model lanes, but its
+    # LiteLLM provider map does not understand the upstream graph's
+    # ``openai:deepseek/...`` provider notation. Keep this profile isolated and
+    # use the OpenRouter-compatible endpoint directly.
+    configured_base = str(settings.openrouter_base_url or "")
+    research_base = ("https://openrouter.ai/api/v1"
+                     if "headroom" in configured_base.lower()
+                     else configured_base)
     profile_env = {
         "OPENAI_API_KEY": _or_api_key(),
         "OPENAI_BASE_URL": research_base,
@@ -62,14 +70,6 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
         "ALLOW_CLARIFICATION": "false",
     }
     previous_env = {name: os.environ.get(name) for name in profile_env}
-    # Headroom is the right transport for Astra's normal model lanes, but its
-    # LiteLLM provider map does not understand the upstream graph's
-    # ``openai:deepseek/...`` provider notation. Keep this profile isolated and
-    # use the OpenRouter-compatible endpoint directly.
-    configured_base = str(settings.openrouter_base_url or "")
-    research_base = ("https://openrouter.ai/api/v1"
-                     if "headroom" in configured_base.lower()
-                     else configured_base)
     os.environ.update(profile_env)
     await asyncio.to_thread(_GRAPH_PATCH_LOCK.acquire)
     try:
