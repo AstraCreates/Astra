@@ -300,15 +300,16 @@ export default function CompanyHome() {
   };
 
   const submitToCopilot = async (value: string) => {
+    setMessage("");
     setSending(true);
     setNotice("Copilot is forming a squad and briefing the department lead...");
     try {
       const result = await sendCopilotMessage({ founderId, companyId }, value);
       setHome(result.data);
       setNotice(result.message);
-      setMessage("");
     } catch {
       setNotice("Copilot could not reach Company OS. Your message was not lost locally.");
+      setMessage(value);
     } finally {
       setSending(false);
     }
