@@ -104,6 +104,20 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     model_request = _extract_work_request_with_model(intent)
     if model_request is not None:
         return model_request
+    # Last-resort deterministic recovery is limited to explicit outcome words;
+    # it prevents a planner/provider hiccup from turning a self-contained
+    # research request into an unnecessary founder clarification.
+    lowered = intent.lower()
+    if any(term in lowered for term in ("research", "compare", "viability", "competitive analysis", "evidence")):
+        capabilities = {"research", "evidence research"}
+        if "compare" in lowered or " versus " in lowered or " vs " in lowered:
+            capabilities.add("compare")
+        return {"version": 1, "objective": intent.strip(), "outcome": intent.strip(),
+                "deliverables": ["validated research brief"], "acceptance_criteria": ["cited evidence"],
+                "constraints": [], "entities": [], "dependencies": [], "risk": "internal",
+                "required_capabilities": sorted(capabilities), "primary_capability": "research",
+                "confidence": 0.72, "requires_clarification": False, "clarification_question": None,
+                "clarification_options": None, "triage_reason": "explicit_research_recovery"}
     return {"version": 1, "objective": intent.strip(), "outcome": intent.strip(), "deliverables": [],
             "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
             "risk": "internal", "required_capabilities": [], "primary_capability": None, "confidence": 0.0,
