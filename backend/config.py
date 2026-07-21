@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     deep_research_model: str = "deepseek/deepseek-v4-flash"
     deep_research_max_attempts: int = 2
     deep_research_backoff_seconds: float = 1.0
+    deep_research_timeout_seconds: int = 900
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.

@@ -34,6 +34,19 @@ def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, m
             "sources": [{"url": "https://example.com/a", "retrieved_at": "2026-07-21T00:00:00Z"},
                         {"url": "https://example.org/b", "retrieved_at": "2026-07-21T00:00:00Z"}],
         }
+    # The public Company OS research boundary is deep research. The old
+    # batch pipeline is only used by delegated worker calls.
+    async def fake_deep(topic, **scope):
+        assert scope["task_id"] == "t1"
+        return {
+            "combined_formatted": "evidence", "queries_run": 3,
+            "search_count": 3,
+            "sources": [{"url": "https://example.com/a", "retrieved_at": "2026-07-21T00:00:00Z"},
+                        {"url": "https://example.org/b", "retrieved_at": "2026-07-21T00:00:00Z"}],
+            "structured": {"evidence": [{"claim": "supported"}]},
+            "coverage": {"ready": True, "gaps": []},
+        }
+    monkeypatch.setattr("backend.tools.open_deep_research_adapter.run_open_deep_research", fake_deep)
     monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
 
     result = mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "instacart", "task_id": "t1"})
@@ -41,6 +54,37 @@ def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, m
     assert result["ok"] is True
     updated_task = next(item for item in company_os.get_company_os("co")["tasks"] if item["task_id"] == "t1")
     assert updated_task["search_count"] == 3
+
+
+def test_deep_worker_uses_quick_pipeline_without_recursing_into_supervisor(tmp_path, monkeypatch):
+    from backend import company_os
+    import backend.astra_mcp as mcp
+
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("co", "founder", "Company")
+    calls = []
+
+    def fake_pipeline(topic, *, focus, max_results_each, on_search=None):
+        calls.append(topic)
+        return {
+            "combined_formatted": "worker evidence", "queries_run": 1,
+            "sources": [{"url": "https://example.com/worker", "retrieved_at": "2026-07-21T00:00:00Z"}],
+            "structured": {"evidence": [{"claim": "worker claim"}]},
+        }
+
+    monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
+    monkeypatch.setattr(
+        "backend.tools.open_deep_research_adapter.run_open_deep_research",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("worker recursed into supervisor")),
+    )
+
+    result = mcp._company_research({
+        "company_id": "co", "founder_id": "founder", "subject": "pricing evidence",
+        "task_id": "t1", "deep_worker": True,
+    })
+    assert result["ok"] is True
+    assert calls == ["pricing evidence"]
 
 
 def test_company_mcp_bridge_audits_registered_tool(monkeypatch):

@@ -346,7 +346,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "astra_company_research",
         "description": "Run guarded, evidence-gated deep research for a Company OS Research squad. Quick lookup tools remain separate.",
-        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "task_id": {"type": "string"}, "mission_id": {"type": "string"}, "squad_id": {"type": "string"}, "initiative_id": {"type": "string"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
+        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "task_id": {"type": "string"}, "mission_id": {"type": "string"}, "squad_id": {"type": "string"}, "initiative_id": {"type": "string"}, "deep_worker": {"type": "boolean", "default": False}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
     },
     {
         "name": "astra_company_tool_catalog",
@@ -612,6 +612,7 @@ def _company_research(args: dict) -> dict:
     from backend.tools.research_evidence import validate_deep_research
     from backend.config import settings
     import time
+    import asyncio
     company = get_company_os(str(args["company_id"]))
     if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
         return {"ok": False, "error": "Company not found"}
@@ -632,10 +633,24 @@ def _company_research(args: dict) -> dict:
     for attempt_number in range(max(1, int(settings.deep_research_max_attempts))):
         started = time.perf_counter()
         try:
-            evidence = (run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
-                        else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search))
+            # Research squads use the actual Open Deep Research supervisor;
+            # quick lookup callers never enter this Company OS entrypoint.
+            if not args.get("deep_worker"):
+                from backend.tools.open_deep_research_adapter import run_open_deep_research
+                evidence = asyncio.run(run_open_deep_research(
+                    subject, company_id=company_id, initiative_id=args.get("initiative_id"),
+                    squad_id=args.get("squad_id"), mission_id=args.get("mission_id"), task_id=task_id,
+                ))
+            else:
+                evidence = (run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
+                            else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search))
             if task_id:
                 evidence.setdefault("search_count", counter.get("n", 0))
+                try:
+                    from backend.company_os import update_task
+                    update_task(company_id, str(task_id), search_count=int(evidence.get("search_count") or 0))
+                except Exception:
+                    pass
             validation = validate_deep_research(evidence)
             metadata = {"profile": "company_os_deep_research", "model": settings.deep_research_model,
                         "provider": settings.deep_research_model.split("/", 1)[0],
