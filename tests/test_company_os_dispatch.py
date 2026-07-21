@@ -11,6 +11,18 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan()
     ]
 
 
+def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch):
+    from backend.company_os_dispatch import infer_work_request, route_work_request
+
+    monkeypatch.setattr("backend.company_os_dispatch._extract_work_request_with_model", lambda _intent: None)
+    request = infer_work_request("comparre cofounder.co and astracreates.com")
+    route = route_work_request({}, request)
+
+    assert request["requires_triage"] is False
+    assert "compare" in request["required_capabilities"]
+    assert route["department"] == "research"
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}

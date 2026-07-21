@@ -10,12 +10,13 @@ import hashlib
 import importlib
 import inspect
 import re
+from difflib import get_close_matches
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 
 CAPABILITY_REGISTRY: dict[str, dict[str, Any]] = {
-    "research": {"squad": "Insights", "capabilities": {"research", "evidence research", "market analysis", "competitive analysis", "synthesis"}, "capacity": 3},
+    "research": {"squad": "Insights", "capabilities": {"research", "compare", "evidence research", "market analysis", "competitive analysis", "synthesis"}, "capacity": 3},
     "marketing": {"squad": "Growth", "capabilities": {"positioning", "campaign development", "audience strategy", "content"}, "capacity": 3},
     "sales": {"squad": "Revenue", "capabilities": {"pipeline strategy", "account research", "sales materials", "outreach drafting"}, "capacity": 3},
     "product_technical": {"squad": "Product Delivery", "capabilities": {"product delivery", "software engineering", "website", "landing page", "website delivery", "local preview", "technical architecture"}, "capacity": 3},
@@ -103,6 +104,14 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     deterministic and safe during model outages.
     """
     words = _tokens(intent)
+    model_request = _extract_work_request_with_model(intent)
+    if model_request is not None:
+        return model_request
+    capability_tokens = {token for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"] for token in _tokens(capability)}
+    # Misspellings should not turn an otherwise clear work request into a
+    # blocked "clarify" task. This normalizes only toward declared
+    # capabilities, never toward arbitrary intent phrases.
+    words = {get_close_matches(word, capability_tokens, n=1, cutoff=0.82)[0] if get_close_matches(word, capability_tokens, n=1, cutoff=0.82) else word for word in words}
     matches: list[tuple[int, str, set[str]]] = []
     for department, profile in CAPABILITY_REGISTRY.items():
         # Composite labels need at least two matching words. This stops the
@@ -119,6 +128,43 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     return {"version": 1, "outcome": intent.strip(), "deliverables": [], "constraints": [], "entities": [],
             "risk": "internal", "required_capabilities": required, "confidence": confidence,
             "requires_triage": not matches}
+
+
+def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
+    """Use the planner to describe work, then validate it against local capabilities."""
+    try:
+        from backend.tools._llm import generate, parse_json_response
+        catalog = {head: sorted(profile["capabilities"]) for head, profile in CAPABILITY_REGISTRY.items()}
+        raw = generate(
+            f"""Extract a compact work request for an AI company operating system.
+Founder message: {intent!r}
+Available capabilities: {catalog}
+Return JSON only: {{\"outcome\": string, \"deliverables\": [string], \"constraints\": [string], \"entities\": [string], \"required_capabilities\": [exact capabilities from the catalog], \"confidence\": number 0-1}}.
+Requests to compare products require the compare and research capabilities. Website requests require website delivery or website. Do not invent capabilities.""",
+            model="fast", json_mode=True, max_tokens=500, temperature=0.1,
+        )
+        payload = parse_json_response(raw)
+        known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
+        capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
+        # Preserve unambiguous declared capability words found in the request
+        # so a planner cannot accidentally drop "website" while focusing on a
+        # secondary comparison or research deliverable.
+        message_words = _tokens(intent)
+        capabilities.update(
+            capability for capability in known
+            if len(_tokens(capability)) == 1 and _tokens(capability) & message_words
+        )
+        confidence = float(payload.get("confidence", 0) or 0)
+        if not capabilities or confidence < 0.45:
+            return None
+        return {"version": 1, "outcome": str(payload.get("outcome") or intent).strip(),
+                "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
+                "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
+                "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
+                "risk": "internal", "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
+                "requires_triage": False}
+    except Exception:
+        return None
 
 
 def _active_load(company: Mapping[str, Any], department: str) -> int:
