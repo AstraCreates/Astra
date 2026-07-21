@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     deep_research_max_attempts: int = 2
     deep_research_backoff_seconds: float = 1.0
     deep_research_timeout_seconds: int = 900
+    company_os_stale_task_seconds: int = 1800
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.

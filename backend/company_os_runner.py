@@ -5,6 +5,7 @@ import asyncio
 import html
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from backend.company_os import (
@@ -14,6 +15,7 @@ from backend.company_os import (
     list_company_os,
     reconcile_initiatives,
     update_mission,
+    update_task,
     update_artifact,
     update_squad,
 )
@@ -100,13 +102,41 @@ async def run_mission(company_id: str, mission_id: str) -> None:
 
 
 async def recover_pending_missions() -> int:
-    """Resume policy-approved work after a process restart from local Company OS state."""
+    """Resume policy-approved work after a process restart from local Company OS state.
+
+    A process can die after persisting ``working`` but before its in-memory
+    asyncio task finishes. Those records used to remain working forever,
+    because recovery only considered pending tasks. Reset only records older
+    than the bounded stale threshold so a genuinely active deep-research pass
+    is not duplicated.
+    """
+    from backend.config import settings
+
+    def is_stale(task: Mapping[str, Any]) -> bool:
+        if task.get("state") != "working":
+            return False
+        timestamp = str(task.get("updated_at") or task.get("started_at") or "")
+        try:
+            updated = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - updated).total_seconds() >= max(60, int(settings.company_os_stale_task_seconds))
+
     recovered = 0
     for company in await asyncio.to_thread(list_company_os):
         for mission in company.get("missions", []):
             if mission.get("state") not in {"active", "working", "review"}:
                 continue
-            if any(task.get("state") in {"pending", "scheduled"} for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")):
+            mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
+            stale_tasks = [task for task in mission_tasks if is_stale(task)]
+            for task in stale_tasks:
+                update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
+                            recovery_reason="stale_working_task_after_process_restart")
+                append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
+                               author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+            if stale_tasks or any(task.get("state") in {"pending", "scheduled"} for task in mission_tasks):
                 recovered += int(launch_mission(company["company_id"], mission["mission_id"]))
     return recovered
 
