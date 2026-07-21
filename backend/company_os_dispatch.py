@@ -191,7 +191,20 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
     """Build a small safe plan from work shape, not a department template."""
     request = request or infer_work_request(intent)
     capabilities = set(request.get("required_capabilities") or [])
-    if {"website", "landing page", "website delivery", "local preview"} & capabilities:
+    research_capabilities = {"research", "compare", "evidence research", "competitive analysis"}
+    website_capabilities = {"website", "landing page", "website delivery", "local preview"}
+    # A mixed request can contain both website and research capabilities. The
+    # department head owns the mission shape: a Research handoff must never be
+    # handed website tasks just because the overall initiative also builds a
+    # site. This keeps the visible squad activity honest and gives the runner
+    # the correct MCP task contract.
+    if department == "research" and research_capabilities & capabilities:
+        steps = [
+            ("Gather validated evidence", "internal_analysis", "astra_company_research"),
+            ("Synthesize findings and uncertainties", "draft", None),
+            ("Produce a decision brief", "draft", None),
+        ]
+    elif website_capabilities & capabilities:
         # These are local, reversible deliverables. A later explicit
         # publish/deploy task is the only action that may require approval.
         steps = [
@@ -199,7 +212,7 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
             ("Create a local website preview", "local_preview", None),
             ("Prepare the publication decision", "internal_review", None),
         ]
-    elif {"research", "compare", "evidence research", "competitive analysis"} & capabilities:
+    elif research_capabilities & capabilities:
         steps = [
             ("Gather validated evidence", "internal_analysis", "astra_company_research"),
             ("Synthesize findings and uncertainties", "draft", None),

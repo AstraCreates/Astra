@@ -93,6 +93,21 @@ def test_research_led_comparison_makes_product_delivery_wait_for_evidence(monkey
     assert product_mission["depends_on_mission_ids"] == [result["mission"]["id"]]
 
 
+def test_research_handoff_gets_research_tasks_when_request_also_needs_website(monkeypatch):
+    from backend.company_os_dispatch import specialist_task_plan
+
+    request = {
+        "required_capabilities": ["compare", "research", "website"],
+        "confidence": 0.95,
+    }
+    tasks = specialist_task_plan("research", "Compare products and build a website", request=request)
+
+    assert [task["title"] for task in tasks] == [
+        "Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief",
+    ]
+    assert tasks[0]["mcp_tool"] == "astra_company_research"
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}
