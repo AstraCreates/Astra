@@ -134,6 +134,40 @@ async def test_ambiguous_new_work_asks_a_structured_question(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_reply_to_a_pending_clarification_dispatches_even_if_the_classifier_would_say_answer(tmp_path, monkeypatch):
+    """A bare one-word reply like "website" carries no subject of its own --
+    the turn classifier can plausibly (and did, in production) misread it as
+    a conversational "answer" and short-circuit, silently dropping the
+    founder's actual answer to the question the copilot just asked. Resolving
+    a pending clarification must never go through the classifier at all."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.append_message("acme", "What concrete outcome should this work produce?", author="copilot",
+                               role="assistant", kind="question", question="What concrete outcome should this work produce?",
+                               work_request={"objective": "build a website that lists all of doge's actions"})
+    company_os.append_message("acme", "website", author="founder", role="user")
+
+    def fake_generate(prompt, *, model=None, **_kwargs):
+        if model == "fast":
+            raise AssertionError("the turn classifier must never run when a clarification is pending")
+        return json.dumps({
+            "objective": "Build a website listing Doge's actions", "deliverables": [], "acceptance_criteria": [],
+            "constraints": [], "entities": [], "dependencies": [], "primary_capability": "website",
+            "required_capabilities": ["website"], "risk": "internal", "clarification_question": None,
+            "clarification_options": None, "confidence": 0.9,
+        })
+    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+
+    result = await coordinate_turn("acme", "website")
+
+    assert result["dispatch"] is not None
+    state = company_os.get_company_os("acme")
+    assert state["initiatives"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)

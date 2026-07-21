@@ -46,20 +46,29 @@ def _pending_clarification(company: dict[str, Any]) -> dict[str, Any] | None:
 async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
     """Run one permanent Copilot turn: classify, then answer/continue/start."""
     company = get_company_os(company_id) or {}
-    plan = await asyncio.to_thread(_classify_turn, company, message)
-
-    if plan["action"] == "answer":
-        reply = plan["reply"]
-        append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
-        return {"message": reply, "dispatch": None}
 
     # A reply to our own clarifying question must never trigger another one --
     # that's the interrogation loop that made a plain "what is X" ask take three
-    # rounds of increasingly irrelevant questions before any work started.
+    # rounds of increasingly irrelevant questions before any work started. This
+    # has to be checked BEFORE _classify_turn, not after: a bare follow-up like
+    # "website" carries no subject of its own, so the classifier can misfire
+    # into "answer" and return early, silently dropping the founder's actual
+    # answer to the question we just asked. A clarifying question is only ever
+    # asked before any initiative/squad exists, so resolving one always means
+    # dispatching new work, never classifying this turn at all.
+    pending = _pending_clarification(company)
+    if pending:
+        plan: dict[str, Any] = {"action": "new", "initiative_id": None, "reply": ""}
+    else:
+        plan = await asyncio.to_thread(_classify_turn, company, message)
+        if plan["action"] == "answer":
+            reply = plan["reply"]
+            append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
+            return {"message": reply, "dispatch": None}
+
     # Merge the founder's answer into the original objective so dispatch gets
     # one coherent intent instead of a bare fragment ("Business model and
     # market position" alone, with no idea it's about Instacart).
-    pending = _pending_clarification(company)
     intent = f'{pending["objective"]} (in response to "{pending["question"]}": {message})' if pending else message
 
     request = await asyncio.to_thread(infer_work_request, intent)
