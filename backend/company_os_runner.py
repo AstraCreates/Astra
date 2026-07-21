@@ -19,6 +19,7 @@ from backend.company_os import (
 )
 from backend.company_os_dispatch import execute_task
 from backend.company_os_mcp import invoke as invoke_mcp
+from backend.tools.research_evidence import validate_deep_research
 
 logger = logging.getLogger(__name__)
 _ACTIVE_MISSIONS: dict[str, asyncio.Task[None]] = {}
@@ -144,13 +145,15 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             str(task.get("mcp_tool") or "astra_company_research"),
             {"subject": _research_subject(mission_name), "focus": "market"},
             task_id=str(task.get("task_id") or ""), mission_id=str(mission.get("mission_id") or ""),
+            squad_id=str(mission.get("squad_id") or ""), initiative_id=str(mission.get("initiative_id") or ""),
         )
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
-        domains = {str(source["url"]).split("/", 3)[2].lower() for source in sources if str(source["url"]).startswith(("http://", "https://"))}
-        content = str(evidence.get("combined_formatted") or "").strip()
-        if evidence.get("error") or len(sources) < 3 or len(domains) < 2 or not content:
-            raise RuntimeError("Research evidence did not meet the source-quality gate: three cited sources across two domains and usable evidence are required.")
+        validation = evidence.get("evidence_validation") or validate_deep_research(evidence)
+        if evidence.get("error") or evidence.get("research_status") != "validated" or not validation.get("ok"):
+            reason = "; ".join(validation.get("gaps") or [str(evidence.get("error") or "deep research evidence gate failed")])
+            raise RuntimeError(f"Deep research blocked by evidence gate: {reason}")
         evidence["sources"] = sources
+        evidence["evidence_validation"] = validation
         # Raw evidence and the mid-pipeline synthesis note are working
         # material, not something a founder asked for -- every research
         # mission was dropping 3 separate documents into the Library for
@@ -184,8 +187,13 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result
     artifact = create_artifact(company_id, title, task_id=task["task_id"], source=source,
                                content=content[:_MAX_ARTIFACT_CONTENT], source_references=result.get("sources", []),
                                evidence_ledger=result.get("evidence_ledger"),
+                               research_status=result.get("research_status"), research_metadata=result.get("research_metadata"),
+                               evidence_validation=result.get("evidence_validation"),
                                state="archived" if internal else "active")
-    return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", []))}
+    return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", [])),
+            "research_metadata": result.get("research_metadata"),
+            "evidence_validation": result.get("evidence_validation"),
+            "research_status": result.get("research_status")}
 
 
 def _latest_research_artifact(company_id: str, mission_id: object) -> Mapping[str, Any]:

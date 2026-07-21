@@ -345,8 +345,8 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "astra_company_research",
-        "description": "Run cited web research for a Company OS mission. This is internal research only; it creates no external side effect.",
-        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
+        "description": "Run guarded, evidence-gated deep research for a Company OS Research squad. Quick lookup tools remain separate.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "task_id": {"type": "string"}, "mission_id": {"type": "string"}, "squad_id": {"type": "string"}, "initiative_id": {"type": "string"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
     },
     {
         "name": "astra_company_tool_catalog",
@@ -609,6 +609,9 @@ def _company_os_context(args: dict) -> dict:
 def _company_research(args: dict) -> dict:
     from backend.company_os import get_company_os
     from backend.tools.browser_research import run_comparison_research, run_research_pipeline
+    from backend.tools.research_evidence import validate_deep_research
+    from backend.config import settings
+    import time
     company = get_company_os(str(args["company_id"]))
     if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
         return {"ok": False, "error": "Company not found"}
@@ -625,11 +628,34 @@ def _company_research(args: dict) -> dict:
                 update_task(company_id, str(task_id), search_count=counter["n"])
             except Exception:
                 pass
-    evidence = (
-        run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
-        else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search)
-    )
-    return {"ok": not bool(evidence.get("error")), **evidence}
+    attempts = []
+    for attempt_number in range(max(1, int(settings.deep_research_max_attempts))):
+        started = time.perf_counter()
+        try:
+            evidence = (run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
+                        else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search))
+            if task_id:
+                evidence.setdefault("search_count", counter.get("n", 0))
+            validation = validate_deep_research(evidence)
+            metadata = {"profile": "company_os_deep_research", "model": settings.deep_research_model,
+                        "provider": settings.deep_research_model.split("/", 1)[0],
+                        "attempt": attempt_number + 1, "latency_ms": round((time.perf_counter() - started) * 1000),
+                        "search_count": validation["search_count"], "source_count": validation["source_count"]}
+            evidence.update({"research_status": "validated" if validation["ok"] else "evidence_incomplete",
+                             "research_metadata": metadata, "evidence_validation": validation,
+                             "attempts": attempts + [metadata]})
+            if validation["ok"] or attempt_number + 1 >= int(settings.deep_research_max_attempts):
+                return {"ok": validation["ok"], **evidence}
+        except Exception as exc:
+            metadata = {"profile": "company_os_deep_research", "model": settings.deep_research_model,
+                        "provider": settings.deep_research_model.split("/", 1)[0], "attempt": attempt_number + 1,
+                        "latency_ms": round((time.perf_counter() - started) * 1000), "error": str(exc)}
+            attempts.append(metadata)
+            if attempt_number + 1 >= int(settings.deep_research_max_attempts):
+                return {"ok": False, "error": str(exc), "research_status": "evidence_incomplete",
+                        "research_metadata": metadata, "attempts": attempts}
+        time.sleep(float(settings.deep_research_backoff_seconds) * (2 ** attempt_number))
+    return {"ok": False, "research_status": "evidence_incomplete", "attempts": attempts}
 
 def _company_tool_catalog(args: dict) -> dict:
     from backend.company_os import get_company_os

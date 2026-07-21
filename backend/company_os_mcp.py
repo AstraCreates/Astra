@@ -74,6 +74,7 @@ def available_tools(*, include_external: bool = True) -> list[dict[str, Any]]:
 
 def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = None, *,
            task_id: str | None = None, mission_id: str | None = None,
+           squad_id: str | None = None, initiative_id: str | None = None,
            approved: bool = False) -> dict[str, Any]:
     """Call one MCP tool and durably audit its input and outcome.
 
@@ -92,6 +93,9 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
         # the generic runtime registry's strict unknown-argument check for
         # handlers that don't accept **kwargs.
         args.setdefault("task_id", task_id)
+        args.setdefault("mission_id", mission_id)
+        args.setdefault("squad_id", squad_id)
+        args.setdefault("initiative_id", initiative_id)
     canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
     call_id = hashlib.sha256(f"{company_id}:{tool}:{canonical}".encode()).hexdigest()[:20]
     append_event(company_id, "mcp.tool_called", {"call_id": call_id, "tool": tool,

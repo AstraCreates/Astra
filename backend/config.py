@@ -40,7 +40,12 @@ class Settings(BaseSettings):
     # factory.py's _small_kwargs (itself driven by the OR_LIGHT_MODEL env
     # var), which is also being swapped -- kept in sync here for any caller
     # that constructs a research agent directly, bypassing the factory.
-    research_agent_model: str = "inclusionai/ling-2.6-flash"
+    research_agent_model: str = "deepseek/deepseek-v4-flash"
+    # Stable profile for Company OS deep research. Operator fallback remains
+    # explicit; a failed attempt must not silently change model identity.
+    deep_research_model: str = "deepseek/deepseek-v4-flash"
+    deep_research_max_attempts: int = 2
+    deep_research_backoff_seconds: float = 1.0
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles
     # live retrieval through OpenRouter's provider-native web search.

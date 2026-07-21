@@ -114,7 +114,10 @@ def _build_prompt(company: dict[str, Any], message: str) -> str:
     initiatives = [item for item in company.get("initiatives", []) if item.get("state") != "archived"]
     tasks = company.get("tasks") or []
     squads = company.get("squads") or []
-    artifacts = company.get("artifacts") or []
+    # Incomplete deep-research outputs remain auditable in Company OS but are
+    # never silently used as Copilot context.
+    artifacts = [a for a in (company.get("artifacts") or [])
+                 if a.get("state") != "archived" and a.get("research_status") != "evidence_incomplete"]
     task_by_id = {task.get("task_id"): task for task in tasks}
 
     lines = []
@@ -123,7 +126,7 @@ def _build_prompt(company: dict[str, Any], message: str) -> str:
         squad = next((s for s in squads if s.get("initiative_id") == initiative_id), None)
         latest_artifact = next(
             (a for a in reversed(artifacts)
-             if task_by_id.get(a.get("task_id"), {}).get("initiative_id") == initiative_id and a.get("state") != "archived"),
+             if task_by_id.get(a.get("task_id"), {}).get("initiative_id") == initiative_id),
             None,
         )
         excerpt = str(latest_artifact.get("content") or "")[:_ARTIFACT_EXCERPT_CHARS].strip() if latest_artifact else ""

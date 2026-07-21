@@ -11,6 +11,7 @@ import importlib
 import inspect
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -421,21 +422,40 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
     # transient reasons. A second consecutive failure still blocks for real.
     attempt: Any = None
     last_exc: Exception | None = None
+    is_research = str(task.get("mcp_tool") or "") == "astra_company_research"
     for attempt_number in range(2):
+        started = time.perf_counter()
         attempt = _call("create_task_attempt", company_id=company_id, task_id=task_id,
-                        idempotency_key=key if attempt_number == 0 else f"{key}:retry", state="running")
+                        idempotency_key=key if attempt_number == 0 else f"{key}:retry", state="running",
+                        profile="company_os_deep_research" if is_research else "company_os_default")
         attempt_id = _entity_id(attempt, "attempt_id")
         try:
             result = executor(task)
         except Exception as exc:
             last_exc = exc
-            _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="failed", error=str(exc))
+            transient = _is_transient_error(exc)
+            _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="failed", error=str(exc),
+                  transient=transient, finished_at=_utcnow(), latency_ms=round((time.perf_counter() - started) * 1000))
+            if transient and attempt_number == 0:
+                from backend.config import settings
+                time.sleep(float(settings.deep_research_backoff_seconds))
             continue
-        _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed")
+        metadata = result.get("result") if isinstance(result, Mapping) else {}
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        research_meta = metadata.get("research_metadata") if isinstance(metadata.get("research_metadata"), Mapping) else {}
+        _call("update_task_attempt", company_id=company_id, attempt_id=attempt_id, state="completed",
+              finished_at=_utcnow(), latency_ms=round((time.perf_counter() - started) * 1000),
+              model=research_meta.get("model"), provider=research_meta.get("provider"),
+              research_metadata=dict(research_meta), evidence_validation=metadata.get("evidence_validation"))
         last_exc = None
         break
     if last_exc is not None:
         _call("update_task", company_id=company_id, task_id=task_id, state="blocked", blocked_reason=str(last_exc))
+        if is_research:
+            _call("create_approval", company_id=company_id,
+                  title=f"Retry research: {task.get('name') or task.get('title', 'research task')}",
+                  task_id=task_id, detail=str(last_exc), kind="research_retry", action="retry_task",
+                  retry_available=True, attempt_count=2)
         raise last_exc
     completed_at = _utcnow()
     if task.get("recurring") or task.get("cadence_seconds"):
@@ -446,6 +466,11 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
     else:
         _call("update_task", company_id=company_id, task_id=task_id, state="done", completed_at=completed_at)
     return {"status": "completed", "attempt": attempt, "result": result, "policy": policy, "idempotency_key": key}
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(token in text for token in ("429", "408", "500", "502", "503", "504", "timeout", "temporarily", "rate limit"))
 
 
 def scheduler_tick(company_id: str, executor: Callable[[Mapping[str, Any]], Any], *, now: datetime | None = None) -> list[dict[str, Any]]:
