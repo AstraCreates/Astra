@@ -9,6 +9,7 @@ REMOTE_DIR="${ASTRA_DEPLOY_DIR:-/opt/astra/repo}"
 COMPOSE_FILE="${ASTRA_COMPOSE_FILE:-docker-compose.yml}"
 COMPOSE_PROJECT="${ASTRA_COMPOSE_PROJECT:-$(basename "$REMOTE_DIR")}" # Preserve Compose's historical default.
 RELEASE_ROOT="${ASTRA_RELEASE_ROOT:-$REMOTE_DIR/../astra-releases}"
+LOCK_TIMEOUT_SECONDS="${ASTRA_DEPLOY_LOCK_TIMEOUT_SECONDS:-1800}"
 DRY_RUN=0
 
 usage() {
@@ -27,6 +28,7 @@ Environment:
   ASTRA_COMPOSE_PROJECT   Stable Compose project name (default: astra)
   ASTRA_RELEASE_ROOT      Directory for immutable Git worktrees
   ASTRA_DEPLOY_BOOTSTRAP  Set to 1 only to establish the first known-good receipt
+  ASTRA_DEPLOY_LOCK_TIMEOUT_SECONDS  Maximum queue wait (default: 1800)
 EOF
 }
 
@@ -69,7 +71,7 @@ fi
 echo "Deploying locked release $target_short to $REMOTE_HOST..."
 ssh "$REMOTE_HOST" bash -s -- \
   "$REMOTE_DIR" "$RELEASE_ROOT" "$COMPOSE_FILE" "$COMPOSE_PROJECT" "$target_sha" \
-  "${ASTRA_DEPLOY_BOOTSTRAP:-0}" <<'REMOTE_SCRIPT'
+  "${ASTRA_DEPLOY_BOOTSTRAP:-0}" "$LOCK_TIMEOUT_SECONDS" <<'REMOTE_SCRIPT'
 set -Eeuo pipefail
 
 remote_dir="$1"
@@ -78,6 +80,7 @@ compose_file="$3"
 compose_project="$4"
 target_sha="$5"
 bootstrap="$6"
+lock_timeout="$7"
 state_dir="$remote_dir/.astra-release"
 receipts_dir="$state_dir/receipts"
 current_file="$state_dir/current-sha"
@@ -195,7 +198,10 @@ rollback() {
 
 mkdir -p "$releases_dir" "$receipts_dir"
 exec 9>"$state_dir/deploy.lock"
-flock -n 9 || die "another deployment holds $state_dir/deploy.lock"
+[[ "$lock_timeout" =~ ^[0-9]+$ ]] || die "ASTRA_DEPLOY_LOCK_TIMEOUT_SECONDS must be a non-negative integer"
+echo "Waiting for the deployment queue (up to ${lock_timeout}s)..."
+flock -w "$lock_timeout" 9 || die "timed out waiting ${lock_timeout}s for $state_dir/deploy.lock"
+echo "Deployment lock acquired."
 
 [[ -d "$remote_dir/.git" ]] || die "$remote_dir is not a Git repository"
 git -C "$remote_dir" fetch --quiet origin main
