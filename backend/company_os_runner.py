@@ -192,6 +192,7 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result
                                evidence_ledger=result.get("evidence_ledger"),
                                research_status=result.get("research_status"), research_metadata=result.get("research_metadata"),
                                evidence_validation=result.get("evidence_validation"),
+                               deep_research_supervisor=bool(result.get("deep_research_supervisor")),
                                state="archived" if internal else "active")
     return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", [])),
             "research_metadata": result.get("research_metadata"),
@@ -305,10 +306,23 @@ def _synthesis(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str
 def _decision_brief(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:
     if not evidence.get("source_references"):
         raise RuntimeError("Cannot produce a decision brief without cited evidence.")
+    if evidence.get("deep_research_supervisor"):
+        # The Open Deep Research supervisor already wrote a fully cited,
+        # multi-section report -- re-summarizing it through _synthesize_document
+        # would throw its citations and structure away for a generic 400-900
+        # word note. Use it as-is; only fall through if it came back thin.
+        report = str(evidence.get("content") or "").strip()
+        if len(report) > 500:
+            return _report_title(report, fallback_title=f"Findings — {_short_title(mission_name)}"), report
     if _is_comparison_request(mission_name):
         return _synthesize_comparison_document(mission_name, evidence)
     return _synthesize_document(mission_name, evidence, purpose="writing a decision-ready brief",
                                 fallback_title=f"Findings — {_short_title(mission_name)}")
+
+
+def _report_title(report: str, *, fallback_title: str) -> str:
+    match = re.match(r"^#\s+(.+)$", report.split("\n", 1)[0].strip())
+    return _short_title(match.group(1)) if match else fallback_title
 
 
 def _synthesize_comparison_document(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:

@@ -87,6 +87,42 @@ def test_deep_worker_uses_quick_pipeline_without_recursing_into_supervisor(tmp_p
     assert calls == ["pricing evidence"]
 
 
+def test_deep_worker_search_count_accumulates_instead_of_resetting_across_delegated_calls(tmp_path, monkeypatch):
+    """The Open Deep Research supervisor delegates to the same task_id many
+    times (one nested deep_worker call per sub-question). Each nested call
+    used to persist only its own local count, resetting the task's live
+    search_count back down to one call's small cap every time a call
+    finished -- capping the UI at _RESEARCH_QUERY_PLAN_LIMIT forever."""
+    from backend import company_os
+    import backend.astra_mcp as mcp
+
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("co", "founder", "Company")
+    initiative = company_os.create_initiative("co", "Research", initiative_id="i1")
+    squad = company_os.create_squad("co", "i1", "Insights", squad_id="s1")
+    company_os.create_task("co", "i1", "s1", "Gather validated evidence", task_id="t1", state="working")
+
+    def fake_pipeline(topic, *, focus, max_results_each, on_search=None):
+        for _ in range(6):
+            on_search()
+        return {
+            "combined_formatted": "worker evidence", "queries_run": 6,
+            "sources": [{"url": "https://example.com/worker", "retrieved_at": "2026-07-21T00:00:00Z"}],
+            "structured": {"evidence": [{"claim": "worker claim"}]},
+        }
+
+    monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
+
+    mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "first sub-question", "task_id": "t1", "deep_worker": True})
+    task_after_first = next(t for t in company_os.get_company_os("co")["tasks"] if t["task_id"] == "t1")
+    assert task_after_first["search_count"] == 6
+
+    mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "second sub-question", "task_id": "t1", "deep_worker": True})
+    task_after_second = next(t for t in company_os.get_company_os("co")["tasks"] if t["task_id"] == "t1")
+    assert task_after_second["search_count"] == 12
+
+
 def test_company_mcp_bridge_audits_registered_tool(monkeypatch):
     from backend import company_os_mcp
 

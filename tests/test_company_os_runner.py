@@ -3,7 +3,7 @@ import pytest
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_runner import run_mission
-from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
+from backend.company_os_runner import _comparison_document, _complete_chat_reply, _decision_brief, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
@@ -67,6 +67,41 @@ def test_synthesize_comparison_document_falls_back_to_the_evidence_table_on_llm_
     # fallback declares readiness rather than withholding).
     assert "comparison" in title.lower()
     assert "Verified evidence" in content
+
+
+def test_decision_brief_uses_the_supervisor_report_verbatim_instead_of_resummarizing(monkeypatch):
+    def _fail_if_called(*_a, **_k):
+        raise AssertionError("should not re-synthesize a supervisor report through the LLM")
+    monkeypatch.setattr("backend.tools._llm.generate", _fail_if_called)
+
+    report = "# Viability of AI Consulting\n\n" + ("Detailed cited finding. " * 40)
+    evidence = {
+        "deep_research_supervisor": True,
+        "content": report,
+        "source_references": [{"title": "Report", "url": "https://example.com/report"}],
+    }
+
+    title, content = _decision_brief("Research the viability of AI consulting", evidence)
+
+    assert title == "Viability of AI Consulting"
+    assert content == report.strip()
+
+
+def test_decision_brief_falls_back_to_synthesis_when_supervisor_report_is_thin(monkeypatch):
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: (
+        '{"title": "Fallback Brief", "content": "## Bottom line\\n\\nSynthesized instead."}'
+    ))
+
+    evidence = {
+        "deep_research_supervisor": True,
+        "content": "too short",
+        "source_references": [{"title": "Report", "url": "https://example.com/report"}],
+    }
+
+    title, content = _decision_brief("Research the viability of AI consulting", evidence)
+
+    assert title == "Fallback Brief"
+    assert "Synthesized instead" in content
 
 
 def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():

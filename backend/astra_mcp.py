@@ -619,14 +619,23 @@ def _company_research(args: dict) -> dict:
     subject = str(args["subject"])
     company_id, task_id = str(args["company_id"]), args.get("task_id")
     on_search = None
+    base_search_count = 0
     if task_id:
+        # The supervisor delegates to this same task_id many times over (one
+        # nested deep_worker call per sub-question, each capped at
+        # _RESEARCH_QUERY_PLAN_LIMIT). Starting the live counter from the
+        # task's already-persisted count -- instead of 0 -- keeps the UI
+        # counter climbing across delegated calls instead of resetting back
+        # down to one call's own small cap after every single one finishes.
+        existing_task = next((t for t in company.get("tasks", []) if t.get("task_id") == str(task_id)), {})
+        base_search_count = int(existing_task.get("search_count") or 0)
         counter = {"n": 0}
 
         def on_search() -> None:
             counter["n"] += 1
             try:
                 from backend.company_os import update_task
-                update_task(company_id, str(task_id), search_count=counter["n"])
+                update_task(company_id, str(task_id), search_count=base_search_count + counter["n"])
             except Exception:
                 pass
     attempts = []
@@ -648,11 +657,24 @@ def _company_research(args: dict) -> dict:
                 evidence.setdefault("search_count", counter.get("n", 0))
                 try:
                     from backend.company_os import update_task
-                    update_task(company_id, str(task_id), search_count=int(evidence.get("search_count") or 0))
+                    # A nested deep_worker call must persist the running
+                    # cumulative total (matching on_search's live counter),
+                    # not just its own local count, or finishing resets the
+                    # task back down to one call's small cap. The top-level
+                    # supervisor call has no local searches of its own -- its
+                    # evidence["search_count"] is already the adapter's own
+                    # correct sum across every delegated call.
+                    persisted_count = (base_search_count + counter.get("n", 0)) if args.get("deep_worker") else int(evidence.get("search_count") or 0)
+                    update_task(company_id, str(task_id), search_count=persisted_count)
                 except Exception:
                     pass
             validation = validate_deep_research(evidence)
-            metadata = {"profile": "company_os_deep_research", "model": settings.deep_research_model,
+            # The supervisor path (run_open_deep_research) already stamps its own
+            # "open_deep_research_langgraph" profile; keep that intact instead of
+            # blanket-overwriting it, or downstream code can never tell a rich
+            # supervisor report apart from a plain free-search pass.
+            profile = "open_deep_research_langgraph" if evidence.get("deep_research_supervisor") else "company_os_deep_research"
+            metadata = {"profile": profile, "model": settings.deep_research_model,
                         "provider": settings.deep_research_model.split("/", 1)[0],
                         "attempt": attempt_number + 1, "latency_ms": round((time.perf_counter() - started) * 1000),
                         "search_count": validation["search_count"], "source_count": validation["source_count"]}
