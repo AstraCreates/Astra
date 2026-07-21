@@ -154,7 +154,7 @@ activate_release() {
 }
 
 smoke_release() {
-  local sha="$1" attempt backend_id frontend_id backend_image frontend_image release_body
+  local sha="$1" legacy_bootstrap="${2:-0}" attempt backend_id frontend_id backend_image frontend_image release_body
   for attempt in {1..30}; do
     if curl -fsS --max-time 5 http://127.0.0.1:8000/ready >/dev/null \
       && curl -fsS --max-time 5 http://127.0.0.1:3000/ >/dev/null; then
@@ -169,8 +169,12 @@ smoke_release() {
   backend_id="$(compose "$sha" ps -q backend)"
   frontend_id="$(compose "$sha" ps -q frontend)"
   [[ -n "$backend_id" && -n "$frontend_id" ]] || return 1
-  release_body="$(curl -fsS --max-time 5 http://127.0.0.1:8000/release)" || return 1
-  [[ "$release_body" == *"$sha"* ]] || return 1
+  # The one-time bootstrap can adopt the prior healthy release before this
+  # endpoint exists. Every subsequent release must prove its runtime SHA.
+  if [[ "$legacy_bootstrap" != 1 ]]; then
+    release_body="$(curl -fsS --max-time 5 http://127.0.0.1:8000/release)" || return 1
+    [[ "$release_body" == *"$sha"* ]] || return 1
+  fi
   [[ "$(docker inspect -f '{{index .Config.Labels "com.astra.release.sha"}}' "$backend_id")" == "$sha" ]] || return 1
   [[ "$(docker inspect -f '{{index .Config.Labels "com.astra.release.sha"}}' "$frontend_id")" == "$sha" ]] || return 1
   backend_image="$(docker image inspect -f '{{.Id}}' "astra-release-backend:$sha")"
@@ -216,7 +220,7 @@ if [[ -z "$previous_sha" ]]; then
   valid_sha "$previous_sha" || die "server HEAD is not a commit"
   echo "Bootstrapping known-good release ${previous_sha:0:12}..."
   activate_release "$previous_sha"
-  smoke_release "$previous_sha" || die "current server release failed bootstrap smoke checks"
+  smoke_release "$previous_sha" 1 || die "current server release failed bootstrap smoke checks"
   write_receipt "$previous_sha" success "" "bootstrap-verified"
   printf '%s\n' "$previous_sha" >"$current_file.tmp"
   mv -f "$current_file.tmp" "$current_file"
