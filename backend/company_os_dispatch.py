@@ -711,7 +711,7 @@ def _attempt_key(company_id: str, task: Mapping[str, Any], *, now: datetime | No
 
 def _existing_attempt(company: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
     for attempt in company.get("task_attempts") or []:
-        if attempt.get("idempotency_key") == key:
+        if attempt.get("idempotency_key") == key and attempt.get("state") in {"running", "completed"}:
             return attempt
     return None
 
