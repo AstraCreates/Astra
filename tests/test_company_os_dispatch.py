@@ -45,14 +45,33 @@ def test_multi_capability_request_forms_a_real_handoff_squad(monkeypatch):
     assert result["mission"]["depends_on_mission_ids"] == [result["handoff_missions"][0]["id"]]
 
 
+def test_research_led_comparison_makes_product_delivery_wait_for_evidence(monkeypatch):
+    dispatch, _store = _dispatch(monkeypatch)
+    monkeypatch.setattr(dispatch, "infer_work_request", lambda _intent: {
+        "version": 1, "outcome": "Compare products and build a website", "deliverables": [], "constraints": [], "entities": [],
+        "risk": "internal", "primary_capability": "compare", "required_capabilities": ["compare", "research", "website"], "confidence": 0.95, "requires_triage": False,
+    })
+
+    result = dispatch.dispatch_intent("co", "Compare products and build a website")
+
+    assert result["department"] == "research"
+    product_mission = result["handoff_missions"][0]
+    assert product_mission["department"] == "product_technical"
+    assert product_mission["depends_on_mission_ids"] == [result["mission"]["id"]]
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}
+        self.missions = []
 
     def get_company_os(self, **_): return self.company
     def create_initiative(self, **kwargs): return {"id": "initiative", **kwargs}
     def create_squad(self, **kwargs): return {"id": "squad", **kwargs}
-    def create_mission(self, **kwargs): return {"id": "mission", **kwargs}
+    def create_mission(self, **kwargs):
+        mission = {"id": f"mission-{len(self.missions)}", **kwargs}
+        self.missions.append(mission)
+        return mission
     def create_task(self, **kwargs):
         task = {"id": f"task-{len(self.company['tasks'])}", **kwargs}; self.company["tasks"].append(task); return task
     def create_task_attempt(self, **kwargs):

@@ -143,7 +143,7 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             sources = _initiative_evidence(company_id, mission.get("initiative_id"))
             return _store_artifact(company_id, task, f"Website preview — {_short_title(mission_name)}",
                                    {"content": _website_preview(mission_name, sources), "sources": sources}, source="local website", internal=False)
-        if "publication decision" in title.lower():
+        if "publication decision" in title.lower() or "publish approval" in title.lower():
             return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Local preview ready\n\nThe local website preview is available in the Library. No publication or deployment has been requested. If you later choose to publish it, that separate external action will require approval."}, source="internal analysis")
         return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}", {"content": _website_brief(mission_name)}, source="internal analysis", internal=True)
 

@@ -343,16 +343,29 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
                 _create_approval_card(company_id, task, policy)
         handoff_missions.append(handoff_mission)
     # A website that incorporates comparison findings must not race ahead of
-    # the research handoff with a generic placeholder.
+    # research, whether Product Delivery or Research happened to lead the
+    # initiative. Attach the dependency to the website mission in either
+    # topology rather than assuming it is always the primary mission.
     if {"website", "landing page", "website delivery", "local preview"} & set(work_request.get("required_capabilities") or []):
+        all_missions = [mission, *handoff_missions]
         research_dependencies = [
-            _entity_id(item, "mission_id") for item in handoff_missions
+            _entity_id(item, "mission_id") for item in all_missions
             if item.get("department") == "research" and _entity_id(item, "mission_id")
         ]
-        if research_dependencies:
-            _call("update_mission", company_id=company_id, mission_id=mission_id,
-                  depends_on_mission_ids=research_dependencies)
-            mission = {**mission, "depends_on_mission_ids": research_dependencies}
+        for candidate in all_missions:
+            if candidate.get("department") != "product_technical":
+                continue
+            candidate_id = _entity_id(candidate, "mission_id")
+            dependencies = [item for item in research_dependencies if item != candidate_id]
+            if not dependencies:
+                continue
+            _call("update_mission", company_id=company_id, mission_id=candidate_id,
+                  depends_on_mission_ids=dependencies)
+            updated = {**candidate, "depends_on_mission_ids": dependencies}
+            if candidate_id == mission_id:
+                mission = updated
+            else:
+                handoff_missions = [updated if _entity_id(item, "mission_id") == candidate_id else item for item in handoff_missions]
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
             "work_request": work_request, "routing": route, "handoff_missions": handoff_missions}
 
