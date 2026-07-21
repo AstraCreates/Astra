@@ -154,7 +154,14 @@ def compact(company_id: str, *, root: str | Path | None = None) -> dict[str, Any
 
 def create_initiative(company_id: str, name: str, *, initiative_id: str | None = None,
                       state: str = "active", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
-    return _create(company_id, "initiative", {"initiative_id": initiative_id or _id("initiative"), "name": name, "state": state, **data}, root)
+    # An initiative is the durable strategic workspace; keep its brief and
+    # acceptance contract explicit instead of inferring them from task names.
+    defaults = {
+        "objective": name, "success_criteria": [], "priority": "normal", "owner": "copilot",
+        "budget": {}, "due_date": None, "director": data.get("department", "operations"),
+        "roadmap": [], "dependencies": [], "decisions": [], "state": state,
+    }
+    return _create(company_id, "initiative", {"initiative_id": initiative_id or _id("initiative"), "name": name, **defaults, **data}, root)
 
 
 def create_squad(company_id: str, initiative_id: str, name: str, *, squad_id: str | None = None,
@@ -187,6 +194,13 @@ def create_artifact(company_id: str, name: str, *, artifact_id: str | None = Non
     Company OS artifacts rail -- founders were seeing 3 downloadable files
     per research request instead of the one they actually asked for."""
     resolved_id = artifact_id or _id("artifact")
+    # Artifacts inherit their initiative through the producing task, making
+    # the initiative workspace the single place to review every outcome.
+    if not data.get("initiative_id") and data.get("task_id"):
+        company = get_company_os(company_id, root=root) or {}
+        task = next((item for item in company.get("tasks", []) if item.get("task_id") == data.get("task_id")), None)
+        if task and task.get("initiative_id"):
+            data["initiative_id"] = task["initiative_id"]
     library_file_id = data.get("library_file_id")
     if not library_file_id and data.get("state") != "archived":
         library_file_id = _mirror_artifact_to_library(company_id, resolved_id, name, data, root=root)
@@ -208,6 +222,44 @@ def update_initiative(company_id: str, initiative_id: str, *, root: str | Path |
     founder-requested delete -- soft, matching every other entity's pattern in
     this event-sourced store; nothing is ever physically removed from history)."""
     return _update(company_id, "initiative", "initiative_id", initiative_id, changes, root)
+
+
+def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) -> dict[str, dict[str, Any]]:
+    """Persist derived initiative rollups without treating an empty task list as done.
+
+    This is deliberately callable after asynchronous task transitions and at
+    recovery boundaries. Founder-authored archive state always wins.
+    """
+    company = get_company_os(company_id, root=root) or {}
+    changes: dict[str, dict[str, Any]] = {}
+    terminal = {"done", "complete", "completed", "archived", "cancelled"}
+    for initiative in company.get("initiatives", []):
+        if initiative.get("state") == "archived":
+            continue
+        initiative_id = initiative["initiative_id"]
+        missions = [item for item in company.get("missions", []) if item.get("initiative_id") == initiative_id]
+        tasks = [item for item in company.get("tasks", []) if item.get("initiative_id") == initiative_id]
+        approvals = [item for item in company.get("approvals", []) if item.get("state") == "pending" and any(task.get("task_id") == item.get("task_id") for task in tasks)]
+        complete = sum(1 for task in tasks if task.get("state") in terminal)
+        progress = round(complete / len(tasks) * 100) if tasks else 0
+        states = {str(item.get("state", "")) for item in missions + tasks}
+        criteria = initiative.get("success_criteria") or []
+        criteria_met = bool(initiative.get("acceptance_confirmed")) if criteria else bool(missions or tasks)
+        if approvals or "waiting" in states or "awaiting_approval" in states:
+            state = "review"
+        elif any(value in states for value in ("working", "active", "pending", "scheduled")):
+            state = "working"
+        elif missions and all(item.get("state") in terminal for item in missions) and criteria_met:
+            state = "done"
+        elif tasks or missions:
+            state = "planned"
+        else:
+            state = "planned"
+        derived = {"state": state, "progress": progress, "squad_count": len({item.get("squad_id") for item in missions}), "pending_approval_count": len(approvals)}
+        if any(initiative.get(key) != value for key, value in derived.items()):
+            update_initiative(company_id, initiative_id, root=root, **derived)
+            changes[initiative_id] = derived
+    return changes
 
 
 def update_task(company_id: str, task_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:

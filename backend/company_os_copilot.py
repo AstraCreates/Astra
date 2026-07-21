@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 _MAX_INITIATIVES_IN_CONTEXT = 5
 _MAX_CONVERSATION_TURNS = 8
 _ARTIFACT_EXCERPT_CHARS = 2500
-_DIRECT_WORK_PREFIXES = ("compare", "research", "build", "make a website", "create a website", "create a landing page", "make a landing page")
 
 
 async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
@@ -49,8 +48,6 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
 
 
 def _classify_turn(company: dict[str, Any], message: str) -> dict[str, Any]:
-    if message.strip().lower().startswith(_DIRECT_WORK_PREFIXES):
-        return {"action": "new", "initiative_id": None, "reply": ""}
     try:
         from backend.tools._llm import generate, parse_json_response
         raw = generate(_build_prompt(company, message), model="fast", json_mode=True, max_tokens=900, temperature=0.4)
@@ -105,6 +102,11 @@ For the founder's new message below, decide ONE action:
 - "continue": the message asks for more work on a topic that is the same as (or a clear continuation of) one of the active initiatives below -- even if worded very differently or misspelled. Set initiative_id to that initiative's id.
 - "new": the message is a genuinely new request that does not match any active initiative below.
 
+A founder requesting an outcome (for example research, a comparison, a design,
+a website, a change, or a deliverable) must be "new" or "continue", never
+"answer". Do not choose departments or squads: capability routing happens
+after this decision.
+
 Active initiatives:
 {initiatives_block}
 
@@ -120,5 +122,8 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
 
 
 def _fallback_reply(dispatch: dict[str, Any]) -> str:
-    squad = str(dispatch["squad"]["name"]).replace("_", " ").title()
-    return f"On it — I've got the {squad} team looking into {str(dispatch['initiative']['name']).lower()} now."
+    initiative = dispatch["initiative"]
+    squad = str(dispatch["squad"]["name"])
+    if dispatch.get("routing", {}).get("requires_triage"):
+        return f"I’ve opened **{initiative['name']}** and started a short triage pass to pin down the right specialist work before I commit the company’s time. I’ll either route it with a concrete plan or ask one focused question."
+    return f"I’ve added this to **{initiative['name']}**. The {squad} squad is taking the first mission, and I’ll keep the initiative brief, evidence, and cross-team progress in one place as it moves forward."

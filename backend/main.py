@@ -295,6 +295,12 @@ async def ready(response: Response):
     return result
 
 
+@app.get("/release")
+async def release_identity():
+    """Expose the runtime release identity for deploy verification only."""
+    return {"sha": os.environ.get("ASTRA_RELEASE_SHA", "development")}
+
+
 @app.get("/metrics")
 async def metrics(request: Request):
     from backend.tenant_auth import require_platform_admin

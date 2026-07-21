@@ -79,6 +79,8 @@ _RESEARCH_RESULT_CONTENT_CHAR_CAP = 2400
 _RESEARCH_MAX_URL_CANDIDATES_BUFFER = 2
 _RESEARCH_SEARCH_MULTIPLIER = 1.5
 _RESEARCH_BLOCK_WINDOW_SENTENCES = 1
+_COMPARISON_DIMENSIONS = ("product", "workflow", "pricing", "privacy", "evidence_maturity")
+_COMPARISON_FOLLOWUP_ROUNDS = 2
 _CRW_TIMEOUT_SECONDS = max(3.0, float(os.environ.get("ASTRA_CRW_TIMEOUT_SECONDS", "12")))
 _CRW_BATCH_TIMEOUT_SECONDS = max(
     _CRW_TIMEOUT_SECONDS + 2.0,
@@ -1149,7 +1151,7 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     }
 
 
-def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None) -> dict:
+def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None, include_fetched_results: bool = False) -> dict:
     """Run search+scrape for several queries against crw in parallel — the
     same output contract as batch_search (DDGS-backed), so the recursive
     sonar_research loop can call either interchangeably."""
@@ -1200,7 +1202,16 @@ def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None
 
     return {
         "queries_run": len(queries),
-        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP], "sources": r.get("sources", []), **({"error": r["error"]} if r.get("error") else {})} for q, r in results_by_query.items()},
+        "results_by_query": {
+            q: {
+                "total": r.get("total", 0),
+                "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP],
+                "sources": r.get("sources", []),
+                **({"results": r.get("results", [])} if include_fetched_results else {}),
+                **({"error": r["error"]} if r.get("error") else {}),
+            }
+            for q, r in results_by_query.items()
+        },
         "combined_formatted": "\n".join(combined),
         "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
@@ -1556,35 +1567,153 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
 
 
 def run_comparison_research(topic: str) -> dict:
-    """Fetch both sides of a comparison and return claim-safe coverage.
+    """Build a fetched, balanced evidence ledger for an explicit comparison.
 
-    This deliberately bypasses provider-native citations: each accepted source
-    comes from CRW's fetched markdown, not a model's self-reported URL.
+    Search snippets and provider citations are deliberately excluded. A ledger
+    claim exists only when the search backend returned fetched page text, so a
+    later comparison cannot mistake a search-result title for product evidence.
     """
-    plan = build_research_queries(topic, focus="market", limit=6)
     subjects = _comparison_subjects(topic)
     if not subjects:
         return {"error": "comparison subjects could not be identified"}
-    left, right = subjects
-    search = _crw_batch_search(plan["queries"], max_results_each=5)
-    dimensions = ("pricing", "product", "privacy")
-    ledger = {subject: {dimension: [] for dimension in dimensions} for subject in subjects}
-    for query, result in (search.get("results_by_query") or {}).items():
-        lowered = query.lower()
-        subject = left if left.lower() in lowered else right if right.lower() in lowered else None
-        dimension = "pricing" if "pricing" in lowered else "privacy" if "privacy" in lowered or "terms" in lowered else "product"
-        if not subject:
-            continue
-        for source in result.get("sources") or []:
-            if source.get("url") and source.get("title"):
-                ledger[subject][dimension].append({"url": source["url"], "title": source["title"], "source_type": "fetched"})
-    for dimensions_for_subject in ledger.values():
-        for dimension, entries in dimensions_for_subject.items():
-            seen = set()
-            dimensions_for_subject[dimension] = [entry for entry in entries if not (entry["url"] in seen or seen.add(entry["url"]))][:3]
-    gaps = [f"{subject}: {dimension}" for subject, rows in ledger.items() for dimension, entries in rows.items() if not entries]
-    sources = [entry for rows in ledger.values() for entries in rows.values() for entry in entries]
-    return {"topic": topic, "comparison_subjects": subjects, "evidence_ledger": ledger, "coverage": {"ready": not gaps, "gaps": gaps}, "sources": sources, "combined_formatted": search.get("combined_formatted", "")}
+    query_specs = _comparison_query_specs(subjects)
+    ledger = {subject: {dimension: [] for dimension in _COMPARISON_DIMENSIONS} for subject in subjects}
+    rounds: list[dict] = []
+    combined_blocks: list[str] = []
+    seen_queries: set[str] = set()
+
+    for round_index in range(_COMPARISON_FOLLOWUP_ROUNDS + 1):
+        pending = query_specs if round_index == 0 else _comparison_gap_query_specs(subjects, ledger, round_index)
+        pending = [(subject, dimension, query) for subject, dimension, query in pending if query.casefold() not in seen_queries]
+        if not pending:
+            break
+        for _, _, query in pending:
+            seen_queries.add(query.casefold())
+        queries = [query for _, _, query in pending]
+        search = _crw_batch_search(queries, max_results_each=5, include_fetched_results=True)
+        rounds.append({"round": round_index + 1, "queries": queries, "queries_run": search.get("queries_run", 0)})
+        if search.get("combined_formatted"):
+            combined_blocks.append(search["combined_formatted"])
+        specs_by_query = {query: (subject, dimension) for subject, dimension, query in pending}
+        for query, result in (search.get("results_by_query") or {}).items():
+            spec = specs_by_query.get(query)
+            if not spec:
+                continue
+            subject, dimension = spec
+            for page in result.get("results") or []:
+                claim = _comparison_fetched_claim(subject, dimension, query, page)
+                if claim:
+                    ledger[subject][dimension].append(claim)
+        _dedupe_comparison_ledger(ledger)
+
+    coverage = _comparison_coverage(subjects, ledger)
+    sources = _comparison_sources(ledger)
+    return {
+        "topic": topic,
+        "comparison_subjects": subjects,
+        "evidence_ledger": ledger,
+        "coverage": coverage,
+        "recommendation": None,
+        "recommendation_status": "withheld" if not coverage["ready"] else "not_automatically_generated",
+        "research_rounds": rounds,
+        "sources": sources,
+        "combined_formatted": "\n\n".join(combined_blocks),
+    }
+
+
+def _comparison_query_specs(subjects: tuple[str, str]) -> list[tuple[str, str, str]]:
+    suffixes = {
+        "product": "product features target customers official",
+        "workflow": "how it works workflow onboarding integrations official",
+        "pricing": "pricing plans free trial enterprise official",
+        "privacy": "privacy security terms data processing official",
+        "evidence_maturity": "customer reviews case studies alternatives independent",
+    }
+    return [(subject, dimension, f"{subject} {suffix}") for subject in subjects for dimension, suffix in suffixes.items()]
+
+
+def _comparison_gap_query_specs(subjects: tuple[str, str], ledger: dict, round_index: int) -> list[tuple[str, str, str]]:
+    suffixes = {
+        "product": "product features target customers official",
+        "workflow": "workflow onboarding integrations official",
+        "pricing": "pricing plans official",
+        "privacy": "privacy security data processing official",
+        "evidence_maturity": "reviews customer evidence independent",
+    }
+    return [
+        (subject, dimension, f"{subject} {suffixes[dimension]} {'public documentation' if round_index > 1 else ''}".strip())
+        for subject in subjects
+        for dimension in _COMPARISON_DIMENSIONS
+        if not ledger[subject][dimension]
+    ]
+
+
+def _comparison_fetched_claim(subject: str, dimension: str, query: str, page: object) -> dict | None:
+    if not isinstance(page, dict):
+        return None
+    url = _normalize_url(page.get("url", ""))
+    content = str(page.get("content") or "").strip()
+    if not url or not content:
+        return None
+    excerpt = _compact_research_evidence(content, query, max_chars=600)
+    if not excerpt:
+        return None
+    return {
+        "claim": f"Fetched evidence for {subject} {dimension.replace('_', ' ')}.",
+        "excerpt": excerpt,
+        "url": url,
+        "title": str(page.get("title") or url),
+        "source_classification": _classify_comparison_source(subject, url),
+        "fetched": True,
+        "query": query,
+    }
+
+
+def _classify_comparison_source(subject: str, url: str) -> str:
+    host = _domain(url)
+    subject_host = _domain(subject if "://" in subject else f"https://{subject}")
+    subject_tokens = [token for token in re.split(r"[^a-z0-9]+", subject.lower()) if len(token) > 2]
+    if subject_host and (host == subject_host or host.endswith("." + subject_host) or subject_host.endswith("." + host)):
+        return "official"
+    if any(token in host for token in subject_tokens):
+        return "official"
+    return "independent"
+
+
+def _dedupe_comparison_ledger(ledger: dict) -> None:
+    for rows in ledger.values():
+        for dimension, claims in rows.items():
+            unique, seen = [], set()
+            for claim in claims:
+                key = (claim["url"], claim["excerpt"])
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(claim)
+            rows[dimension] = unique[:3]
+
+
+def _comparison_coverage(subjects: tuple[str, str], ledger: dict) -> dict:
+    gaps = [f"{subject}: {dimension}" for subject in subjects for dimension in _COMPARISON_DIMENSIONS if not ledger[subject][dimension]]
+    # Maturity evidence must be outside the vendor's own marketing site; the
+    # other dimensions may be official or independently fetched, but all must
+    # be backed by an actual fetched excerpt.
+    for subject in subjects:
+        if ledger[subject]["evidence_maturity"] and not any(
+            claim["source_classification"] == "independent" for claim in ledger[subject]["evidence_maturity"]
+        ):
+            gaps.append(f"{subject}: evidence_maturity_independent_source")
+    return {"ready": not gaps, "gaps": gaps, "dimensions": list(_COMPARISON_DIMENSIONS)}
+
+
+def _comparison_sources(ledger: dict) -> list[dict]:
+    sources, seen = [], set()
+    for rows in ledger.values():
+        for claims in rows.values():
+            for claim in claims:
+                if claim["url"] not in seen:
+                    seen.add(claim["url"])
+                    sources.append({key: claim[key] for key in ("title", "url", "source_classification", "fetched")})
+    return sources
 
 
 def _native_research_pass(topic: str, focus: str, queries: list[str], cancellation_fence=None) -> dict:

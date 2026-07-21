@@ -36,7 +36,7 @@ def test_search_and_fetch_still_requires_query_or_url():
 def test_search_and_fetch_list_query_routes_to_batch_search(monkeypatch):
     calls = []
 
-    def fake_batch_search(queries, max_results_each):
+    def fake_batch_search(queries, max_results_each, **_kwargs):
         calls.append((list(queries), max_results_each))
         return {"queries_run": len(queries), "results_by_query": {}, "sources": [], "combined_formatted": ""}
 
@@ -147,6 +147,76 @@ def test_comparison_queries_collect_evidence_for_both_named_products():
     assert plan["queries"][:2] == ["Cofounder.co pricing plans official", "AstraCreates.com pricing plans official"]
     assert any("Cofounder.co terms privacy" in query for query in plan["queries"])
     assert any("AstraCreates.com terms privacy" in query for query in plan["queries"])
+
+
+def test_comparison_research_builds_fetched_claim_ledger_and_balanced_gate(monkeypatch):
+    def fake_batch_search(queries, max_results_each, **_kwargs):
+        results = {}
+        for query in queries:
+            subject = "Alpha" if query.startswith("Alpha ") else "Beta"
+            dimension = next(key for key in browser_research._COMPARISON_DIMENSIONS if key.replace("_", " ") in query or key == "product")
+            # The production query text calls maturity "customer reviews".
+            if "customer reviews" in query:
+                dimension = "evidence_maturity"
+            elif "how it works" in query:
+                dimension = "workflow"
+            elif "pricing" in query:
+                dimension = "pricing"
+            elif "privacy" in query:
+                dimension = "privacy"
+            host = "reviews.example" if dimension == "evidence_maturity" else f"{subject.lower()}.example"
+            results[query] = {
+                "total": 1,
+                "results": [{
+                    "url": f"https://{host}/{dimension}",
+                    "title": f"{subject} {dimension}",
+                    "content": f"{subject} verified {dimension} evidence from a fetched page.",
+                }],
+                "sources": [{"url": f"https://{host}/{dimension}", "title": "metadata only"}],
+            }
+        return {"queries_run": len(queries), "results_by_query": results, "sources": [], "combined_formatted": "fetched evidence"}
+
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
+
+    result = browser_research.run_comparison_research("Compare Alpha to Beta")
+
+    assert result["coverage"]["ready"] is True
+    assert result["recommendation"] is None
+    assert len(result["research_rounds"]) == 1
+    product_claim = result["evidence_ledger"]["Alpha"]["product"][0]
+    maturity_claim = result["evidence_ledger"]["Alpha"]["evidence_maturity"][0]
+    assert product_claim["fetched"] is True
+    assert "fetched page" in product_claim["excerpt"]
+    assert product_claim["source_classification"] == "official"
+    assert maturity_claim["source_classification"] == "independent"
+
+
+def test_comparison_research_follows_up_on_gaps_and_withholds_recommendation(monkeypatch):
+    calls = []
+
+    def fake_batch_search(queries, max_results_each, **_kwargs):
+        calls.append(list(queries))
+        results = {}
+        for query in queries:
+            # Search snippets never become claims, and privacy is never fetched.
+            if "privacy" in query:
+                results[query] = {"total": 1, "results": [], "sources": [{"url": "https://alpha.example/privacy", "title": "snippet"}]}
+            else:
+                subject = "Alpha" if query.startswith("Alpha ") else "Beta"
+                host = "reviews.example" if "reviews" in query else f"{subject.lower()}.example"
+                results[query] = {"total": 1, "results": [{"url": f"https://{host}/page", "title": subject, "content": "Fetched public evidence."}], "sources": []}
+        return {"queries_run": len(queries), "results_by_query": results, "sources": [], "combined_formatted": "round"}
+
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
+
+    result = browser_research.run_comparison_research("Compare Alpha to Beta")
+
+    assert len(calls) == 3
+    assert result["coverage"]["ready"] is False
+    assert "Alpha: privacy" in result["coverage"]["gaps"]
+    assert "Beta: privacy" in result["coverage"]["gaps"]
+    assert result["recommendation"] is None
+    assert result["recommendation_status"] == "withheld"
 
 
 def test_compact_research_evidence_prefers_late_relevant_numeric_sections():

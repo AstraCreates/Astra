@@ -14,49 +14,18 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 
-DEPARTMENT_HEADS = (
-    "research", "marketing", "sales", "product_technical", "design",
-    "finance", "legal", "operations",
-)
-
-_INTENT_KEYWORDS = {
-    "research": ("research", "market", "competitor", "customer interview", "learn", "investigate",
-                 "viable", "viability", "feasible", "feasibility", "find out", "figure out",
-                 "profitable", "profitability", "worth it", "is it possible", "possible"),
-    "marketing": ("marketing", "campaign", "brand", "seo", "content", "audience"),
-    "sales": ("sales", "lead", "prospect", "pipeline", "outreach", "close"),
-    "product_technical": ("product", "feature", "bug", "api", "code", "technical", "engineering", "website", "web site", "landing page", "web app", "frontend"),
-    "design": ("design", "ux", "ui", "wireframe", "prototype", "visual"),
-    "finance": ("finance", "budget", "forecast", "revenue", "invoice", "pricing"),
-    "legal": ("legal", "contract", "privacy", "terms", "compliance", "trademark"),
-    "operations": ("operation", "process", "schedule", "vendor", "workflow", "hire"),
+CAPABILITY_REGISTRY: dict[str, dict[str, Any]] = {
+    "research": {"squad": "Insights", "capabilities": {"research", "evidence research", "market analysis", "competitive analysis", "synthesis"}, "capacity": 3},
+    "marketing": {"squad": "Growth", "capabilities": {"positioning", "campaign development", "audience strategy", "content"}, "capacity": 3},
+    "sales": {"squad": "Revenue", "capabilities": {"pipeline strategy", "account research", "sales materials", "outreach drafting"}, "capacity": 3},
+    "product_technical": {"squad": "Product Delivery", "capabilities": {"product delivery", "software engineering", "website", "landing page", "website delivery", "local preview", "technical architecture"}, "capacity": 3},
+    "design": {"squad": "Experience", "capabilities": {"visual design", "user experience", "interaction design", "prototype"}, "capacity": 3},
+    "finance": {"squad": "Planning", "capabilities": {"financial analysis", "budgeting", "forecasting", "pricing analysis"}, "capacity": 2},
+    "legal": {"squad": "Risk", "capabilities": {"legal analysis", "compliance review", "contract review", "privacy review"}, "capacity": 2},
+    "operations": {"squad": "Company Operations", "capabilities": {"operating systems", "process design", "scheduling", "vendor operations"}, "capacity": 3},
 }
-
-# When nothing scores above zero, max()'s tie-break silently picked whichever
-# department happened to be first in DEPARTMENT_HEADS -- an accident of tuple
-# order, not a decision. Research is still the right default for a vague
-# "is X viable/worth doing" ask, but it's now an explicit choice instead of
-# incidental ordering, so changing the default later means changing one name.
-_DEFAULT_DEPARTMENT = "research"
-
-_SQUADS = {
-    "research": "insights", "marketing": "growth", "sales": "revenue",
-    "product_technical": "product_delivery", "design": "experience",
-    "finance": "planning", "legal": "risk", "operations": "company_operations",
-}
-
-_PLANS = {
-    "research": ("Gather reliable sources and internal evidence", "Synthesize findings and uncertainties", "Produce a decision brief"),
-    "marketing": ("Analyze audience and positioning", "Draft campaign assets", "Prepare a review-ready launch plan"),
-    "sales": ("Research target accounts and qualification criteria", "Draft outreach and follow-up materials", "Prepare pipeline recommendations"),
-    "product_technical": ("Clarify requirements and technical constraints", "Draft an implementation plan or local artifact", "Review risks and acceptance criteria"),
-    "design": ("Research user needs and visual references", "Create draft flows or design artifacts", "Document review criteria"),
-    "finance": ("Analyze assumptions and financial data", "Create forecast and variance analysis", "Prepare budget recommendations"),
-    "legal": ("Research applicable requirements", "Draft internal issue list or document redlines", "Escalate decisions needing counsel or approval"),
-    "operations": ("Assess process, cadence, and capacity", "Draft operating procedures or schedules", "Prepare reversible internal updates"),
-}
-
-_WEBSITE_TERMS = ("website", "web site", "landing page", "web app", "frontend")
+DEPARTMENT_HEADS = tuple(CAPABILITY_REGISTRY)
+_DEFAULT_DEPARTMENT = "operations"
 
 _APPROVAL_TERMS = (
     "send", "email", "message", "contact", "outreach", "publish", "post", "deploy",
@@ -93,7 +62,7 @@ _STOPWORDS = frozenset({
     "where", "who", "we", "i", "you", "our", "your", "find", "out", "see", "teh", "with",
     "can", "could", "should", "would", "will", "research", "reserach", "resreach",
 })
-_CONTINUATION_OVERLAP_THRESHOLD = 0.4
+_CONTINUATION_OVERLAP_THRESHOLD = 0.55
 
 
 def _content_words(text: str) -> frozenset[str]:
@@ -122,28 +91,81 @@ def _find_continuation(intent: str, candidates: list[dict[str, Any]]) -> dict[st
     return best[1] if best else None
 
 
+def _tokens(value: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.lower()))
+
+
+def infer_work_request(intent: str) -> dict[str, Any]:
+    """Create an auditable, capability-first request without phrase routing.
+
+    The registry contains capabilities, not intent keywords. A future model
+    extractor may populate richer requirements; this local extraction remains
+    deterministic and safe during model outages.
+    """
+    words = _tokens(intent)
+    matches: list[tuple[int, str, set[str]]] = []
+    for department, profile in CAPABILITY_REGISTRY.items():
+        # Composite labels need at least two matching words. This stops the
+        # word "research" in "account research" from hijacking a general
+        # research request while preserving intentionally single-word skills.
+        matched = {capability for capability in profile["capabilities"]
+                   if (len(_tokens(capability)) == 1 and _tokens(capability) & words)
+                   or len(_tokens(capability) & words) >= 2}
+        if matched:
+            matches.append((len(matched), department, matched))
+    matches.sort(key=lambda item: (-item[0], item[1]))
+    required = sorted({capability for _, _, values in matches for capability in values})
+    confidence = min(0.95, 0.35 + 0.2 * (matches[0][0] if matches else 0))
+    return {"version": 1, "outcome": intent.strip(), "deliverables": [], "constraints": [], "entities": [],
+            "risk": "internal", "required_capabilities": required, "confidence": confidence,
+            "requires_triage": not matches}
+
+
+def _active_load(company: Mapping[str, Any], department: str) -> int:
+    return sum(1 for squad in company.get("squads", []) if squad.get("department") == department and squad.get("state") in {"active", "working", "review"})
+
+
+def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -> dict[str, Any]:
+    required = set(request.get("required_capabilities") or [])
+    scored = []
+    for department, profile in CAPABILITY_REGISTRY.items():
+        capability_score = len(required & set(profile["capabilities"]))
+        load = _active_load(company, department)
+        score = capability_score * 10 - load * 2
+        scored.append((score, capability_score, department, load))
+    scored.sort(reverse=True)
+    score, matched, department, load = scored[0]
+    profile = CAPABILITY_REGISTRY[department]
+    triage = bool(request.get("requires_triage")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
+    if triage:
+        department = _DEFAULT_DEPARTMENT
+        profile = CAPABILITY_REGISTRY[department]
+    handoffs = [entry[2] for entry in scored[1:] if entry[1] > 0 and entry[2] != department][:2]
+    return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
+            "load": load, "requires_triage": triage, "director": department, "handoffs": handoffs}
+
+
 def choose_department(intent: str) -> tuple[str, str]:
-    """Choose a department head and its default specialist squad from intent."""
-    words = (intent or "").lower()
-    if any(term in words for term in _WEBSITE_TERMS):
-        return "product_technical", "website_build"
-    scores = {head: sum(term in words for term in _INTENT_KEYWORDS[head]) for head in DEPARTMENT_HEADS}
-    winner = max(DEPARTMENT_HEADS, key=lambda head: scores[head])
-    if scores[winner] == 0:
-        winner = _DEFAULT_DEPARTMENT
-    return winner, _SQUADS[winner]
+    """Compatibility wrapper for callers; routes through capabilities."""
+    route = route_work_request({}, infer_work_request(intent))
+    return route["department"], route["squad_name"]
 
 
-def specialist_task_plan(department: str, intent: str) -> list[dict[str, Any]]:
-    """Return a safe, reviewable specialist plan before any external action."""
-    if department not in DEPARTMENT_HEADS:
-        raise ValueError(f"Unknown department head: {department}")
-    plan = ("Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval") if department == "product_technical" and any(term in intent.lower() for term in _WEBSITE_TERMS) else _PLANS[department]
-    return [
-        {"title": title, "description": f"{title}. Intent: {intent}", "department": department,
-         "operation": "internal_analysis" if index == 0 else "draft"}
-        for index, title in enumerate(plan)
-    ]
+def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Build a small safe plan from work shape, not a department template."""
+    request = request or infer_work_request(intent)
+    capabilities = set(request.get("required_capabilities") or [])
+    if request.get("requires_triage"):
+        titles = ["Clarify the requested outcome and required capabilities"]
+    elif {"website", "landing page", "website delivery", "local preview"} & capabilities:
+        titles = ["Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval"]
+    elif "evidence research" in capabilities or "competitive analysis" in capabilities:
+        titles = ["Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief"]
+    else:
+        titles = ["Define acceptance criteria and constraints", "Create a reviewable local deliverable", "Review outcome and next actions"]
+    return [{"title": title, "description": f"{title}. Outcome: {intent}", "department": department,
+             "operation": "internal_analysis" if index == 0 else "draft", "required_capabilities": sorted(capabilities)}
+            for index, title in enumerate(titles)]
 
 
 def enforce_dispatch_policy(
@@ -199,42 +221,49 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     reusing that initiative instead of guessing from wording alone.
     """
     company = _call("get_company_os", company_id=company_id) or {}
+    work_request = infer_work_request(intent)
     reuse = None
     if forced_initiative_id:
         reuse = next((item for item in company.get("initiatives", [])
                       if _entity_id(item, "initiative_id") == forced_initiative_id and item.get("state") != "archived"), None)
     if reuse is not None:
-        department = reuse.get("department") or choose_department(intent)[0]
-        squad_name = _SQUADS.get(department, _SQUADS[_DEFAULT_DEPARTMENT])
+        route = route_work_request(company, work_request)
+        department = reuse.get("director") or reuse.get("department") or route["department"]
+        squad_name = route["squad_name"]
     else:
-        department, squad_name = choose_department(intent)
-        # Squads used to be reused across ANY active initiative in the same
-        # department, keyed only on department -- with no topic check. That silently
-        # merged unrelated asks (e.g. a fresh "cookie clicker monetization" question
-        # landing inside an existing "Big Pharma consulting" research initiative)
-        # into one initiative, corrupting the acknowledgement text and evidence
-        # trail. Now a new dispatch reuses an existing initiative + squad only when
-        # its wording is actually close to one already active in the same
-        # department (re-asking the same thing, or a light rephrasing of it);
-        # a genuinely different ask in the same department still gets its own.
-        same_department_active = [item for item in company.get("initiatives", []) if item.get("state") != "archived" and item.get("department") == department]
-        reuse = _find_continuation(intent, same_department_active)
+        route = route_work_request(company, work_request)
+        department, squad_name = route["department"], route["squad_name"]
+        reuse = _find_continuation(intent, [item for item in company.get("initiatives", []) if item.get("state") != "archived"])
     if reuse:
         initiative = reuse
         initiative_id = _entity_id(initiative, "initiative_id")
-        squad = next((item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("state") != "archived"), None)
+        candidates = [item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("department") == department and item.get("state") != "archived"]
+        active = [item for item in candidates if item.get("state") in {"active", "working", "review"}]
+        capacity = CAPABILITY_REGISTRY[department]["capacity"]
+        squad = next((item for item in active if sum(1 for mission in company.get("missions", []) if mission.get("squad_id") == item.get("squad_id") and mission.get("state") in {"active", "working", "review"}) < capacity), None)
         if squad is None:
-            squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+            # A completed team retains its scoped context and can be reopened
+            # before forming another duplicate squad for the same initiative.
+            squad = next((item for item in reversed(candidates) if item.get("state") == "done"), None)
+            if squad:
+                _call("update_squad", company_id=company_id, squad_id=_entity_id(squad, "squad_id"), state="active", lifecycle="formed")
+                squad = {**squad, "state": "active", "lifecycle": "formed"}
+        if squad is None:
+            squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
+                          capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=department, lifecycle="formed")
         squad_id = _entity_id(squad, "squad_id")
     else:
-        initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, state="active")
+        initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, director=route["director"],
+                           objective=work_request["outcome"], state="planned", work_request=work_request)
         initiative_id = _entity_id(initiative, "initiative_id")
-        squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department)
+        squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
+                      capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=department, lifecycle="formed")
         squad_id = _entity_id(squad, "squad_id")
-    mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent, department=department, state="active")
+    mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent,
+                    department=department, state="active", initiative_director=route["director"], handoff_requests=route.get("handoffs", []))
     mission_id = _entity_id(mission, "mission_id")
     created_tasks = []
-    for spec in specialist_task_plan(department, intent):
+    for spec in specialist_task_plan(department, intent, request=work_request):
         policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
         task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, mission_id=mission_id,
                      name=spec["title"], description=spec["description"], department=department, operation=spec["operation"],
@@ -243,7 +272,8 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         if policy["decision"] == "require_approval":
             _create_approval_card(company_id, task, policy)
         created_tasks.append(task)
-    return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks}
+    return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
+            "work_request": work_request, "routing": route}
 
 
 def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[Mapping[str, Any]], Any], *,

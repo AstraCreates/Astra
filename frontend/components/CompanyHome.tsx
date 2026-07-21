@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Brain, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, PanelRightClose, PanelRightOpen, Pencil, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Brain, Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, LayoutDashboard, Link2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
-import { clearMessages, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeSquad } from "@/lib/company-os";
+import { clearMessages, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -85,7 +85,7 @@ function SquadWorkbench({ squad, onClose }: { squad: CompanyHomeSquad; onClose: 
       </div>
 
       {squad.tasks.length === 0 ? (
-        <div className="empty"><div className="empty-title">No tasks yet</div><p style={{ margin: 0, fontSize: 12 }}>This squad hasn't started work.</p></div>
+        <div className="empty"><div className="empty-title">No tasks yet</div><p style={{ margin: 0, fontSize: 12 }}>This squad hasn&apos;t started work.</p></div>
       ) : <>
         <div className="depts">
           {squad.tasks.map(task => (
@@ -110,6 +110,30 @@ function SquadWorkbench({ squad, onClose }: { squad: CompanyHomeSquad; onClose: 
   </div>;
 }
 
+function InitiativeWorkspace({ initiative, squads, artifacts, saving, onSave, onClose, onOpenSquad, onOpenArtifact }: { initiative: CompanyHomeInitiative; squads: CompanyHomeSquad[]; artifacts: CompanyHomeData["brain"]["artifacts"]; saving: boolean; onSave: (update: InitiativeBriefUpdate) => void; onClose: () => void; onOpenSquad: (id: string) => void; onOpenArtifact: (id: string) => void }) {
+  const [draft, setDraft] = useState<InitiativeBriefUpdate>(() => ({ name: initiative.title, status: initiative.status, ...initiative.brief }));
+  const field = (key: keyof InitiativeBriefUpdate, label: string, multiline = false) => <label style={{ display: "grid", gap: 5, minWidth: 0 }}><span className="sec-label" style={{ fontSize: 10 }}>{label}</span>{multiline ? <textarea className="f-ta" value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} style={{ minHeight: key === "successCriteria" ? 78 : 64, fontSize: 13 }} /> : <input className="f-input" value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} style={{ height: 34, fontSize: 13 }} />}</label>;
+  const initiativeArtifacts = artifacts.filter(item => !item.initiativeId || item.initiativeId === initiative.id);
+
+  return <div role="dialog" aria-modal="true" aria-label={`${initiative.title} initiative workspace`} onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 45, padding: "clamp(10px, 3vw, 28px)", background: "rgba(2,6,23,.72)", overflowY: "auto" }}>
+    <section onClick={(event: MouseEvent) => event.stopPropagation()} style={{ width: "min(1120px, 100%)", margin: "auto", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg)", border: "1px solid var(--bd)", boxShadow: "var(--shell-shadow)" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, padding: "18px 22px", background: "var(--bg-surface)", borderBottom: "1px solid var(--bd)" }}><div><div className="sec-label">Initiative workspace</div><h2 style={{ margin: "4px 0 0", color: "var(--fg)", fontSize: 18 }}>{initiative.title}</h2></div><button type="button" className="btn sm" onClick={onClose}><X size={14} /> Close</button></header>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(290px, .8fr)", gap: 0 }}>
+        <form onSubmit={event => { event.preventDefault(); onSave(draft); }} style={{ padding: "22px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}><div><div className="sec-label">Brief</div><p style={{ margin: "4px 0 0", color: "var(--fm)", fontSize: 12 }}>Keep the operating context current for every squad.</p></div><button type="submit" className="btn sm pri" disabled={saving || !draft.name.trim()}><Save size={13} /> {saving ? "Saving..." : "Save changes"}</button></div>
+          <div style={{ display: "grid", gap: 14 }}>{field("name", "Initiative name")}{field("objective", "Objective", true)}{field("successCriteria", "Success criteria", true)}<div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}><label style={{ display: "grid", gap: 5 }}><span className="sec-label" style={{ fontSize: 10 }}>Priority</span><select className="f-input" value={draft.priority} onChange={event => setDraft({ ...draft, priority: event.target.value })} style={{ height: 34, fontSize: 13 }}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label><label style={{ display: "grid", gap: 5 }}><span className="sec-label" style={{ fontSize: 10 }}>Status</span><select className="f-input" value={draft.status} onChange={event => setDraft({ ...draft, status: event.target.value })} style={{ height: 34, fontSize: 13 }}><option>Planned</option><option>Working</option><option>Review</option><option>Done</option></select></label>{field("owner", "Owner")}{field("budget", "Budget")}{field("dueDate", "Due date")}</div></div>
+        </form>
+        <aside style={{ padding: "22px", borderLeft: "1px solid var(--bd)", background: "var(--bg-sunken)", display: "grid", alignContent: "start", gap: 20 }}>
+          <section><h3 className="sec-label" style={{ margin: "0 0 9px" }}><Users size={13} /> Squad roster</h3>{squads.length ? <div style={{ display: "grid", gap: 7 }}>{squads.map(squad => <button key={squad.id} type="button" onClick={() => onOpenSquad(squad.id)} style={{ padding: 10, textAlign: "left", border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-surface)", color: "var(--fg)", cursor: "pointer" }}><b style={{ display: "block", fontSize: 12 }}>{squad.name}</b><small style={{ display: "block", marginTop: 3, color: "var(--fm)" }}>{squad.members.length ? squad.members.join(" · ") : `${squad.tasks.length} tasks`}</small></button>)}</div> : <p style={{ margin: 0, color: "var(--fm)", fontSize: 12 }}>No squads assigned yet.</p>}</section>
+          <section><h3 className="sec-label" style={{ margin: "0 0 9px" }}><Link2 size={13} /> Dependencies</h3>{initiative.dependencies.length ? <div style={{ display: "grid", gap: 7 }}>{initiative.dependencies.map(item => <div key={item.id} style={{ padding: 10, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-surface)" }}><b style={{ display: "block", color: "var(--fg)", fontSize: 12 }}>{item.name}</b><small style={{ color: "var(--fm)", fontSize: 10.5 }}>{item.status}</small></div>)}</div> : <p style={{ margin: 0, color: "var(--fm)", fontSize: 12 }}>No dependencies recorded.</p>}</section>
+          <section><h3 className="sec-label" style={{ margin: "0 0 9px" }}><FileText size={13} /> Consolidated artifacts</h3>{initiativeArtifacts.length ? <div style={{ display: "grid", gap: 7 }}>{initiativeArtifacts.map(item => <button key={item.id} type="button" onClick={() => onOpenArtifact(item.id)} style={{ padding: "9px 10px", textAlign: "left", border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-surface)", color: "var(--fg)", cursor: "pointer" }}><b style={{ display: "block", fontSize: 12 }}>{item.title}</b><small style={{ color: "var(--fm)", fontSize: 10.5 }}>{item.source} · {item.updatedAt}</small></button>)}</div> : <p style={{ margin: 0, color: "var(--fm)", fontSize: 12 }}>No artifacts linked yet.</p>}</section>
+        </aside>
+      </div>
+      <section style={{ padding: "20px 22px 24px", borderTop: "1px solid var(--bd)", background: "var(--bg-surface)" }}><h3 className="sec-label" style={{ margin: "0 0 12px" }}><Calendar size={13} /> Timeline</h3>{initiative.timeline.length ? <div style={{ display: "grid", gap: 8 }}>{initiative.timeline.map(item => <div key={item.id} style={{ display: "grid", gridTemplateColumns: "108px 1fr", gap: 12, padding: "9px 0", borderTop: "1px solid var(--bd)" }}><small style={{ color: "var(--fm)" }}>{item.occurredAt}</small><div><b style={{ color: "var(--fg)", fontSize: 12 }}>{item.title}</b>{item.detail && <p style={{ margin: "3px 0 0", color: "var(--fm)", fontSize: 11.5 }}>{item.detail}</p>}<small style={{ color: "var(--accent)", fontSize: 10 }}>{item.status}</small></div></div>)}</div> : <p style={{ margin: 0, color: "var(--fm)", fontSize: 12 }}>Activity will appear here as the initiative moves forward.</p>}</section>
+    </section>
+  </div>;
+}
+
 export default function CompanyHome() {
   const { founderId, companyId, activeCompany } = useCompany();
   const [home, setHome] = useState(EMPTY);
@@ -121,6 +145,8 @@ export default function CompanyHome() {
   const [deletingId, setDeletingId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
+  const [workspaceInitiativeId, setWorkspaceInitiativeId] = useState("");
+  const [savingInitiative, setSavingInitiative] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingText, setEditingText] = useState("");
   const [messageBusyId, setMessageBusyId] = useState("");
@@ -175,6 +201,24 @@ export default function CompanyHome() {
     } finally {
       setDeletingId("");
     }
+  };
+
+  const handleSaveInitiative = async (initiativeId: string, update: InitiativeBriefUpdate) => {
+    setSavingInitiative(true);
+    try {
+      const data = await updateInitiative({ founderId, companyId }, initiativeId, update);
+      setHome(data);
+      setNotice("Initiative brief saved.");
+    } catch {
+      setNotice("Could not save that initiative — try again.");
+    } finally {
+      setSavingInitiative(false);
+    }
+  };
+
+  const openArtifact = (artifactId: string) => {
+    setArtifactError("");
+    void getCompanyArtifact({ founderId, companyId }, artifactId).then(setArtifact).catch(() => setArtifactError("This artifact could not be opened."));
   };
 
   const handleDeleteSquad = async (squadId: string) => {
@@ -275,6 +319,7 @@ export default function CompanyHome() {
   const chatTurns = home.conversation.filter(turn => turn.kind !== "status");
   const agentOptions = home.squads.map(s => ({ id: s.id.replace(/[^a-z0-9_]/gi, "_").toLowerCase(), label: s.name, status: s.lifecycle.toLowerCase() }));
   const workbenchSquad = home.squads.find(s => s.id === workbenchSquadId) ?? null;
+  const workspaceInitiative = home.initiatives.find(item => item.id === workspaceInitiativeId) ?? null;
 
   return <div style={{ display: "flex", height: "100%", minHeight: "100vh", background: "var(--bg)" }}>
     <style>{`
@@ -290,6 +335,8 @@ export default function CompanyHome() {
       .company-home-starter { transition: border-color .14s, background .14s, color .14s; }
       .company-home-starter:hover { border-color: var(--accent) !important; background: var(--bdim) !important; color: var(--fg) !important; }
       .company-home-rail-toggle:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
+      .company-home-initiative-card { transition: border-color .14s, transform .14s, box-shadow .14s; cursor: pointer; }
+      .company-home-initiative-card:hover { border-color: var(--accent) !important; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15,23,42,.08); }
       @media (max-width: 860px) { .company-home-rail { display: none !important; } }
       .company-home-chat-actions { opacity: 0; transition: opacity .14s; }
       .company-home-chat-turn:hover .company-home-chat-actions, .company-home-chat-actions:focus-within { opacity: 1; }
@@ -325,7 +372,7 @@ export default function CompanyHome() {
             <div style={{ minHeight: "50vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
               <span style={{ width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", color: "var(--accent)", background: "var(--bdim)" }}><Sparkles size={20} /></span>
               <div>
-                <h2 style={{ margin: 0, color: "var(--fg)", fontSize: 22, letterSpacing: "-.02em" }}>How's {companyName} doing?</h2>
+                <h2 style={{ margin: 0, color: "var(--fg)", fontSize: 22, letterSpacing: "-.02em" }}>How&apos;s {companyName} doing?</h2>
                 <p style={{ margin: "8px 0 0", color: "var(--fm)", fontSize: 13, maxWidth: 440 }}>{home.northStar}</p>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
@@ -427,10 +474,10 @@ export default function CompanyHome() {
           ) : (
             <div ref={initiativesRailRef} style={{ display: "flex", gap: 8, overflowX: "auto", scrollSnapType: "x proximity", paddingBottom: 4 }}>
               {home.initiatives.map(item => (
-                <article key={item.id} className="company-home-initiative-card" style={{ position: "relative", flex: "0 0 auto", width: 180, scrollSnapAlign: "start", padding: 11, border: "1px solid var(--bd)", borderRadius: "var(--radius)", background: "var(--bg-surface)" }}>
+                <article key={item.id} className="company-home-initiative-card" onClick={() => setWorkspaceInitiativeId(item.id)} style={{ position: "relative", flex: "0 0 auto", width: 180, scrollSnapAlign: "start", padding: 11, border: "1px solid var(--bd)", borderRadius: "var(--radius)", background: "var(--bg-surface)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
                     <b style={{ color: "var(--fg)", fontSize: 11.5, lineHeight: 1.3 }}>{item.title}</b>
-                    <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingId === item.id} onClick={() => void handleDeleteInitiative(item.id)} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 20, height: 20, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingId === item.id ? 0.5 : undefined }}><Trash2 size={11} /></button>
+                    <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingId === item.id} onClick={(event) => { event.stopPropagation(); void handleDeleteInitiative(item.id); }} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 20, height: 20, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingId === item.id ? 0.5 : undefined }}><Trash2 size={11} /></button>
                   </div>
                   <div style={{ height: 4, margin: "10px 0 6px", borderRadius: 8, background: "var(--bg-sunken)", overflow: "hidden" }}><div style={{ width: "100%", height: "100%", borderRadius: 8, background: "var(--accent)", transformOrigin: "left", transform: `scaleX(${item.progress / 100})`, transition: "transform .3s ease" }} /></div>
                   <small style={{ color: "var(--fm)", fontSize: 10 }}>{item.progress}% · {item.taskCount} tasks</small>
@@ -490,7 +537,7 @@ export default function CompanyHome() {
           ) : (
             <div style={{ display: "grid", gap: 6 }}>{home.brain.artifacts.map(item => (
               <article key={item.id} className="company-home-artifact-row" style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 2px 2px 9px", border: "1px solid var(--bd)", borderRadius: "var(--radius)", background: "var(--bg-surface)" }}>
-                <button type="button" onClick={() => { setArtifactError(""); void getCompanyArtifact({ founderId, companyId }, item.id).then(setArtifact).catch(() => setArtifactError("This artifact could not be opened.")); }} style={{ flex: 1, minWidth: 0, display: "flex", gap: 7, padding: "6px 0", color: "inherit", textAlign: "left", cursor: "pointer", border: 0, background: "transparent" }}>
+                <button type="button" onClick={() => openArtifact(item.id)} style={{ flex: 1, minWidth: 0, display: "flex", gap: 7, padding: "6px 0", color: "inherit", textAlign: "left", cursor: "pointer", border: 0, background: "transparent" }}>
                   <FileText size={13} color="var(--accent)" />
                   <span style={{ minWidth: 0 }}><b style={{ display: "block", color: "var(--fg)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</b><small style={{ color: "var(--fm)", fontSize: 9.5 }}>{item.source}</small></span>
                 </button>
@@ -503,6 +550,7 @@ export default function CompanyHome() {
     )}
 
     {workbenchSquad && <SquadWorkbench squad={workbenchSquad} onClose={() => setWorkbenchSquadId("")} />}
+    {workspaceInitiative && <InitiativeWorkspace key={workspaceInitiative.id} initiative={workspaceInitiative} squads={home.squads.filter(squad => squad.initiativeId === workspaceInitiative.id)} artifacts={home.brain.artifacts} saving={savingInitiative} onSave={(update) => void handleSaveInitiative(workspaceInitiative.id, update)} onClose={() => setWorkspaceInitiativeId("")} onOpenSquad={(id) => { setWorkspaceInitiativeId(""); setWorkbenchSquadId(id); }} onOpenArtifact={(id) => { setWorkspaceInitiativeId(""); openArtifact(id); }} />}
 
     {(artifact || artifactError) && <div role="dialog" aria-modal="true" aria-label="Artifact preview" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.68)" }}><section style={{ width: "min(820px, 100%)", maxHeight: "86vh", overflow: "auto", padding: 22, borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", border: "1px solid var(--bd)" }}>{artifact ? <><div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}><div><h2 style={{ margin: 0, color: "var(--fg)", fontSize: 18 }}>{artifact.title}</h2><small style={{ color: "var(--fm)" }}>{artifact.source} · {artifact.updatedAt}</small></div><button type="button" onClick={() => setArtifact(null)} style={{ border: 0, background: "transparent", color: "var(--fm)", cursor: "pointer" }}>Close</button></div><ArtifactDocument content={artifact.content || "This artifact has no previewable text."} /><button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([artifact.content], { type: "text/markdown" })); const link = document.createElement("a"); link.href = url; link.download = `${artifact.title.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/(^-|-$)/g, "") || "artifact"}.md`; link.click(); URL.revokeObjectURL(url); }} style={{ padding: "9px 13px", border: 0, borderRadius: 7, background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Download artifact</button></> : <><p style={{ color: "var(--fg)" }}>{artifactError}</p><button type="button" onClick={() => setArtifactError("")}>Close</button></>}</section></div>}
 

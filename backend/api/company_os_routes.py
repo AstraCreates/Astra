@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, update_artifact, update_initiative, update_message, update_squad
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_initiative, update_message, update_squad
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.tenant_auth import require_founder_access
@@ -32,6 +32,22 @@ class CopilotMessageBody(BaseModel):
 class MessageEditBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
+
+
+class InitiativeEditBody(BaseModel):
+    founder_id: str
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    objective: str | None = Field(default=None, max_length=10_000)
+    success_criteria: list[str] | None = None
+    priority: str | None = Field(default=None, max_length=40)
+    owner: str | None = Field(default=None, max_length=160)
+    budget: dict[str, Any] | str | None = None
+    due_date: str | None = Field(default=None, max_length=64)
+    state: str | None = Field(default=None, max_length=32)
+    roadmap: list[dict[str, Any]] | None = None
+    dependencies: list[dict[str, Any]] | None = None
+    decisions: list[dict[str, Any]] | None = None
+    acceptance_confirmed: bool | None = None
 
 
 def _message(company_id: str, message_id: str) -> dict[str, Any]:
@@ -75,7 +91,27 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
-    return _company(request, company_id, founder_id)
+    _company(request, company_id, founder_id)
+    reconcile_initiatives(company_id)
+    return get_company_os(company_id)
+
+
+@router.patch("/companies/{company_id}/os/initiatives/{initiative_id}")
+async def edit_company_os_initiative(company_id: str, initiative_id: str, body: InitiativeEditBody, request: Request):
+    company = _company(request, company_id, body.founder_id, operator=True)
+    if not any(item.get("initiative_id") == initiative_id for item in company.get("initiatives", [])):
+        raise HTTPException(status_code=404, detail="Initiative not found")
+    changes = body.model_dump(exclude={"founder_id"}, exclude_none=True)
+    state_aliases = {"active": "working", "waiting": "review", "blocked": "review", "complete": "done"}
+    if "state" in changes:
+        changes["state"] = state_aliases.get(str(changes["state"]).lower(), str(changes["state"]).lower())
+        if changes["state"] not in {"planned", "working", "review", "done", "archived"}:
+            raise HTTPException(status_code=422, detail="Invalid initiative state")
+        if changes["state"] == "done":
+            changes.setdefault("acceptance_confirmed", True)
+    update_initiative(company_id, initiative_id, **changes)
+    reconcile_initiatives(company_id)
+    return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/initiatives/{initiative_id}")

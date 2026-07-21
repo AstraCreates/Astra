@@ -10,6 +10,7 @@ from backend.company_os import (
     create_artifact,
     get_company_os,
     list_company_os,
+    reconcile_initiatives,
     update_mission,
     update_squad,
 )
@@ -61,12 +62,14 @@ async def run_mission(company_id: str, mission_id: str) -> None:
             if squad:
                 update_squad(company_id, squad["squad_id"], state="review", lifecycle="review")
             append_message(company_id, f"{mission['name']} needs review before continuing: {exc}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+            reconcile_initiatives(company_id)
             return
         if result.get("status") == "awaiting_approval":
             update_mission(company_id, mission_id, state="waiting")
             if squad:
                 update_squad(company_id, squad["squad_id"], state="waiting", lifecycle="review")
             append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+            reconcile_initiatives(company_id)
             return
 
     remaining = _mission_tasks(company_id, mission_id)
@@ -80,6 +83,7 @@ async def run_mission(company_id: str, mission_id: str) -> None:
         else:
             reply = f"{mission['name']} is waiting on your approval before the last step. Check Approvals in the sidebar."
         append_message(company_id, reply, author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="chat")
+    reconcile_initiatives(company_id)
 
 
 async def recover_pending_missions() -> int:
@@ -242,23 +246,28 @@ def _comparison_document(mission_name: str, evidence: Mapping[str, Any]) -> tupl
     if len(subjects) != 2:
         return "Comparison evidence incomplete", "## Evidence incomplete\n\nThe requested products could not be identified reliably. No recommendation was made."
     left, right = subjects
-    dimensions = (("Product and target user", "product"), ("Pricing and packaging", "pricing"), ("Privacy and compliance", "privacy"))
+    dimensions = (("Product and target user", "product"), ("Core workflow", "workflow"), ("Pricing and packaging", "pricing"), ("Privacy and compliance", "privacy"), ("Evidence and maturity", "evidence_maturity"))
     rows = []
     gaps = []
     for label, key in dimensions:
         values = []
         for subject in subjects:
-            sources = ledger.get(subject, {}).get(key) or []
-            if sources:
-                values.append("; ".join(f"[{item.get('title') or 'Source'}]({item.get('url')})" for item in sources[:2]))
+            claims = ledger.get(subject, {}).get(key) or []
+            if claims:
+                values.append("; ".join(
+                    f"[{item.get('title') or 'Source'}]({item.get('url')}) ({item.get('source_classification') or item.get('source_type') or 'source'})"
+                    for item in claims[:2]
+                ))
             else:
                 values.append("Not verified from available public evidence")
                 gaps.append(f"{subject}: {label}")
         rows.append(f"| {label} | {values[0]} | {values[1]} |")
     title = f"{_short_title(left)} and {_short_title(right)} comparison"
-    body = ["## Direct answer", "A recommendation is withheld because Astra only compares products when both sides have verified evidence for every core dimension.", "", "## Verified evidence", f"| Dimension | {left} | {right} |", "| --- | --- | --- |", *rows, "", "## Evidence gaps"]
+    ready = bool((evidence.get("coverage") or {}).get("ready")) and not gaps
+    direct_answer = "The comparison gate passed; the ledger below is ready for a founder decision, without automatically declaring a winner." if ready else "A recommendation is withheld because Astra only compares products when both sides have verified evidence for every core dimension."
+    body = ["## Direct answer", direct_answer, "", "## Verified evidence", f"| Dimension | {left} | {right} |", "| --- | --- | --- |", *rows, "", "## Evidence gaps"]
     body.extend(f"- {gap}" for gap in gaps) if gaps else body.extend(["- Both products met the balanced evidence gate."])
-    body.extend(["", "## Bottom line", "No winner is declared until the evidence gaps above are filled with direct, publicly verifiable sources."])
+    body.extend(["", "## Bottom line", "No winner is declared until the evidence gaps above are filled with direct, publicly verifiable sources." if not ready else "Use the cited fetched evidence to weigh the founder's specific priorities; Astra does not infer a winner from source counts alone."])
     return title, "\n".join(body)
 
 

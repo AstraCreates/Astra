@@ -95,6 +95,29 @@ def test_canonical_context_requires_a_promoted_revision_to_override(tmp_path):
     assert company_os.resolve_context("acme", initiative_id="i1", root=root)["brand"] == "bold"
 
 
+def test_initiative_rollup_requires_acceptance_and_keeps_multiple_squads(tmp_path):
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "f1", "Acme", root=root)
+    initiative = company_os.create_initiative("acme", "Launch", initiative_id="i1", root=root,
+                                              success_criteria=["Founder accepts the launch brief"])
+    first = company_os.create_squad("acme", initiative["initiative_id"], "Product", squad_id="s1", root=root)
+    second = company_os.create_squad("acme", initiative["initiative_id"], "Growth", squad_id="s2", root=root)
+    first_mission = company_os.create_mission("acme", "i1", first["squad_id"], "Build", mission_id="m1", root=root, state="done")
+    second_mission = company_os.create_mission("acme", "i1", second["squad_id"], "Launch", mission_id="m2", root=root, state="done")
+    company_os.create_task("acme", "i1", first["squad_id"], "Preview", mission_id=first_mission["mission_id"], root=root, state="done")
+    company_os.create_task("acme", "i1", second["squad_id"], "Review", mission_id=second_mission["mission_id"], root=root, state="done")
+
+    company_os.reconcile_initiatives("acme", root=root)
+    state = company_os.get_company_os("acme", root=root)
+    assert state["initiatives"][0]["state"] == "planned"
+    assert state["initiatives"][0]["progress"] == 100
+    assert state["initiatives"][0]["squad_count"] == 2
+
+    company_os.update_initiative("acme", "i1", root=root, acceptance_confirmed=True)
+    company_os.reconcile_initiatives("acme", root=root)
+    assert company_os.get_company_os("acme", root=root)["initiatives"][0]["state"] == "done"
+
+
 def test_archived_artifacts_skip_the_library_mirror(tmp_path, monkeypatch):
     # A research mission's raw evidence and mid-pipeline synthesis note are
     # created already-archived (working material, not something a founder
