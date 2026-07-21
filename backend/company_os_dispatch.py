@@ -189,6 +189,15 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         primary_candidates = [entry for entry in scored if primary_capability in CAPABILITY_REGISTRY[entry[2]]["capabilities"]]
         if primary_candidates:
             score, matched, department, load = primary_candidates[0]
+    # Research is a first-class department capability. If the planner emits a
+    # research/evidence capability, never let a tie or missing primary field
+    # fall through to the Company Operations default.
+    if required & {"research", "evidence research", "competitive analysis", "compare"}:
+        department = "research"
+        profile = CAPABILITY_REGISTRY[department]
+        matched = len(required & set(profile["capabilities"]))
+        load = _active_load(company, department)
+        score = matched * 10 - load * 2
     profile = CAPABILITY_REGISTRY[department]
     triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
@@ -240,11 +249,127 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
             ("Create a reviewable local deliverable", "draft", None),
             ("Review outcome and next actions", "internal_review", None),
         ]
-    return [{"title": title, "description": f"{title}. Outcome: {intent}", "department": department,
+    subject = _subject_for(request, intent)
+    titles: list[str] = []
+    descriptions: list[str] = []
+    for index, (fallback_title, operation, mcp_tool) in enumerate(steps):
+        # Pull the most specific title source for this lane. Per-subject
+        # titles turn three copy-paste "Gather / Synthesize / Produce a
+        # decision brief" rows with the goal pasted after each into rows
+        # that each name what is actually happening to the user's input.
+        if department == "research" and research_capabilities & capabilities:
+            specific = _specific_research_title(operation, index, subject)
+        elif website_capabilities & capabilities:
+            specific = _specific_website_title(operation, subject)
+        else:
+            specific = _specific_generic_title(operation, subject)
+        titles.append(specific or fallback_title)
+        descriptions.append(_description_for(operation, index, capabilities))
+    return [{"title": title, "description": description, "department": department,
              "operation": operation, "mcp_tool": mcp_tool,
              "execution_scope": "external" if operation == "external_deploy" else "local",
              "required_capabilities": sorted(capabilities)}
-            for title, operation, mcp_tool in steps]
+            for title, description, (_, operation, mcp_tool) in zip(
+                titles, descriptions, steps)]
+
+
+def _subject_for(request: Mapping[str, Any], intent: str) -> str:
+    """Pick a short, specific subject token for the user's intent.
+
+    Sources (first with usable signal wins): named entities from the
+    planner, the first deliverable, or the explicit objective. Bare
+    `intent` is NOT used -- when the planner didn't extract anything, the
+    request was too vague to anchor titles, so callers fall back to a
+    stable generic shape rather than smearing a long natural-language
+    phrase into every title.
+    """
+    entities = [str(value).strip() for value in (request.get("entities") or []) if str(value).strip()]
+    if entities:
+        subject = ", ".join(entities[:3])
+    else:
+        first_deliverable = next(
+            (str(value).strip() for value in (request.get("deliverables") or []) if str(value).strip()),
+            None,
+        )
+        objective = str(request.get("objective") or "").strip()
+        subject = first_deliverable or objective
+    if not subject:
+        return ""
+    subject = " ".join(subject.split())
+    if len(subject) > 60:
+        subject = subject[:57].rstrip() + "\u2026"
+    return subject
+
+
+def _specific_research_title(operation: str, step_index: int, subject: str) -> str | None:
+    if not subject or operation not in {"internal_analysis", "draft"}:
+        return None
+    if step_index == 0:
+        return f"Gather validated evidence on {subject}"
+    if step_index == 1:
+        return f"Synthesize {subject} findings and uncertainties"
+    return f"Produce decision brief on {subject}"
+
+
+def _specific_website_title(operation: str, subject: str) -> str | None:
+    if not subject:
+        return None
+    if operation == "internal_analysis":
+        return f"Define the local website brief for {subject}"
+    if operation == "local_preview":
+        return f"Create a local preview of the {subject} site"
+    if operation == "internal_review":
+        return f"Prepare the publication decision for {subject}"
+    if operation == "external_deploy":
+        return f"Publish the {subject} website to Vercel"
+    return None
+
+
+def _specific_generic_title(operation: str, subject: str) -> str | None:
+    if not subject:
+        return None
+    if operation == "internal_analysis":
+        return f"Define acceptance criteria for {subject}"
+    if operation == "draft":
+        return f"Create a reviewable {subject} deliverable"
+    if operation == "internal_review":
+        return f"Review outcome and next actions for {subject}"
+    return None
+
+
+def _description_for(operation: str, step_index: int, capability_set: set[str]) -> str:
+    """Describe what the operator actually does on this step.
+
+    The original `"<title>. Outcome: <intent>"` template echoed the
+    founder's goal into every row, which was both visually noisy
+    (three rows that all end with the same sentence) and unhelpful
+    (the squad panel never told the founder what each step *does*).
+    """
+    research_caps = {"research", "compare", "evidence research", "competitive analysis"}
+    website_caps = {"website", "landing page", "website delivery", "local preview"}
+    if research_caps & capability_set:
+        if operation == "internal_analysis":
+            return "Source cited evidence with named companies, dates, and URLs."
+        if operation == "draft" and step_index == 1:
+            return "Cross-reference findings, note open questions, and stress-test claims."
+        if operation == "draft":
+            return "Write the final decision brief per company OS standards."
+    if website_caps & capability_set:
+        if operation == "internal_analysis":
+            return "Capture scope, audience, and success criteria for the local preview."
+        if operation == "local_preview":
+            return "Build and serve the website locally so the founder can review a working preview."
+        if operation == "internal_review":
+            return "Verify the preview is ready before requesting approval to publish."
+        if operation == "external_deploy":
+            return "Publish the approved website to Vercel under the founder's account."
+    if operation == "internal_analysis":
+        return "Define what \"done\" looks like and any constraints the plan must respect."
+    if operation == "draft":
+        return "Create a reviewable deliverable the founder can inspect before sign-off."
+    if operation == "internal_review":
+        return "Review the deliverable against its acceptance criteria and surface next actions."
+    return "Complete this step before the mission advances."
 
 
 def enforce_dispatch_policy(

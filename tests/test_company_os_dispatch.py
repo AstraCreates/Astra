@@ -109,6 +109,95 @@ def test_research_handoff_gets_research_tasks_when_request_also_needs_website(mo
     assert tasks[0]["mcp_tool"] == "astra_company_research"
 
 
+def test_research_tasks_are_per_subject_when_planner_extracts_entities():
+    """Real bug: research tasks used to render as three identical
+    'Gather / Synthesize / Produce a decision brief' rows with the user's
+    goal pasted after each via f"{title}. Outcome: {intent}". With named
+    entities the titles must actually mention the subject so the squad
+    panel shows distinct work, and the descriptions must not echo the
+    same intent back at the user twice in a row.
+    """
+    from backend.company_os_dispatch import specialist_task_plan
+
+    request = {
+        "required_capabilities": ["research"],
+        "confidence": 0.95,
+        "entities": ["Northrop Grumman"],
+        "objective": "What is Northrop Grumman and how do they make money",
+        "outcome": "What is Northrop Grumman and how do they make money",
+        "deliverables": ["company profile", "revenue mix"],
+    }
+    intent = "what is Northrop Grumman and how do they make money"
+    tasks = specialist_task_plan("research", intent, request=request)
+
+    titles = [task["title"] for task in tasks]
+    descriptions = [task["description"] for task in tasks]
+    # Every row must name the subject -- no row is just "Gather validated evidence" alone.
+    assert all("Northrop Grumman" in title for title in titles), titles
+    # Titles must be distinct -- the bug was that all three were structurally identical.
+    assert len(set(titles)) == 3, titles
+    # The redundant "Outcome: <intent>" suffix must be gone.
+    for description in descriptions:
+        assert "Outcome:" not in description, description
+        assert intent not in description, description
+    # MCP contract preserved.
+    assert tasks[0]["mcp_tool"] == "astra_company_research"
+    assert tasks[0]["operation"] == "internal_analysis"
+    assert tasks[1]["operation"] == tasks[2]["operation"] == "draft"
+
+
+def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
+    """When the planner extracted nothing (empty entities/deliverables/objective),
+    titles stay generic instead of smearing the long raw intent into every row."""
+    from backend.company_os_dispatch import specialist_task_plan
+
+    request = {
+        "required_capabilities": ["research"],
+        "confidence": 0.95,
+        "entities": [],
+        "objective": "",
+        "deliverables": [],
+    }
+    tasks = specialist_task_plan("research", "vague broad topic with no specifics", request=request)
+
+    titles = [task["title"] for task in tasks]
+    # No length-noisy "... with no specifics" smearing in the titles.
+    assert titles == [
+        "Gather validated evidence",
+        "Synthesize findings and uncertainties",
+        "Produce a decision brief",
+    ]
+    # No Outcome: suffix even in the fallback case.
+    assert all("Outcome:" not in task["description"] for task in tasks)
+
+
+def test_website_tasks_are_per_subject_when_planner_extracts_entities():
+    """The website branch also gains entity-specific titles -- previously
+    'Define the local website brief' / 'Create a local website preview' /
+    'Prepare the publication decision' / 'Publish the website to Vercel'
+    with the intent appended at the end of each."""
+    from backend.company_os_dispatch import specialist_task_plan
+
+    request = {
+        "required_capabilities": ["website", "landing page"],
+        "confidence": 0.95,
+        "entities": ["Acme"],
+        "deliverables": ["landing page"],
+        "objective": "Launch a landing page for Acme",
+    }
+    tasks = specialist_task_plan("product_technical", "build a landing page for acme", request=request)
+
+    titles = " | ".join(task["title"] for task in tasks)
+    assert "Acme" in titles, titles
+    # The deploy step stays last and stays external.
+    assert tasks[-1]["operation"] == "external_deploy"
+    assert tasks[-1]["mcp_tool"] == "vercel_deploy"
+    assert tasks[-1]["execution_scope"] == "external"
+    # No description echoes the raw intent.
+    assert all("Outcome:" not in task["description"] for task in tasks)
+
+
+
 class FakeCompanyOS:
     def __init__(self):
         self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}
