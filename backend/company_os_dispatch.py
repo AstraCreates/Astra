@@ -115,12 +115,12 @@ def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     """Use the planner to describe work, then validate it against local capabilities."""
     from backend.tools._llm import generate, parse_json_response
     catalog = {head: sorted(profile["capabilities"]) for head, profile in CAPABILITY_REGISTRY.items()}
-    prompt = f"""Extract a compact work request for an AI company operating system.
-Founder message: {intent!r}
+    prompt = f"""A founder sent this message to their company's AI operating system: {intent!r}
+Extract a compact, structured description of the work this message is asking for.
 Available capabilities: {catalog}
 Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
-Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities.
-Set clarification_question only when a genuine ambiguity would change the work (e.g. which platform, which audience) -- not for things you can reasonably assume. When you do, and the ambiguity is naturally a short list of choices (e.g. "iOS, Android, or both"), also set clarification_options to 2-5 short answer strings; otherwise leave clarification_options null for an open-ended answer."""
+Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities, and do not invent a comparison, audience, or platform the founder never mentioned.
+A request to explain, describe, or research a specific named subject (a company, product, market, or person) is self-sufficient on its own -- proceed with the standard dimensions a competent analyst would cover (overview, business model, market position, competitors) rather than asking what to cover. Most requests are NOT ambiguous: default to reasonable assumptions and proceed. Only set clarification_question when the request is so vague the work genuinely cannot start at all (e.g. "build me an app" with no description of what it does) -- not to narrow scope, pick an emphasis, or confirm something you could reasonably infer. When you do ask, and the missing piece is naturally a short list of choices genuinely implied by the founder's own message, set clarification_options to 2-5 short answer strings drawn from that message; otherwise leave clarification_options null for an open-ended answer."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
     failures: list[str] = []
     # The strict instruction model is materially more reliable for a small

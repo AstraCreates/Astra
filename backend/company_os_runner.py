@@ -369,7 +369,7 @@ def _synthesize_document(mission_name: str, evidence: Mapping[str, Any], *, purp
     comparison = _is_comparison_request(mission_name)
     comparison_requirements = """\n- This is a comparison. Include a compact markdown table with these rows: Product and target user, Core workflow, Pricing and packaging, Evidence and maturity, Privacy/compliance signals, and Key uncertainty. Use the two products as columns.
 - Directly answer which option is better for the founder's stated goal, and why. If the evidence does not establish a fact, write "Not verified from available public evidence" rather than guessing.\n""" if comparison else ""
-    prompt = f"""You are a sharp research analyst {purpose} for a founder inside Astra.
+    prompt = f"""You are a sharp research analyst {purpose}.
 
 The founder's actual question: "{mission_name}"
 
@@ -381,11 +381,12 @@ Cited sources:
 
 Write a genuinely useful markdown document that answers the founder's actual question. Requirements:
 - Open with a direct, specific answer to the question -- no throat-clearing, no "based on the research provided".
-- Organize with ## headings that fit what was ACTUALLY asked. A "what is X" question needs a clear overview, not a forced TAM/SAM/CAGR breakdown; a viability or market question does warrant that structure.
-- Pull real facts, numbers, and names from the evidence above. Skip anything the evidence doesn't actually support -- don't invent specifics.
-- Never repeat the raw sub-query headers verbatim (e.g. "X market size TAM SAM SOM 2025 report statistics") or paste sub-query blocks one after another -- synthesize across all of them into one coherent piece of writing.
+- Organize with ## headings that fit what was ACTUALLY asked. Do not force structure, frameworks, or metrics that the evidence does not support. Only use TAM/SAM/CAGR analysis if the evidence you found directly addresses market size and the founder's question is about market viability.
+- Pull real facts, numbers, and names from the evidence above. Skip anything the evidence doesn't actually support -- don't invent specifics, don't invent analysis, don't invent frameworks.
+- Never repeat the raw sub-query headers verbatim or paste sub-query blocks one after another -- synthesize across all of them into one coherent piece of writing.
 - Aim for 400-900 words of real substance -- long enough to be genuinely useful, never padded with filler.
-- End with a "## Bottom line" section: one specific, actionable takeaway grounded in what was actually found here. Never a generic template like "validate before scaling spend" unless the evidence specifically points there.
+- End with a "## Bottom line" section: one specific, actionable takeaway grounded in what was actually found here. Only include caveats or uncertainty that the evidence genuinely supports.
+- Do not mention Astra, tools, AI systems, or how this research was conducted -- focus entirely on the founder's question and the evidence.
 {comparison_requirements}
 
 Respond with ONLY this JSON object, no prose, no markdown fence:

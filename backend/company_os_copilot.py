@@ -27,6 +27,22 @@ _MAX_CONVERSATION_TURNS = 8
 _ARTIFACT_EXCERPT_CHARS = 2500
 
 
+def _pending_clarification(company: dict[str, Any]) -> dict[str, Any] | None:
+    """If the founder's message that triggered this turn is a reply to the
+    copilot's own last message and that message was a clarifying question,
+    return its original objective + question text so the reply can be merged
+    into one coherent intent. Conversation[-1] is this turn's just-appended
+    founder message; conversation[-2] is what it's replying to."""
+    conversation = [m for m in (company.get("conversation") or []) if m.get("kind") != "status"]
+    if len(conversation) < 2:
+        return None
+    previous = conversation[-2]
+    if previous.get("author") != "copilot" or previous.get("kind") != "question":
+        return None
+    work_request = previous.get("work_request") or {}
+    return {"objective": str(work_request.get("objective") or ""), "question": str(previous.get("question") or "")}
+
+
 async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
     """Run one permanent Copilot turn: classify, then answer/continue/start."""
     company = get_company_os(company_id) or {}
@@ -37,15 +53,32 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
         append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
         return {"message": reply, "dispatch": None}
 
-    request = await asyncio.to_thread(infer_work_request, message)
-    if request.get("requires_clarification"):
+    # A reply to our own clarifying question must never trigger another one --
+    # that's the interrogation loop that made a plain "what is X" ask take three
+    # rounds of increasingly irrelevant questions before any work started.
+    # Merge the founder's answer into the original objective so dispatch gets
+    # one coherent intent instead of a bare fragment ("Business model and
+    # market position" alone, with no idea it's about Instacart).
+    pending = _pending_clarification(company)
+    intent = f'{pending["objective"]} (in response to "{pending["question"]}": {message})' if pending else message
+
+    request = await asyncio.to_thread(infer_work_request, intent)
+    if request.get("requires_clarification") and not pending:
         reply = _clarification_reply(request)
         append_message(company_id, reply, author="copilot", role="assistant", kind="question",
                        question=request.get("clarification_question"), options=request.get("clarification_options"),
                        work_request=request)
         return {"message": reply, "dispatch": None, "work_request": request}
+    if pending:
+        # dispatch_intent() itself early-returns needs_clarification on a
+        # stale True here (route_work_request's own triage also reads it) --
+        # this turn already overrode the copilot-level gate above, so the
+        # flag must not leak into dispatch and re-trigger a second gate.
+        request["requires_clarification"] = False
+        request["clarification_question"] = None
+        request["clarification_options"] = None
     forced_id = plan.get("initiative_id") if plan["action"] == "continue" else None
-    dispatch = await asyncio.to_thread(dispatch_intent, company_id, message,
+    dispatch = await asyncio.to_thread(dispatch_intent, company_id, intent,
                                         proposed_spend=proposed_spend, forced_initiative_id=forced_id, work_request=request)
     reply = plan.get("reply") or _fallback_reply(dispatch)
     append_message(company_id, reply, author="copilot", role="assistant",
@@ -107,14 +140,11 @@ def _build_prompt(company: dict[str, Any], message: str) -> str:
     return f"""You are Astra Copilot, a sharp cofounder-assistant coordinating one founder's company inside Astra.
 
 For the founder's new message below, decide ONE action:
-- "answer": the message is a question, a status check, or references something already discussed (e.g. "what were the results", "results", "summarize that", "is it done", "mention an agent"). Answer directly and conversationally using the initiatives/findings below. Do NOT start new work for these.
-- "continue": the message asks for more work on a topic that is the same as (or a clear continuation of) one of the active initiatives below -- even if worded very differently or misspelled. Set initiative_id to that initiative's id.
+- "answer": the message asks for information, a status check, or references something already discussed (e.g. "what were the results?", "results", "summarize that", "is it done?", "tell me about the research findings"). Answer directly and conversationally using the initiatives/findings below. Do NOT start new work for these.
+- "continue": the message explicitly asks for more work on a topic that is the same as (or a clear continuation of) one of the active initiatives below -- even if worded very differently or misspelled. Set initiative_id to that initiative's id.
 - "new": the message is a genuinely new request that does not match any active initiative below.
 
-A founder requesting an outcome (for example research, a comparison, a design,
-a website, a change, or a deliverable) must be "new" or "continue", never
-"answer". Do not choose departments or squads: capability routing happens
-after this decision.
+A founder requesting an outcome or requesting new work (for example research, a comparison, a design, a website, a change, or a deliverable) must be "new" or "continue", never "answer". Do not choose departments or squads: capability routing happens after this decision. Do not invent comparisons or analysis the founder did not explicitly request.
 
 Active initiatives:
 {initiatives_block}
@@ -124,7 +154,7 @@ Recent conversation:
 
 Founder's new message: "{message}"
 
-Always write "reply" as a natural, first-person message -- like a sharp assistant actually texting back, not a status log, never "I formed the X Squad for Y" boilerplate. For "continue"/"new", keep it to 2-4 sentences briefly saying what you're doing, in your own words, without naming a squad you don't know the name of yet. For "answer", actually answer in full using the findings above -- if the founder asked you to explain, summarize, or compare something that's already in the findings, do that properly (a real paragraph or two, not a one-liner); if there's genuinely nothing relevant yet, say so plainly and ask what they'd like next.
+Always write "reply" as a natural, first-person message -- like a sharp assistant actually texting back, not a status log, never "I formed the X Squad for Y" boilerplate. For "continue"/"new", keep it to 2-4 sentences briefly saying what you're doing, in your own words, without naming a squad you don't know the name of yet. For "answer", answer directly and conversationally using what's in the findings above. If there's genuinely nothing relevant yet, say so plainly and ask what they'd like next. Do not over-elaborate or add details the founder did not ask for.
 
 Respond with ONLY this JSON object, no prose, no markdown fence:
 {{"action": "answer|continue|new", "initiative_id": "<id or null>", "reply": "<your reply text>"}}"""
