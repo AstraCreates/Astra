@@ -145,17 +145,20 @@ A request to explain, describe, or research a specific named subject (a company,
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
     failures: list[str] = []
     # The strict instruction model is materially more reliable for a small
-    # schema than the chat/fast model. Retry once rather than silently sending
-    # a clear request into Operations because a provider emitted malformed JSON.
-    for model in ("instruct", "large"):
+    # schema than the chat/fast model, so it goes first. The retry uses
+    # "fast" (or_light_model), NOT "large"/"nemotron" -- those two and
+    # "instruct" all alias to the same or_highoutput_model setting in
+    # _llm.py, so a retry against either of them just hits the identical
+    # model/provider twice. A transient failure (rate limit, malformed
+    # JSON) then fails both "attempts" together instead of the retry
+    # actually adding resilience, which is the whole point of retrying.
+    for model in ("instruct", "fast"):
         try:
-            # Whatever model "instruct"/"large" resolve to (env-configurable,
-            # see or_highoutput_model), an obscure/unfamiliar term can burn
-            # the whole token budget on <think> reasoning and leave nothing
-            # for the actual JSON answer -- 650 was too tight and made both
-            # retries fail identically instead of just the one genuinely
-            # bad case (confirmed live: "what is 9router" hit ValueError on
-            # both attempts, same underlying model, same budget).
+            # An obscure/unfamiliar term can burn the whole token budget on
+            # <think> reasoning and leave nothing for the actual JSON answer
+            # -- 650 was too tight and made both retries fail identically
+            # instead of just the one genuinely bad case (confirmed live:
+            # "what is 9router" hit ValueError on both attempts).
             raw = generate(prompt, model=model, json_mode=True, max_tokens=2000, temperature=0.0)
             payload = parse_json_response(raw)
             capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
