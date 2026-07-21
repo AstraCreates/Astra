@@ -23,3 +23,10 @@ venv/
 private_keys/
 .appstoreconnect/
 docs/LOCAL_PRIVATE_OPERATIONS.md
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# graphify knowledge graph output
+graphify-out/
