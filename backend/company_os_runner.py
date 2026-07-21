@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from backend.company_os import (
     append_message,
+    company_recovery_lock,
     create_artifact,
     get_company_os,
     list_company_os,
@@ -131,18 +132,26 @@ async def recover_pending_missions() -> int:
                 continue
             mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
             stale_tasks = [task for task in mission_tasks if is_stale(task)]
-            for task in stale_tasks:
-                update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
-                            recovery_reason="stale_working_task_after_process_restart")
-                append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
-                               author="copilot", scope="task", scope_id=task["task_id"], kind="status")
             if stale_tasks:
-                # Do not hand an orphaned task to a fire-and-forget task at
-                # startup: that task can be lost during multi-worker lifespan
-                # initialization. Await the recovered mission here so the
-                # durable state transition and first attempt are guaranteed.
-                await run_mission(company["company_id"], mission["mission_id"])
-                recovered += 1
+                # Startup runs once per web worker. Re-read under a shared
+                # company lock so only one worker can claim and execute an
+                # orphaned task; the other workers observe the fresh state.
+                with company_recovery_lock(company["company_id"]):
+                    current = get_company_os(company["company_id"]) or {}
+                    current_mission = _find(current.get("missions", []), "mission_id", mission["mission_id"])
+                    current_tasks = [task for task in current.get("tasks", []) if task.get("mission_id") == mission["mission_id"]]
+                    current_stale = [task for task in current_tasks if is_stale(task)]
+                    if not current_mission or not current_stale:
+                        continue
+                    for task in current_stale:
+                        update_task(company["company_id"], task["task_id"], state="pending", blocked_reason=None,
+                                    recovery_reason="stale_working_task_after_process_restart")
+                        append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
+                                       author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+                    # Await instead of using fire-and-forget startup work so
+                    # the claim and first attempt cannot be lost.
+                    await run_mission(company["company_id"], mission["mission_id"])
+                    recovered += 1
             elif any(task.get("state") in {"pending", "scheduled"} for task in mission_tasks):
                 recovered += int(launch_mission(company["company_id"], mission["mission_id"]))
     return recovered

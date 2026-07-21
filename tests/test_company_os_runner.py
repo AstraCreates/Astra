@@ -1,3 +1,5 @@
+import contextlib
+
 import pytest
 
 from backend import company_os
@@ -41,6 +43,8 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
 
     monkeypatch.setattr("backend.config.settings", _Settings())
     monkeypatch.setattr("backend.company_os_runner.list_company_os", lambda: [company])
+    monkeypatch.setattr("backend.company_os_runner.company_recovery_lock", lambda *_args, **_kwargs: contextlib.nullcontext())
+    monkeypatch.setattr("backend.company_os_runner.get_company_os", lambda *_args, **_kwargs: company)
     monkeypatch.setattr("backend.company_os_runner.update_task", lambda *args, **kwargs: updates.append((args, kwargs)))
     monkeypatch.setattr("backend.company_os_runner.append_message", lambda *args, **kwargs: messages.append((args, kwargs)))
     async def _run_recovered(company_id, mission_id):
