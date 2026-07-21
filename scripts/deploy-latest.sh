@@ -130,6 +130,9 @@ compose() {
   cat >"$override" <<EOF
 services:
   backend:
+    build:
+      context: "$dir"
+      dockerfile: Dockerfile.backend
     image: astra-release-backend:$sha
     volumes:
       - "$dir/backend:/app/backend:ro"
@@ -139,6 +142,9 @@ services:
       com.astra.release.sha: "$sha"
       com.astra.release.role: backend
   frontend:
+    build:
+      context: "$dir"
+      dockerfile: Dockerfile.frontend
     image: astra-release-frontend:$sha
     environment:
       ASTRA_RELEASE_SHA: "$sha"
@@ -157,7 +163,10 @@ activate_release() {
   # headroom) on every source change. Build only the release services, then
   # replace only those containers; Redis, search, and model infrastructure
   # stay warm throughout the rollout.
-  compose "$sha" build backend frontend
+  # The VPS currently runs the legacy Compose plugin. Build sequentially so
+  # its shared Docker daemon cannot deadlock two large image exports.
+  compose "$sha" build backend
+  compose "$sha" build frontend
   compose "$sha" up -d --no-build --no-deps --force-recreate backend frontend
 }
 
@@ -177,6 +186,9 @@ smoke_release() {
   backend_id="$(compose "$sha" ps -q backend)"
   frontend_id="$(compose "$sha" ps -q frontend)"
   [[ -n "$backend_id" && -n "$frontend_id" ]] || return 1
+  # Prove the release image contains the dependencies declared by its own
+  # immutable worktree, not a stale dependency layer from the mutable repo.
+  docker exec "$backend_id" python -c 'import open_deep_research, langchain_core' || return 1
   # The one-time bootstrap can adopt the prior healthy release before this
   # endpoint exists. Every subsequent release must prove its runtime SHA.
   if [[ "$legacy_bootstrap" != 1 ]]; then
@@ -221,7 +233,13 @@ fi
 
 if [[ "$previous_sha" == "$target_sha" ]]; then
   echo "Release ${target_sha:0:12} is already recorded as current; re-verifying it."
-  smoke_release "$target_sha" || die "recorded current release failed smoke checks"
+  if smoke_release "$target_sha"; then
+    exit 0
+  fi
+  echo "Recorded release failed verification; rebuilding it from the immutable worktree."
+  activate_release "$target_sha" || die "recorded current release could not be rebuilt"
+  smoke_release "$target_sha" || die "rebuilt current release failed smoke checks"
+  write_receipt "$target_sha" success "$target_sha" "rebuild-and-smoke-passed"
   exit 0
 fi
 
