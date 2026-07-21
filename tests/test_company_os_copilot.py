@@ -73,6 +73,35 @@ async def test_malformed_llm_output_does_not_create_unrouted_work(tmp_path, monk
     assert state["initiatives"] == []
 
 
+@pytest.mark.asyncio
+async def test_ambiguous_new_work_asks_a_structured_question(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    def fake_generate(prompt, *, model=None, **_kwargs):
+        if model == "fast":
+            return json.dumps({"action": "new", "initiative_id": None, "reply": "On it."})
+        return json.dumps({
+            "objective": "Build the MVP", "deliverables": [], "acceptance_criteria": [], "constraints": [],
+            "entities": [], "dependencies": [], "primary_capability": "website", "required_capabilities": ["website"],
+            "risk": "internal", "clarification_question": "Which platform should the MVP target?",
+            "clarification_options": ["iOS", "Android", "Both"], "confidence": 0.9,
+        })
+    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+
+    result = await coordinate_turn("acme", "build me an MVP")
+
+    assert result["dispatch"] is None
+    state = company_os.get_company_os("acme")
+    last = state["conversation"][-1]
+    assert last["kind"] == "question"
+    assert last["question"] == "Which platform should the MVP target?"
+    assert last["options"] == ["iOS", "Android", "Both"]
+    assert state["initiatives"] == []  # nothing dispatched while awaiting the answer
+
+
 def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "should not run")
     assert _classify_turn({}, "Compare Cofounder.co to AstraCreates.com")["action"] == "new"

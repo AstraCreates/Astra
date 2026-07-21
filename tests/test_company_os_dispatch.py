@@ -17,6 +17,39 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan(m
     assert all(item["execution_scope"] == "local" for item in specialist_task_plan("product_technical", "Make a landing page"))
 
 
+def test_genuine_ambiguity_triggers_clarification_with_options(monkeypatch):
+    from backend.company_os_dispatch import infer_work_request
+
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: __import__("json").dumps({
+        "objective": "Build the MVP", "deliverables": [], "acceptance_criteria": [], "constraints": [], "entities": [],
+        "dependencies": [], "primary_capability": "website", "required_capabilities": ["website"], "risk": "internal",
+        "clarification_question": "Which platform should the MVP target?",
+        "clarification_options": ["iOS", "Android", "Both"],
+        "confidence": 0.9,
+    }))
+
+    request = infer_work_request("build me an MVP")
+
+    assert request["requires_clarification"] is True
+    assert request["clarification_question"] == "Which platform should the MVP target?"
+    assert request["clarification_options"] == ["iOS", "Android", "Both"]
+
+
+def test_no_clarification_question_means_no_clarification(monkeypatch):
+    from backend.company_os_dispatch import infer_work_request
+
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: __import__("json").dumps({
+        "objective": "Compare Cofounder and Astra", "deliverables": ["comparison"], "acceptance_criteria": [], "constraints": [],
+        "entities": [], "dependencies": [], "primary_capability": "compare", "required_capabilities": ["compare", "research"],
+        "risk": "internal", "clarification_question": None, "clarification_options": None, "confidence": 0.95,
+    }))
+
+    request = infer_work_request("compare cofounder.co and astracreates.com")
+
+    assert request["requires_clarification"] is False
+    assert request["clarification_options"] is None
+
+
 def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch):
     from backend.company_os_dispatch import infer_work_request, route_work_request
 

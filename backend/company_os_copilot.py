@@ -40,7 +40,9 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     request = await asyncio.to_thread(infer_work_request, message)
     if request.get("requires_clarification"):
         reply = _clarification_reply(request)
-        append_message(company_id, reply, author="copilot", role="assistant", kind="chat", work_request=request)
+        append_message(company_id, reply, author="copilot", role="assistant", kind="question",
+                       question=request.get("clarification_question"), options=request.get("clarification_options"),
+                       work_request=request)
         return {"message": reply, "dispatch": None, "work_request": request}
     forced_id = plan.get("initiative_id") if plan["action"] == "continue" else None
     dispatch = await asyncio.to_thread(dispatch_intent, company_id, message,
