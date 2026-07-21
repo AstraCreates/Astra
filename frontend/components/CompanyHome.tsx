@@ -330,11 +330,17 @@ export default function CompanyHome() {
     setAttachments([]);
     setSending(true);
     setNotice("Copilot is forming a squad and briefing the department lead...");
+    // Echo the founder's own message immediately -- the real turn (classify +
+    // dispatch) is a multi-second round trip, and without this the message
+    // only appeared once that whole thing finished, making sending feel stuck.
+    const echoId = `optimistic-${Date.now()}`;
+    setHome(prev => ({ ...prev, conversation: [...prev.conversation, { id: echoId, author: "founder", message: value, kind: "chat", edited: false }] }));
     try {
       const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })));
       setHome(result.data);
       setNotice(result.message);
     } catch {
+      setHome(prev => ({ ...prev, conversation: prev.conversation.filter(turn => turn.id !== echoId) }));
       setNotice("Copilot could not reach Company OS. Your message was not lost locally.");
       setMessage(value);
       setAttachments(pending);
