@@ -67,6 +67,12 @@ _STOPWORDS = frozenset({
     "can", "could", "should", "would", "will", "research", "reserach", "resreach",
 })
 _CONTINUATION_OVERLAP_THRESHOLD = 0.55
+# Matches the "what is X" / "who is X" entity-lookup phrasing the planner
+# prompt already treats as self-sufficient (no clarification needed) --
+# bare lookups like "what is 9router" contain none of the explicit
+# _RESEARCH_RECOVERY_TERMS words, so without this they fell through to the
+# generic "requires_clarification" fallback meant for vague build requests.
+_ENTITY_LOOKUP_PREFIX = re.compile(r"^(?:what|who)\s+(?:is|are|was|were)\s+", re.IGNORECASE)
 
 
 def _content_words(text: str) -> frozenset[str]:
@@ -108,7 +114,7 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     # it prevents a planner/provider hiccup from turning a self-contained
     # research request into an unnecessary founder clarification.
     lowered = intent.lower()
-    if any(term in lowered for term in ("research", "compare", "viability", "competitive analysis", "evidence")):
+    if _ENTITY_LOOKUP_PREFIX.match(intent.strip()) or any(term in lowered for term in ("research", "compare", "viability", "competitive analysis", "evidence")):
         capabilities = {"research", "evidence research"}
         if "compare" in lowered or " versus " in lowered or " vs " in lowered:
             capabilities.add("compare")
@@ -143,7 +149,14 @@ A request to explain, describe, or research a specific named subject (a company,
     # a clear request into Operations because a provider emitted malformed JSON.
     for model in ("instruct", "large"):
         try:
-            raw = generate(prompt, model=model, json_mode=True, max_tokens=650, temperature=0.0)
+            # Whatever model "instruct"/"large" resolve to (env-configurable,
+            # see or_highoutput_model), an obscure/unfamiliar term can burn
+            # the whole token budget on <think> reasoning and leave nothing
+            # for the actual JSON answer -- 650 was too tight and made both
+            # retries fail identically instead of just the one genuinely
+            # bad case (confirmed live: "what is 9router" hit ValueError on
+            # both attempts, same underlying model, same budget).
+            raw = generate(prompt, model=model, json_mode=True, max_tokens=2000, temperature=0.0)
             payload = parse_json_response(raw)
             capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
             confidence = float(payload.get("confidence", 0) or 0)
