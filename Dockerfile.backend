@@ -30,8 +30,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
     playwright install chromium && \
-    playwright install-deps chromium && \
-    pip install --no-cache-dir headroom-ai==0.26.0 "transformers>=4.53.0" || true
+    playwright install-deps chromium
+# Headroom is an optional proxy add-on; the application dependencies above are
+# mandatory and must fail the image build when resolution or installation fails.
+RUN pip install --no-cache-dir headroom-ai==0.26.0 "transformers>=4.53.0" || true
 
 COPY . .
 
