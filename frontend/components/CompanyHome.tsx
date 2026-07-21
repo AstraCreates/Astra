@@ -5,6 +5,8 @@ import { Brain, Calendar, ChevronDown, ChevronLeft, ChevronRight, FileText, Layo
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { ingestAttachment } from "@/lib/api";
+import { readAttachment, type Attachment } from "@/lib/attachments";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -159,8 +161,11 @@ export default function CompanyHome() {
   const [editingText, setEditingText] = useState("");
   const [messageBusyId, setMessageBusyId] = useState("");
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attaching, setAttaching] = useState(false);
   const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
 
   // Exponential backoff on repeated failures instead of a fixed 3s interval
   // forever. Confirmed production incident: a corrupted Company OS event log
@@ -320,18 +325,37 @@ export default function CompanyHome() {
   };
 
   const submitToCopilot = async (value: string) => {
+    const pending = attachments;
     setMessage("");
+    setAttachments([]);
     setSending(true);
     setNotice("Copilot is forming a squad and briefing the department lead...");
     try {
-      const result = await sendCopilotMessage({ founderId, companyId }, value);
+      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })));
       setHome(result.data);
       setNotice(result.message);
     } catch {
       setNotice("Copilot could not reach Company OS. Your message was not lost locally.");
       setMessage(value);
+      setAttachments(pending);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handlePickAttachments = async (files: FileList | null) => {
+    if (!files || !files.length) return;
+    setAttaching(true);
+    try {
+      const read = await Promise.all(Array.from(files).map(async (file): Promise<Attachment> => {
+        const result = founderId ? await ingestAttachment(founderId, file).catch(() => null) : null;
+        if (result) return { name: result.filename, content: result.content, truncated: result.truncated, error: result.error };
+        return readAttachment(file);
+      }));
+      setAttachments(prev => [...prev, ...read]);
+    } finally {
+      setAttaching(false);
+      if (attachInputRef.current) attachInputRef.current.value = "";
     }
   };
 
@@ -490,6 +514,21 @@ export default function CompanyHome() {
           box mid-page. */}
       <div style={{ flexShrink: 0, borderTop: "1px solid var(--bd)", padding: "14px 20px" }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <input ref={attachInputRef} type="file" multiple style={{ display: "none" }}
+            accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql,.env,.ini,.toml,.log,.pdf,.png,.jpg,.jpeg,.webp,.gif,text/*,application/json,application/pdf,image/*"
+            onChange={e => void handlePickAttachments(e.target.files)} />
+          {attachments.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {attachments.map((a, i) => (
+                <span key={`${a.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: `1px solid ${a.error ? "#b91c1c" : "var(--bd)"}`, background: a.error ? "rgba(185,28,28,.08)" : "var(--bg-surface)", color: a.error ? "#b91c1c" : "var(--fm)" }}
+                  title={a.error || (a.truncated ? "Truncated" : a.name)}>
+                  {a.name}{a.truncated ? " ·trimmed" : ""}{a.error ? " ·error" : ""}
+                  <button type="button" aria-label={`Remove ${a.name}`} onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                    style={{ background: "none", border: 0, color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 12 }}>✕</button>
+                </span>
+              ))}
+            </div>
+          )}
           <AstraCopilotComposer
             value={message}
             onChange={setMessage}
@@ -498,7 +537,10 @@ export default function CompanyHome() {
             agents={agentOptions}
             contextLabel={sending ? "Copilot is coordinating your squad" : "Grounded in Company Brain"}
             placeholder="Ask Astra to coordinate your company"
+            onAttach={() => attachInputRef.current?.click()}
+            attachmentCount={attachments.length}
           />
+          {attaching && <p style={{ margin: "8px 2px 0", color: "var(--fm)", fontSize: 11.5 }}>Reading files…</p>}
           {notice && <p style={{ margin: "8px 2px 0", color: "var(--fm)", fontSize: 11.5 }}>{notice}</p>}
         </div>
       </div>

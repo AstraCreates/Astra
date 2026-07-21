@@ -194,3 +194,39 @@ async def test_retry_route_rejects_a_task_that_is_not_blocked(tmp_path, monkeypa
         )
 
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_copilot_route_keeps_the_founder_bubble_clean_but_feeds_attachments_to_the_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    seen_messages = []
+
+    async def fake_coordinate_turn(company_id, message, *, proposed_spend=0.0):
+        seen_messages.append(message)
+        return {"message": "On it.", "dispatch": None}
+    monkeypatch.setattr("backend.api.company_os_routes.coordinate_turn", fake_coordinate_turn)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/companies/acme/os/copilot",
+            json={
+                "founder_id": "founder",
+                "message": "Summarize this",
+                "attachments": [{"name": "notes.txt", "content": "Q3 revenue is up 12%."}],
+            },
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    # The LLM-facing message carries the attachment content...
+    assert "Q3 revenue is up 12%" in seen_messages[0]
+    # ...but the durable, founder-visible chat bubble stays exactly what they typed.
+    founder_bubble = next(m for m in company_os.get_company_os("acme")["conversation"] if m["author"] == "founder")
+    assert founder_bubble["message"] == "Summarize this"

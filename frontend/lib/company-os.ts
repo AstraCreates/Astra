@@ -217,10 +217,10 @@ export async function getCompanyHomeData(scope: CompanyScope, fetcher: typeof ap
   return normalizeCompanyOS(await response.json());
 }
 
-export async function sendCopilotMessage(scope: CompanyScope, message: string, fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
+export async function sendCopilotMessage(scope: CompanyScope, message: string, attachments: { name: string; content: string }[] = [], fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
   const response = await fetcher(`${BASE}/companies/${encodeURIComponent(scope.companyId)}/os/copilot`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: scope.founderId, message }),
+    body: JSON.stringify({ founder_id: scope.founderId, message, attachments }),
   });
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());

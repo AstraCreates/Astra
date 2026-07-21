@@ -23,10 +23,16 @@ class CompanyOSCreateBody(BaseModel):
     company_id: str | None = None
 
 
+class CopilotAttachmentBody(BaseModel):
+    name: str
+    content: str = Field(default="", max_length=20_000)
+
+
 class CopilotMessageBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
     proposed_spend: float = Field(default=0, ge=0)
+    attachments: list[CopilotAttachmentBody] = Field(default_factory=list)
 
 
 class MessageEditBody(BaseModel):
@@ -176,11 +182,22 @@ async def download_company_os_artifact(company_id: str, artifact_id: str, founde
     return PlainTextResponse(str(artifact.get("content") or ""), headers={"Content-Disposition": f'attachment; filename="{safe_name}.md"'})
 
 
+def _attachment_context(attachments: list[CopilotAttachmentBody]) -> str:
+    """Fold attached file content into what the copilot reasons over, without
+    polluting the founder's own visible chat bubble with a raw file dump."""
+    valid = [item for item in attachments if item.content.strip()]
+    if not valid:
+        return ""
+    parts = [f"--- Attached file: {item.name} ---\n{item.content}" for item in valid]
+    return "\n\nAttached files for context:\n" + "\n\n".join(parts)
+
+
 @router.post("/companies/{company_id}/os/copilot")
 async def copilot_message_route(company_id: str, body: CopilotMessageBody, request: Request):
     _company(request, company_id, body.founder_id, operator=True)
     append_message(company_id, body.message, author="founder", role="user")
-    result = await coordinate_turn(company_id, body.message, proposed_spend=body.proposed_spend)
+    augmented_message = body.message + _attachment_context(body.attachments)
+    result = await coordinate_turn(company_id, augmented_message, proposed_spend=body.proposed_spend)
     return {"message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
 
 
