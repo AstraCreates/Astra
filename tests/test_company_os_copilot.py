@@ -5,6 +5,7 @@ import pytest
 from backend import company_os
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_copilot import _classify_turn
+from backend.company_os_copilot import _build_prompt
 
 
 def _no_launch(monkeypatch):
@@ -161,3 +162,24 @@ def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "should not run")
     assert _classify_turn({}, "Compare Cofounder.co to AstraCreates.com")["action"] == "new"
     assert _classify_turn({}, "Make a website for a competing company")["action"] == "new"
+
+
+def test_classify_prompt_forbids_answering_a_new_subject_from_an_unrelated_finding():
+    """Real production leak: asking "what is Palantir" after a Northrop
+    Grumman research initiative existed returned an answer entirely about
+    Northrop Grumman -- the model treated "answer using the findings below"
+    as license to use ANY existing finding regardless of subject match. The
+    prompt must explicitly forbid that and default a new named subject to
+    "new" rather than "answer"."""
+    company = {
+        "initiatives": [{"initiative_id": "i1", "name": "Northrop Grumman research", "department": "research", "state": "working"}],
+        "squads": [{"squad_id": "s1", "initiative_id": "i1", "name": "Insights"}],
+        "tasks": [{"task_id": "t1", "initiative_id": "i1"}],
+        "artifacts": [{"task_id": "t1", "content": "Northrop Grumman makes money via defense contracts."}],
+        "conversation": [],
+    }
+    prompt = _build_prompt(company, "what is Palantir and how do they make money")
+
+    assert "Palantir" in prompt
+    assert "a finding about a DIFFERENT company is not an answer" in prompt
+    assert "names a specific real-world subject" in prompt

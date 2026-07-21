@@ -144,11 +144,13 @@ def _build_prompt(company: dict[str, Any], message: str) -> str:
     return f"""You are Astra Copilot, a sharp cofounder-assistant coordinating one founder's company inside Astra.
 
 For the founder's new message below, decide ONE action:
-- "answer": the message asks for information, a status check, or references something already discussed (e.g. "what were the results?", "results", "summarize that", "is it done?", "tell me about the research findings"). Answer directly and conversationally using the initiatives/findings below. Do NOT start new work for these.
+- "answer": the message is a status/meta check about existing work with NO new subject named (e.g. "what were the results?", "results", "summarize that", "is it done?") -- it must be answerable ONLY from the specific initiative/finding it clearly refers to below. Do NOT start new work for these.
 - "continue": the message explicitly asks for more work on a topic that is the same as (or a clear continuation of) one of the active initiatives below -- even if worded very differently or misspelled. Set initiative_id to that initiative's id.
 - "new": the message is a genuinely new request that does not match any active initiative below.
 
 A founder requesting an outcome or requesting new work (for example research, a comparison, a design, a website, a change, or a deliverable) must be "new" or "continue", never "answer". Do not choose departments or squads: capability routing happens after this decision. Do not invent comparisons or analysis the founder did not explicitly request.
+
+A message that names a specific real-world subject (a company, product, market, or person) -- e.g. "what is X", "what is X and how do they make money", "tell me about X" -- is a genuinely new research request and must be "new" (or "continue" only if that EXACT same subject is already named in one of the active initiatives below). Never answer it as "answer" using an unrelated initiative's findings just because a finding happens to exist -- a finding about a DIFFERENT company is not an answer to a question about this one. If no finding below is about the subject actually named in the founder's message, you must not use it.
 
 Active initiatives:
 {initiatives_block}
