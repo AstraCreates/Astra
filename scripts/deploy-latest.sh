@@ -153,7 +153,12 @@ EOF
 activate_release() {
   local sha="$1"
   ensure_release "$sha"
-  compose "$sha" up -d --build --force-recreate backend frontend
+  # Building through `up --build` also rebuilt unrelated dependencies (notably
+  # headroom) on every source change. Build only the release services, then
+  # replace only those containers; Redis, search, and model infrastructure
+  # stay warm throughout the rollout.
+  compose "$sha" build backend frontend
+  compose "$sha" up -d --no-build --no-deps --force-recreate backend frontend
 }
 
 smoke_release() {
