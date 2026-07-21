@@ -17,7 +17,7 @@ import logging
 from typing import Any
 
 from backend.company_os import append_message, get_company_os
-from backend.company_os_dispatch import dispatch_intent
+from backend.company_os_dispatch import dispatch_intent, infer_work_request
 from backend.company_os_runner import launch_mission
 
 logger = logging.getLogger(__name__)
@@ -37,9 +37,14 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
         append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
         return {"message": reply, "dispatch": None}
 
+    request = await asyncio.to_thread(infer_work_request, message)
+    if request.get("requires_clarification"):
+        reply = _clarification_reply(request)
+        append_message(company_id, reply, author="copilot", role="assistant", kind="chat", work_request=request)
+        return {"message": reply, "dispatch": None, "work_request": request}
     forced_id = plan.get("initiative_id") if plan["action"] == "continue" else None
     dispatch = await asyncio.to_thread(dispatch_intent, company_id, message,
-                                        proposed_spend=proposed_spend, forced_initiative_id=forced_id)
+                                        proposed_spend=proposed_spend, forced_initiative_id=forced_id, work_request=request)
     reply = plan.get("reply") or _fallback_reply(dispatch)
     append_message(company_id, reply, author="copilot", role="assistant",
                    scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="chat")
@@ -126,6 +131,26 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
 def _fallback_reply(dispatch: dict[str, Any]) -> str:
     initiative = dispatch["initiative"]
     squad = str(dispatch["squad"]["name"])
-    if dispatch.get("routing", {}).get("requires_triage"):
-        return f"I’ve opened **{initiative['name']}** and started a short triage pass to pin down the right specialist work before I commit the company’s time. I’ll either route it with a concrete plan or ask one focused question."
-    return f"I’ve added this to **{initiative['name']}**. The {squad} squad is taking the first mission, and I’ll keep the initiative brief, evidence, and cross-team progress in one place as it moves forward."
+    request = dispatch["work_request"]
+    handoffs = [mission.get("department", "") for mission in dispatch.get("handoff_missions", [])]
+    squads = [squad, *[name.replace("_", " ").title() for name in handoffs]]
+    deliverables = request.get("deliverables") or ["A reviewable local deliverable"]
+    criteria = request.get("acceptance_criteria") or ["The initiative director reviews the completed work"]
+    return "\n".join([
+        "**Work plan**",
+        f"- **Objective:** {request.get('objective') or initiative['name']}",
+        f"- **Lead:** {initiative.get('director', dispatch['department']).replace('_', ' ').title()}",
+        f"- **Squads:** {', '.join(squads)}",
+        f"- **Deliverables:** {'; '.join(deliverables)}",
+        f"- **Done when:** {'; '.join(criteria)}",
+        "- **Execution:** Internal and reviewable by default; publishing or external actions will request approval.",
+    ])
+
+
+def _clarification_reply(request: dict[str, Any]) -> str:
+    return "\n".join([
+        "**Work request needs one clarification**",
+        f"- **Objective received:** {request.get('objective')}",
+        "- **Routing status:** No squad has been formed, so nothing is blocked or silently redirected.",
+        f"- **Question:** {request.get('clarification_question') or 'What concrete outcome should this work produce?'}",
+    ])

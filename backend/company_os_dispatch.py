@@ -103,9 +103,11 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     model_request = _extract_work_request_with_model(intent)
     if model_request is not None:
         return model_request
-    return {"version": 1, "outcome": intent.strip(), "deliverables": [], "constraints": [], "entities": [],
-            "risk": "internal", "required_capabilities": [], "confidence": 0.0,
-            "requires_triage": True, "triage_reason": "semantic_extraction_unavailable"}
+    return {"version": 1, "objective": intent.strip(), "outcome": intent.strip(), "deliverables": [],
+            "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
+            "risk": "internal", "required_capabilities": [], "primary_capability": None, "confidence": 0.0,
+            "requires_clarification": True, "clarification_question": "What concrete outcome should this work produce?",
+            "triage_reason": "semantic_extraction_unavailable"}
 
 
 def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
@@ -115,7 +117,7 @@ def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     prompt = f"""Extract a compact work request for an AI company operating system.
 Founder message: {intent!r}
 Available capabilities: {catalog}
-Return JSON only: {{"outcome": string, "deliverables": [string], "constraints": [string], "entities": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "confidence": number 0-1}}.
+Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "risk": "internal|external|approval", "clarification_question": string|null, "confidence": number 0-1}}.
 Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
     failures: list[str] = []
@@ -131,12 +133,14 @@ Reason over the meaning of the whole request, including misspellings and multipl
             if not capabilities or confidence < 0.45:
                 failures.append(f"{model}: insufficient validated capabilities")
                 continue
-            return {"version": 1, "outcome": str(payload.get("outcome") or intent).strip(),
+            return {"version": 1, "objective": str(payload.get("objective") or intent).strip(), "outcome": str(payload.get("objective") or intent).strip(),
                     "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
+                    "acceptance_criteria": [str(value) for value in payload.get("acceptance_criteria", []) if isinstance(value, str)],
                     "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
-                    "risk": "internal", "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
-                    "requires_triage": False, "router_model": model,
+                    "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
+                    "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
+                    "requires_clarification": False, "clarification_question": payload.get("clarification_question") if isinstance(payload.get("clarification_question"), str) else None, "router_model": model,
                     "primary_capability": payload.get("primary_capability") if payload.get("primary_capability") in known else None}
         except Exception as exc:
             failures.append(f"{model}: {type(exc).__name__}")
@@ -163,13 +167,10 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         if primary_candidates:
             score, matched, department, load = primary_candidates[0]
     profile = CAPABILITY_REGISTRY[department]
-    triage = bool(request.get("requires_triage")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
-    if triage:
-        department = _DEFAULT_DEPARTMENT
-        profile = CAPABILITY_REGISTRY[department]
+    triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
-            "load": load, "requires_triage": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
+            "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
 
 
 def choose_department(intent: str) -> tuple[str, str]:
@@ -182,9 +183,7 @@ def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, 
     """Build a small safe plan from work shape, not a department template."""
     request = request or infer_work_request(intent)
     capabilities = set(request.get("required_capabilities") or [])
-    if request.get("requires_triage"):
-        titles = ["Clarify the requested outcome and required capabilities"]
-    elif {"website", "landing page", "website delivery", "local preview"} & capabilities:
+    if {"website", "landing page", "website delivery", "local preview"} & capabilities:
         titles = ["Clarify audience, offer, and constraints", "Create a local website preview", "Review the preview and prepare a publish approval"]
     elif {"research", "compare", "evidence research", "competitive analysis"} & capabilities:
         titles = ["Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief"]
@@ -239,7 +238,8 @@ def enforce_dispatch_policy(
             "policy_version": "company-os-dispatch-v1", "decided_at": _utcnow()}
 
 
-def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0, forced_initiative_id: str | None = None) -> dict[str, Any]:
+def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0, forced_initiative_id: str | None = None,
+                    work_request: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Create initiative, squad, mission, and specialist tasks for an intent.
 
     forced_initiative_id lets a caller that already knows this is a
@@ -248,7 +248,9 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     reusing that initiative instead of guessing from wording alone.
     """
     company = _call("get_company_os", company_id=company_id) or {}
-    work_request = infer_work_request(intent)
+    work_request = dict(work_request or infer_work_request(intent))
+    if work_request.get("requires_clarification"):
+        return {"needs_clarification": True, "work_request": work_request}
     reuse = None
     if forced_initiative_id:
         reuse = next((item for item in company.get("initiatives", [])

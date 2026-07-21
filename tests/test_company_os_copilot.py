@@ -37,7 +37,7 @@ async def test_answer_action_replies_without_creating_an_initiative(tmp_path, mo
 
 
 @pytest.mark.asyncio
-async def test_continue_action_reuses_the_named_initiative(tmp_path, monkeypatch):
+async def test_continue_without_a_valid_work_request_asks_for_clarification(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
@@ -52,13 +52,14 @@ async def test_continue_action_reuses_the_named_initiative(tmp_path, monkeypatch
 
     result = await coordinate_turn("acme", "results")
 
-    assert result["dispatch"]["initiative"]["initiative_id"] == initiative_id
+    assert result["dispatch"] is None
+    assert "Work request needs one clarification" in result["message"]
     state = company_os.get_company_os("acme")
-    assert len(state["initiatives"]) == 1  # no duplicate spawned
+    assert len(state["initiatives"]) == 1  # no duplicate or blocked squad spawned
 
 
 @pytest.mark.asyncio
-async def test_malformed_llm_output_falls_back_to_starting_new_work(tmp_path, monkeypatch):
+async def test_malformed_llm_output_does_not_create_unrouted_work(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
@@ -67,9 +68,10 @@ async def test_malformed_llm_output_falls_back_to_starting_new_work(tmp_path, mo
 
     result = await coordinate_turn("acme", "find out if a cookie clicker game can be monetized")
 
-    assert result["dispatch"] is not None
+    assert result["dispatch"] is None
+    assert "Work request needs one clarification" in result["message"]
     state = company_os.get_company_os("acme")
-    assert len(state["initiatives"]) == 1
+    assert state["initiatives"] == []
 
 
 def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
