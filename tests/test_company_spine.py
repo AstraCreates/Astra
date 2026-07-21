@@ -12,7 +12,6 @@ from backend.missions.company_goal import (
     reset_for_new_launch,
     start_goal,
 )
-from backend.missions.store import create_mission, list_missions
 from backend.tools.company_brain import (
     add_company_brain_record,
     get_company_brain,
@@ -152,31 +151,12 @@ def test_goals_and_brain_are_isolated_between_companies(tmp_path, monkeypatch):
     )["count"] == 1
 
 
-def test_recurring_missions_and_graph_are_company_scoped(tmp_path, monkeypatch):
+def test_company_brain_graph_is_company_scoped(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
     founder_id = "founder_company_missions"
     first_company = "ws_company_alpha"
     second_company = "ws_company_beta"
-
-    for company_id, name in (
-        (first_company, "Alpha sales"),
-        (second_company, "Beta sales"),
-    ):
-        create_mission(
-            founder_id=founder_id,
-            department="sales",
-            name=name,
-            goal=f"Grow {name}",
-            primary_metric="revenue",
-            objectives=[],
-            budget={"max_runs_per_day": 1, "max_cost_usd_per_run": 1.0},
-            approval_policy="require_approval",
-            company_id=company_id,
-        )
-
-    assert [mission["name"] for mission in list_missions(founder_id, first_company)] == ["Alpha sales"]
-    assert [mission["name"] for mission in list_missions(founder_id, second_company)] == ["Beta sales"]
 
     add_company_brain_record(
         founder_id,
@@ -264,36 +244,3 @@ async def test_company_scoped_brain_api_does_not_cross_company_boundaries():
     assert second_response.status_code == 200
     assert [record["title"] for record in first_response.json()["records"]] == ["First secret"]
     assert second_response.json()["records"] == []
-
-
-@pytest.mark.asyncio
-async def test_direct_mission_routes_enforce_company_owner(monkeypatch):
-    monkeypatch.setattr(settings, "astra_require_auth", True)
-    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
-    founder_id = "founder_mission_owner"
-    company = workspace_store.create_workspace(founder_id, "Owner company", "Operate")
-    mission = create_mission(
-        founder_id=founder_id,
-        department="ops",
-        name="Private operating mission",
-        goal="Keep the company moving.",
-        primary_metric="tempo",
-        objectives=[],
-        budget={"max_runs_per_day": 1, "max_cost_usd_per_run": 1.0},
-        approval_policy="require_approval",
-        company_id=company["company_id"],
-    )
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        denied = await client.get(
-            f"/missions/{mission['id']}",
-            headers={"x-astra-user-id": "different_founder"},
-        )
-        allowed = await client.get(
-            f"/missions/{mission['id']}",
-            headers={"x-astra-user-id": founder_id},
-        )
-
-    assert denied.status_code == 403
-    assert allowed.status_code == 200
-    assert allowed.json()["company_id"] == company["company_id"]

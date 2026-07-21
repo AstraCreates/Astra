@@ -7,6 +7,7 @@ running, what failed, what shipped, and how long did it take?
 
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import threading
@@ -153,6 +154,49 @@ def _record_run_event_locked(session_id: str, event_id: int, event: dict[str, An
     except Exception:
         pass
     return row
+
+
+def reap_stale_runs(stale_seconds: int | None = None) -> list[str]:
+    """Startup sweep: a run left "running" when the backend process died or
+    restarted has no in-memory task left to ever publish goal_done/goal_error,
+    so normalize_run_row() relabels it "stalled" forever on every read. Mark
+    anything past the staleness window as "error" so it stops being
+    perpetually mislabeled. Mirrors session_store.reconcile_orphaned_sessions().
+    Returns the list of reaped session IDs."""
+    if stale_seconds is None:
+        stale_seconds = int(os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
+    now = time.time()
+    reaped: list[str] = []
+    with _LEDGER_LOCK:
+        data = _load()
+        sessions = data.get("sessions") or {}
+        for session_id, row in sessions.items():
+            if not isinstance(row, dict) or row.get("status") != "running":
+                continue
+            ts = row.get("updated_at") or row.get("started_at") or ""
+            try:
+                epoch = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+            except Exception:
+                continue  # unknown age -- leave alone rather than guess
+            if (now - epoch) < stale_seconds:
+                continue
+            row["status"] = "error"
+            row["ended_at"] = _now_iso()
+            row["updated_at"] = row["ended_at"]
+            _add_error(row, {
+                "type": "reaper",
+                "message": (
+                    "Orphaned: run was still 'running' after a backend restart "
+                    "with no active process found (reaped by startup sweep)."
+                ),
+            })
+            _set_duration(row)
+            sessions[session_id] = row
+            reaped.append(session_id)
+        if reaped:
+            data["updated_at"] = _now_iso()
+            _save(data)
+    return reaped
 
 
 def get_run(session_id: str) -> dict[str, Any] | None:

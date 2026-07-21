@@ -15,11 +15,7 @@ from backend.api.missions_routes import router as missions_router
 from backend.api.skills_routes import skills_router
 from backend.api.deployments_routes import deployments_router
 from backend.api.credits_routes import credits_router
-from backend.api.genome_routes import router as genome_router
-from backend.api.outcomes_routes import router as outcomes_router
-from backend.api.roadmap_routes import router as roadmap_router
 from backend.api.company_routes import router as company_router
-from backend.api.team_map_routes import router as team_map_router
 from backend.api.connectors_routes import router as connectors_router
 from backend.api.notification_routes import router as notification_router
 from backend.api.dashboard_routes import router as dashboard_router
@@ -28,7 +24,6 @@ from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
 from backend.api.company_os_routes import router as company_os_router
-from backend.api.company_os_phase1_routes import phase2_router as company_os_phase2_router, router as company_os_phase1_router
 
 logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
@@ -65,14 +60,8 @@ app.include_router(missions_router)
 app.include_router(skills_router)
 app.include_router(deployments_router)
 app.include_router(credits_router)
-app.include_router(genome_router)
-app.include_router(outcomes_router)
-app.include_router(roadmap_router)
 app.include_router(company_router)
 app.include_router(company_os_router)
-app.include_router(company_os_phase1_router)
-app.include_router(company_os_phase2_router)
-app.include_router(team_map_router)
 app.include_router(connectors_router)
 app.include_router(notification_router)
 app.include_router(dashboard_router)
@@ -87,7 +76,15 @@ async def startup_background_jobs():
     from backend.production_env import audit_runtime_settings
     runtime_env = audit_runtime_settings(_settings)
     if not runtime_env.get("ok") and runtime_env.get("mode") == "production":
-        raise RuntimeError(runtime_env.get("summary") or "Production env validation failed.")
+        # Log loud, never crash boot over it: the same audit is already surfaced
+        # non-blocking via /admin/production-verification (platform_status.py),
+        # and inferring "production" from URL/require_auth alone false-positives
+        # on any local run against a copied prod .env (this exact gate already
+        # flip-flopped once between hard-fail and soft-fail, see git history).
+        logging.getLogger(__name__).error(
+            "Production env validation failed: %s",
+            runtime_env.get("summary") or "unknown",
+        )
 
     # Wave 5.2: OTel is mandatory (unlike the still-disabled Langfuse flag). Must run
     # before any run/workflow/agent code so get_tracer() is populated by the time the
@@ -138,6 +135,22 @@ async def startup_background_jobs():
             logger.warning("startup session reconciliation failed: %s", exc)
 
     _background_tasks.append(asyncio.create_task(_reconcile_sessions_in_background()))
+
+    # Same sweep, for the separate run_ledger store: a run left "running" after
+    # a crash/restart is never revisited otherwise, so it gets permanently
+    # relabeled "stalled" by normalize_run_row() on every future read.
+    async def _reap_stale_runs_in_background() -> None:
+        try:
+            from backend.run_ledger import reap_stale_runs
+            reaped = await asyncio.to_thread(reap_stale_runs)
+            if reaped:
+                logger.info("startup run-ledger reap: marked %d orphaned run(s) as error: %s", len(reaped), reaped)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("startup run-ledger reap failed: %s", exc)
+
+    _background_tasks.append(asyncio.create_task(_reap_stale_runs_in_background()))
 
     # Copilot turns may intentionally outlive their original HTTP request. Their
     # queued state lives in session metadata, so reconnect them after a restart.

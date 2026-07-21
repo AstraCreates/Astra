@@ -163,7 +163,6 @@ def sync_founder_operating_system(
 ) -> dict[str, Any]:
     from backend.config import settings
     from backend.missions.company_goal import get_company_goal, upsert_company_goal
-    from backend.missions.store import list_missions, update_mission, update_task
 
     token = getattr(settings, "notion_token", "") or ""
     parent_id = getattr(settings, "notion_operating_parent_id", "") or ""
@@ -215,60 +214,9 @@ def sync_founder_operating_system(
     if not goal_row.get("ok"):
         return goal_row
 
-    missions = list_missions(founder_id, resolved_company_id)
-    synced = {"missions": 0, "tasks": 0}
-    for mission in missions:
-        mission_row = _upsert_page(
-            token,
-            database_id,
-            title=mission.get("name", "Mission"),
-            astra_id=f"mission:{mission['id']}",
-            row_type="mission",
-            status=mission.get("status", "active"),
-            owner=mission.get("department", ""),
-            parent_astra_id=f"company_goal:{resolved_company_id}",
-            source_session_id=company_goal.get("source_session_id", ""),
-            notes=mission.get("goal", ""),
-        )
-        if mission_row.get("ok"):
-            synced["missions"] += 1
-            try:
-                update_mission(
-                    mission["id"],
-                    notion_page_id=mission_row.get("page_id"),
-                    notion_page_url=mission_row.get("url"),
-                )
-            except Exception:
-                logger.debug("notion sync: unable to persist mission page metadata", exc_info=True)
-        for task in mission.get("tasks") or []:
-            task_row = _upsert_page(
-                token,
-                database_id,
-                title=task.get("title", "Task"),
-                astra_id=f"task:{task['id']}",
-                row_type="subtask" if task.get("parent_id") else "task",
-                status=task.get("status", "pending"),
-                owner=task.get("owner_agent", mission.get("department", "")),
-                parent_astra_id=f"task:{task['parent_id']}" if task.get("parent_id") else f"mission:{mission['id']}",
-                source_session_id=(task.get("last_run_id") or company_goal.get("source_session_id", "")),
-                notes=task.get("notes", ""),
-            )
-            if task_row.get("ok"):
-                synced["tasks"] += 1
-                try:
-                    update_task(
-                        mission["id"],
-                        task["id"],
-                        notion_page_id=task_row.get("page_id"),
-                        notion_page_url=task_row.get("url"),
-                    )
-                except Exception:
-                    logger.debug("notion sync: unable to persist task page metadata", exc_info=True)
-
     return {
         "ok": True,
         "database_id": database_id,
         "url": db_result.get("url"),
         "company_goal_page_id": goal_row.get("page_id"),
-        "synced": synced,
     }

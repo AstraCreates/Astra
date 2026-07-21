@@ -7,7 +7,6 @@ import pytest
 
 from backend.missions.company_goal import budget_allows, chain_allowed
 from backend.missions.goal_engine import _running_session_is_fresh, dispatch_current_goal
-from backend.missions.runner import _reconcile_tasks
 
 
 def _write_meta(meta_path, session_id, *, status="running", created_at=None, founder_id="founder", company_id="company"):
@@ -146,24 +145,6 @@ def test_running_session_is_fresh_honors_stale_cutoff(tmp_path, monkeypatch):
 
     assert _running_session_is_fresh("stale_root") is False
     assert _running_session_is_fresh("fresh_root") is True
-
-
-def test_reconcile_tasks_does_not_create_synthetic_followup_task():
-    mission = {
-        "id": "mission_1",
-        "department": "research",
-        "approval_policy": "auto",
-        "last_run_at": "2026-07-06T00:00:00Z",
-        "tasks": [
-            {"id": "task_1", "title": "Interview customers", "status": "pending"},
-        ],
-    }
-    result = {"summary": "Finished the customer interview batch."}
-
-    tasks = _reconcile_tasks(mission, result, "session_1")
-
-    assert [task["id"] for task in tasks] == ["task_1"]
-    assert tasks[0]["status"] == "done"
 
 
 @pytest.mark.asyncio
@@ -366,24 +347,3 @@ async def test_scheduler_recovers_missing_next_goal_proposal_without_redispatch(
     assert dispatched == 1
     assert plan_calls == [("founder", "company")]
     assert dispatch_calls == []
-
-
-def test_get_missions_due_for_run_uses_per_founder_lock(tmp_path, monkeypatch):
-    from backend.missions import store
-
-    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
-    mission = store.create_mission(
-        founder_id="founder",
-        company_id="company",
-        department="research",
-        name="Research",
-        goal="Learn",
-        primary_metric="Interviews",
-        objectives=[],
-        budget={"max_runs_per_day": 1},
-        approval_policy="auto",
-    )
-
-    due = store.get_missions_due_for_run()
-
-    assert [item["id"] for item in due] == [mission["id"]]
