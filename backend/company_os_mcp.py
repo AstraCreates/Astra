@@ -133,8 +133,12 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
                       "task_id": task_id, "mission_id": mission_id, "error": str(exc)})
         raise
     append_event(company_id, "mcp.tool_completed", {"call_id": call_id, "tool": tool,
-                  "task_id": task_id, "mission_id": mission_id,
-                  "ok": not bool(result.get("error")) if isinstance(result, dict) else True})
+            "task_id": task_id, "mission_id": mission_id,
+            "ok": not bool(result.get("error")) if isinstance(result, dict) else True,
+            "error": result.get("error") if isinstance(result, dict) else None,
+            "research_status": result.get("research_status") if isinstance(result, dict) else None,
+            "research_metadata": result.get("research_metadata") if isinstance(result, dict) else None,
+            "evidence_validation": result.get("evidence_validation") if isinstance(result, dict) else None})
     return result if isinstance(result, dict) else {"ok": True, "result": result}
 
 

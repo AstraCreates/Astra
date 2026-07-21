@@ -152,7 +152,8 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         sources = [source for source in evidence.get("sources", []) if isinstance(source, Mapping) and source.get("url")]
         validation = evidence.get("evidence_validation") or validate_deep_research(evidence)
         if evidence.get("error") or evidence.get("research_status") != "validated" or not validation.get("ok"):
-            reason = "; ".join(validation.get("gaps") or [str(evidence.get("error") or "deep research evidence gate failed")])
+            reason = "; ".join(([str(evidence.get("error"))] if evidence.get("error") else [])
+                                + (validation.get("gaps") or ["deep research evidence gate failed"]))
             raise RuntimeError(f"Deep research blocked by evidence gate: {reason}")
         evidence["sources"] = sources
         evidence["evidence_validation"] = validation

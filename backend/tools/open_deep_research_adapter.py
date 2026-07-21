@@ -50,7 +50,15 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
     previous_key = os.environ.get("OPENAI_API_KEY")
     previous_base = os.environ.get("OPENAI_BASE_URL")
     os.environ["OPENAI_API_KEY"] = _or_api_key()
-    os.environ["OPENAI_BASE_URL"] = settings.openrouter_base_url
+    # Headroom is the right transport for Astra's normal model lanes, but its
+    # LiteLLM provider map does not understand the upstream graph's
+    # ``openai:deepseek/...`` provider notation. Keep this profile isolated and
+    # use the OpenRouter-compatible endpoint directly.
+    configured_base = str(settings.openrouter_base_url or "")
+    research_base = ("https://openrouter.ai/api/v1"
+                     if "headroom" in configured_base.lower()
+                     else configured_base)
+    os.environ["OPENAI_BASE_URL"] = research_base
     await asyncio.to_thread(_GRAPH_PATCH_LOCK.acquire)
     try:
         original_get_all_tools = graph_module.get_all_tools
@@ -101,5 +109,6 @@ async def run_open_deep_research(subject: str, *, company_id: str, initiative_id
             "research_status": "validated" if delegated and report and source_count > 0 else "evidence_incomplete",
             "research_metadata": {"profile": "open_deep_research_langgraph",
                                   "model": "deepseek/deepseek-v4-flash",
-                                  "provider": "deepseek"}}
+                                  "provider": "deepseek",
+                                  "transport": "direct_openrouter" if "headroom" in configured_base.lower() else research_base}}
 _GRAPH_PATCH_LOCK = Lock()
