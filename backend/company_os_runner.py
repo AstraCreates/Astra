@@ -295,9 +295,72 @@ def _decision_brief(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str
     if not evidence.get("source_references"):
         raise RuntimeError("Cannot produce a decision brief without cited evidence.")
     if _is_comparison_request(mission_name):
-        return _comparison_document(mission_name, evidence)
+        return _synthesize_comparison_document(mission_name, evidence)
     return _synthesize_document(mission_name, evidence, purpose="writing a decision-ready brief",
                                 fallback_title=f"Findings — {_short_title(mission_name)}")
+
+
+def _synthesize_comparison_document(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:
+    """LLM-write a real comparison report (executive summary, a dimension
+    table, thematic deep-dive sections, pros/cons per subject, a bottom
+    line) grounded only in fetched evidence -- the mechanical table-only
+    _comparison_document() below was never actually reachable for a real
+    "compare X and Y" request until this function replaced it as the
+    primary path (it's now only the safety-net fallback on LLM failure).
+    Preserves the original safety property: never invent a winner beyond
+    what the evidence supports, and say so plainly when coverage is thin."""
+    ledger = evidence.get("evidence_ledger") or {}
+    subjects = list(ledger)
+    if len(subjects) != 2:
+        return _comparison_document(mission_name, evidence)
+    left, right = subjects
+    coverage = evidence.get("coverage") or {}
+    ready = bool(coverage.get("ready"))
+    raw = str(evidence.get("combined_formatted") or "").strip()
+    if not raw:
+        return _comparison_document(mission_name, evidence)
+
+    evidence_by_subject = []
+    for subject in subjects:
+        lines = [f"### {subject}"]
+        for dimension, claims in (ledger.get(subject) or {}).items():
+            for claim in claims[:4]:
+                if isinstance(claim, Mapping) and claim.get("excerpt"):
+                    lines.append(f"- [{dimension}] {claim['excerpt']} (Source: {claim.get('title') or 'Source'}, {claim.get('url') or ''})")
+        evidence_by_subject.append("\n".join(lines))
+
+    prompt = f"""You are a sharp analyst writing a comparison report for a founder deciding between two products/companies: "{left}" and "{right}".
+
+Fetched evidence, organized by subject and dimension (each line is one claim grounded in a real fetched page, with its source):
+{chr(10).join(evidence_by_subject)}
+
+Raw combined research text (for additional context and phrasing, may overlap the evidence above):
+{raw[:14000]}
+
+Evidence coverage is {"sufficient across both subjects" if ready else "THIN for at least one subject/dimension -- be explicit about which claims are unverified rather than guessing"}.
+
+Write a genuinely useful, comprehensive markdown comparison report. Requirements:
+- Open with "## Executive summary": 2-3 paragraphs giving the direct, specific comparison and where each subject is stronger, using only what the evidence above actually supports.
+- "## Comparison overview": a markdown table with rows for the dimensions the evidence actually covers (e.g. business model, pricing, target customers, team/leadership visibility, technology/documentation, evidence and credibility, legal terms) and one column per subject, plus an "Analytical take" column. Write "Not verified from available public evidence" for any cell the evidence doesn't support -- never invent a value.
+- 2-4 more "##" deep-dive sections grouping related dimensions into a coherent narrative (e.g. "Business model and pricing", "Team and technology", "Evidence, reputation, and legal terms") -- do not just repeat the table as prose; synthesize and explain what the differences mean for a founder's decision.
+- A "### {left} pros and cons" and "### {right} pros and cons" section, each a two-column markdown table (Pros | Cons), grounded in the evidence.
+- End with "## Bottom line": a direct, specific recommendation of which subject fits which kind of founder/use case, {"including a clear recommendation since the evidence is sufficient" if ready else "explicitly declining to declare an overall winner given the evidence gaps, while still summarizing the clearest differences"}.
+- Pull real facts, names, and numbers from the evidence above. Never invent specifics, comparisons, or claims the evidence doesn't support.
+- Aim for 900-1600 words of real substance -- this is a comprehensive report, not a summary.
+- Do not mention Astra, tools, AI systems, or how this research was conducted -- focus entirely on the two subjects and the evidence.
+
+Respond with ONLY this JSON object, no prose, no markdown fence:
+{{"title": "<a specific 4-9 word title, e.g. '{left} and {right} Compared'>", "content": "<the full markdown document>"}}"""
+    try:
+        from backend.tools._llm import generate, parse_json_response
+        raw_response = generate(prompt, model="large", json_mode=True, max_tokens=4000, temperature=0.5)
+        parsed = parse_json_response(raw_response)
+        title, content = str(parsed.get("title") or "").strip(), str(parsed.get("content") or "").strip()
+        if title and content:
+            return title, content
+    except Exception:
+        logger.warning("Comparison document synthesis failed for mission=%r, falling back to the evidence table", mission_name, exc_info=True)
+    return _comparison_document(mission_name, evidence)
 
 
 def _comparison_document(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str, str]:

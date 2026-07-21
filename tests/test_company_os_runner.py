@@ -3,7 +3,7 @@ import pytest
 from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_runner import run_mission
-from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request, _website_preview
+from backend.company_os_runner import _comparison_document, _complete_chat_reply, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
@@ -24,6 +24,49 @@ def test_comparison_document_never_recommends_with_unbalanced_evidence():
     assert "comparison" in title.lower()
     assert "No winner is declared" in content
     assert "Not verified from available public evidence" in content
+
+
+def _comparison_evidence():
+    return {
+        "evidence_ledger": {
+            "Cofounder": {"product": [{"title": "About", "url": "https://cofounder.example/about", "excerpt": "Cofounder is an agentic operating system."}], "pricing": [{"title": "Pricing", "url": "https://cofounder.example/pricing", "excerpt": "Pro plan is $20/mo of usage."}]},
+            "Astra": {"product": [{"title": "Home", "url": "https://astra.example", "excerpt": "Astra launches a company from an idea."}], "pricing": [{"title": "Pricing", "url": "https://astra.example/pricing", "excerpt": "Build plan is $40/mo."}]},
+        },
+        "coverage": {"ready": True},
+        "combined_formatted": "Cofounder is an agentic operating system. Pro plan is $20/mo. Astra launches from an idea. Build plan is $40/mo.",
+    }
+
+
+def test_synthesize_comparison_document_uses_the_llm_report_when_available(monkeypatch):
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: (
+        '{"title": "Cofounder and Astra Compared", '
+        '"content": "## Executive summary\\n\\nBoth help founders build companies.\\n\\n'
+        '## Comparison overview\\n\\n| Dimension | Cofounder | Astra |\\n| --- | --- | --- |\\n| Pricing | $20/mo | $40/mo |\\n\\n'
+        '### Cofounder pros and cons\\n\\n| Pros | Cons |\\n| --- | --- |\\n| Broad | Complex |\\n\\n'
+        '## Bottom line\\n\\nPick based on budget."}'
+    ))
+
+    title, content = _synthesize_comparison_document("Compare Cofounder and Astra", _comparison_evidence())
+
+    assert title == "Cofounder and Astra Compared"
+    assert "## Executive summary" in content
+    assert "## Comparison overview" in content
+    assert "pros and cons" in content
+
+
+def test_synthesize_comparison_document_falls_back_to_the_evidence_table_on_llm_failure(monkeypatch):
+    def broken_generate(*_a, **_k):
+        raise RuntimeError("model unavailable")
+    monkeypatch.setattr("backend.tools._llm.generate", broken_generate)
+
+    title, content = _synthesize_comparison_document("Compare Cofounder and Astra", _comparison_evidence())
+
+    # Falls back to the mechanical, evidence-gated table -- never leaves the
+    # founder with nothing, and never invents a recommendation the LLM path
+    # would have (this evidence set has both dimensions covered, so the
+    # fallback declares readiness rather than withholding).
+    assert "comparison" in title.lower()
+    assert "Verified evidence" in content
 
 
 def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():
