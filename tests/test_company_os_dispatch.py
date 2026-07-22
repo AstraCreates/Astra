@@ -11,11 +11,11 @@ def test_website_requests_route_to_product_technical_with_a_local_preview_plan(m
     })
 
     assert choose_department("Make a website for a company that competes with both")[0] == "product_technical"
-    assert [item["title"] for item in specialist_task_plan("product_technical", "Make a landing page")] == [
-        "Define the local website brief", "Create a local website preview", "Prepare the publication decision", "Publish the website to Vercel",
-    ]
-    assert all(item["execution_scope"] == "local" for item in specialist_task_plan("product_technical", "Make a landing page")[:3])
-    assert specialist_task_plan("product_technical", "Make a landing page")[3]["execution_scope"] == "external"
+    plan = specialist_task_plan("product_technical", "Make a landing page")
+    assert any(item["title"] == "Create a local website preview" for item in plan)
+    assert any(item["title"] == "Design the technical architecture" for item in plan)
+    assert all(item["execution_scope"] == "local" for item in plan[:-1])
+    assert plan[-1]["execution_scope"] == "external"
 
 
 def test_genuine_ambiguity_triggers_clarification_with_options(monkeypatch):
@@ -66,7 +66,7 @@ def test_misspelled_comparison_routes_to_insights_instead_of_triage(monkeypatch)
     assert route["department"] == "research"
 
 
-def test_multi_capability_request_forms_a_real_handoff_squad(monkeypatch):
+def test_multi_capability_request_forms_a_role_aware_squad_dag(monkeypatch):
     dispatch, store = _dispatch(monkeypatch)
     monkeypatch.setattr(dispatch, "infer_work_request", lambda _intent: {
         "version": 1, "outcome": "Compare products and build a website", "deliverables": [], "constraints": [], "entities": [],
@@ -75,11 +75,15 @@ def test_multi_capability_request_forms_a_real_handoff_squad(monkeypatch):
     result = dispatch.dispatch_intent("co", "Compare products and build a website")
 
     assert result["department"] == "product_technical"
+    assert result["squad_profile"]["role_keys"] == ["technical_lead", "frontend_engineer", "architect"]
     assert [mission["department"] for mission in result["handoff_missions"]] == ["research"]
-    assert result["mission"]["depends_on_mission_ids"] == [result["handoff_missions"][0]["id"]]
+    tasks = {task["role_key"]: task for task in result["tasks"]}
+    assert tasks["technical_lead"]["role_id"]
+    product_build = next(task for task in result["tasks"] if task["name"].startswith("Create a local website preview"))
+    assert product_build["depends_on_task_ids"]
 
 
-def test_research_led_comparison_makes_product_delivery_wait_for_evidence(monkeypatch):
+def test_research_led_comparison_keeps_product_delivery_in_the_same_squad(monkeypatch):
     dispatch, _store = _dispatch(monkeypatch)
     monkeypatch.setattr(dispatch, "infer_work_request", lambda _intent: {
         "version": 1, "outcome": "Compare products and build a website", "deliverables": [], "constraints": [], "entities": [],
@@ -89,9 +93,8 @@ def test_research_led_comparison_makes_product_delivery_wait_for_evidence(monkey
     result = dispatch.dispatch_intent("co", "Compare products and build a website")
 
     assert result["department"] == "research"
-    product_mission = result["handoff_missions"][0]
-    assert product_mission["department"] == "product_technical"
-    assert product_mission["depends_on_mission_ids"] == [result["mission"]["id"]]
+    assert result["squad_profile"]["role_keys"] == ["research_lead", "market_analyst", "scientific_analyst"]
+    assert [mission["department"] for mission in result["handoff_missions"]] == ["product_technical"]
 
 
 def test_research_handoff_gets_research_tasks_when_request_also_needs_website(monkeypatch):
@@ -103,10 +106,9 @@ def test_research_handoff_gets_research_tasks_when_request_also_needs_website(mo
     }
     tasks = specialist_task_plan("research", "Compare products and build a website", request=request)
 
-    assert [task["title"] for task in tasks] == [
-        "Gather validated evidence", "Synthesize findings and uncertainties", "Produce a decision brief",
-    ]
-    assert tasks[0]["mcp_tool"] == "astra_company_research"
+    assert [task["task_key"] for task in tasks] == ["research-market_analyst", "research-scientific_analyst", "research-review", "research-brief"]
+    assert all(task["mcp_tool"] == "astra_company_research" for task in tasks[:2])
+    assert tasks[2]["dependencies"] == ["research-market_analyst", "research-scientific_analyst"]
 
 
 def test_research_tasks_are_per_subject_when_planner_extracts_entities():
@@ -135,7 +137,7 @@ def test_research_tasks_are_per_subject_when_planner_extracts_entities():
     # Every row must name the subject -- no row is just "Gather validated evidence" alone.
     assert all("Northrop Grumman" in title for title in titles), titles
     # Titles must be distinct -- the bug was that all three were structurally identical.
-    assert len(set(titles)) == 3, titles
+    assert len(set(titles)) == 4, titles
     # The redundant "Outcome: <intent>" suffix must be gone.
     for description in descriptions:
         assert "Outcome:" not in description, description
@@ -143,7 +145,9 @@ def test_research_tasks_are_per_subject_when_planner_extracts_entities():
     # MCP contract preserved.
     assert tasks[0]["mcp_tool"] == "astra_company_research"
     assert tasks[0]["operation"] == "internal_analysis"
-    assert tasks[1]["operation"] == tasks[2]["operation"] == "draft"
+    assert tasks[1]["operation"] == "internal_analysis"
+    assert tasks[2]["operation"] == "internal_review"
+    assert tasks[3]["operation"] == "draft"
 
 
 def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
@@ -163,8 +167,9 @@ def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
     titles = [task["title"] for task in tasks]
     # No length-noisy "... with no specifics" smearing in the titles.
     assert titles == [
-        "Gather validated evidence",
-        "Synthesize findings and uncertainties",
+        "Market Analyst: gather validated evidence",
+        "Scientific Analyst: gather validated evidence",
+        "Review evidence and resolve conflicts",
         "Produce a decision brief",
     ]
     # No Outcome: suffix even in the fallback case.
@@ -200,13 +205,19 @@ def test_website_tasks_are_per_subject_when_planner_extracts_entities():
 
 class FakeCompanyOS:
     def __init__(self):
-        self.company = {"tasks": [], "task_attempts": [], "events": [], "budget": {"remaining_usd": 5}}
+        self.company = {"tasks": [], "task_attempts": [], "events": [], "squad_roles": [], "squad_meetings": [], "budget": {"remaining_usd": 5}}
         self.missions = []
+        self.squads = []
         self.task_attempt_updates = []
 
     def get_company_os(self, **_): return self.company
     def create_initiative(self, **kwargs): return {"id": "initiative", **kwargs}
-    def create_squad(self, **kwargs): return {"id": "squad", **kwargs}
+    def create_squad(self, **kwargs):
+        squad = {"id": f"squad-{len(self.squads)}", **kwargs}; self.squads.append(squad); return squad
+    def create_squad_role(self, **kwargs):
+        role = {"id": f"role-{len(self.company['squad_roles'])}", **kwargs}; self.company["squad_roles"].append(role); return role
+    def create_squad_meeting(self, **kwargs):
+        meeting = {"id": f"meeting-{len(self.company['squad_meetings'])}", **kwargs}; self.company["squad_meetings"].append(meeting); return meeting
     def create_mission(self, **kwargs):
         mission = {"id": f"mission-{len(self.missions)}", **kwargs}
         self.missions.append(mission)
@@ -227,7 +238,7 @@ class FakeCompanyOS:
 def _dispatch(monkeypatch):
     fake = FakeCompanyOS()
     monkeypatch.setitem(sys.modules, "backend.company_os", types.SimpleNamespace(**{
-        name: getattr(fake, name) for name in ("get_company_os", "create_initiative", "create_squad", "create_mission", "create_task", "create_task_attempt", "create_approval", "update_mission", "update_task", "update_task_attempt", "append_event")
+        name: getattr(fake, name) for name in ("get_company_os", "create_initiative", "create_squad", "create_squad_role", "create_squad_meeting", "create_mission", "create_task", "create_task_attempt", "create_approval", "update_mission", "update_task", "update_task_attempt", "append_event")
     }))
     from backend import company_os_dispatch as dispatch
     return dispatch, fake
@@ -277,6 +288,49 @@ def test_local_publication_preparation_never_requires_approval():
 
     decision = enforce_dispatch_policy({"title": "Prepare the publication decision", "operation": "internal_review", "execution_scope": "local"})
     assert decision["decision"] == "auto"
+
+
+def test_role_profile_selects_relevant_specialists_and_caps_squad_size():
+    from backend.company_os_dispatch import select_squad_profile
+
+    profile = select_squad_profile({
+        "objective": "Compare a regulated market using scientific evidence",
+        "deliverables": ["competitive comparison", "evidence brief", "regulatory analysis"],
+        "required_capabilities": ["compare", "evidence research", "competitive analysis"],
+        "risk": "internal",
+    }, "research")
+
+    assert profile["version"] == 1
+    assert profile["role_keys"][0] == "research_lead"
+    assert len(profile["role_keys"]) == 4
+    assert {"market_analyst", "scientific_analyst", "customer_regulatory_analyst"}.issubset(profile["role_keys"])
+
+
+def test_dispatch_persists_charter_role_records_and_task_contract(monkeypatch):
+    dispatch, store = _dispatch(monkeypatch)
+    request = {
+        "version": 1, "outcome": "Compare options and build a website", "deliverables": ["website"],
+        "acceptance_criteria": ["Cited evidence", "Working local preview"], "constraints": ["Use public sources"],
+        "dependencies": ["Brand context"], "entities": ["Acme"], "risk": "internal",
+        "primary_capability": "website", "required_capabilities": ["website", "research", "compare"],
+        "confidence": 0.95, "requires_clarification": False,
+    }
+    result = dispatch.dispatch_intent("co", "Compare options and build a website", work_request=request)
+
+    assert len(store.company["squad_meetings"]) == 2
+    assert store.company["squad_meetings"][0]["meeting_type"] == "charter"
+    assert [role["role_key"] for role in store.company["squad_roles"]] == ["technical_lead", "frontend_engineer", "architect", "research_lead", "market_analyst", "scientific_analyst"]
+    for task in result["tasks"]:
+        assert task["role_id"]
+        assert task["purpose"] and task["deliverable"]
+        assert isinstance(task["inputs"], list)
+        assert isinstance(task["expected_outputs"], list)
+        assert isinstance(task["acceptance_criteria"], list)
+        assert isinstance(task["depends_on_task_ids"], list)
+        assert "dependencies" not in task and "dependency_task_ids" not in task
+        assert task["parallel_group"]
+        assert isinstance(task["handoffs"], list)
+    assert next(task for task in store.company["tasks"] if task["mcp_tool"] == "astra_company_research")["role_key"] == "market_analyst"
 
 
 def test_restart_duplicate_protection_reads_durable_attempts(monkeypatch):

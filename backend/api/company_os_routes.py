@@ -66,6 +66,11 @@ class ApprovalDecisionBody(BaseModel):
     note: str | None = Field(default=None, max_length=2_000)
 
 
+class SquadControlBody(BaseModel):
+    founder_id: str
+    action: str = Field(pattern="^(pause|resume|cancel)$")
+
+
 @router.get("/hosted-preview/{project_slug}/{asset_path:path}")
 @router.get("/hosted-preview/{project_slug}")
 async def hosted_company_preview(project_slug: str, asset_path: str = ""):
@@ -165,6 +170,55 @@ async def delete_company_os_squad(company_id: str, squad_id: str, founder_id: st
         raise HTTPException(status_code=404, detail="Squad not found")
     update_squad(company_id, squad_id, state="archived", lifecycle="archived")
     return {"ok": True, "squad_id": squad_id, "company": get_company_os(company_id)}
+
+
+@router.get("/companies/{company_id}/os/squads/{squad_id}/workbench")
+async def get_company_os_squad_workbench(company_id: str, squad_id: str, founder_id: str, request: Request):
+    """Return the durable squad collaboration projection without chat noise."""
+    company = _company(request, company_id, founder_id)
+    squad = next((item for item in company.get("squads", []) if item.get("squad_id") == squad_id), None)
+    if not squad:
+        raise HTTPException(status_code=404, detail="Squad not found")
+    missions = [item for item in company.get("missions", []) if item.get("squad_id") == squad_id]
+    return {
+        "squad": squad,
+        "roles": [item for item in company.get("squad_roles", []) if item.get("squad_id") == squad_id],
+        "meetings": [item for item in company.get("squad_meetings", []) if item.get("squad_id") == squad_id],
+        "tasks": [item for item in company.get("tasks", []) if item.get("squad_id") == squad_id],
+        "missions": missions,
+    }
+
+
+@router.post("/companies/{company_id}/os/squads/{squad_id}/control")
+async def control_company_os_squad(company_id: str, squad_id: str, body: SquadControlBody, request: Request):
+    """Pause, resume, or cancel a squad through durable lifecycle state."""
+    from backend.company_os_runner import launch_mission
+
+    company = _company(request, company_id, body.founder_id, operator=True)
+    squad = next((item for item in company.get("squads", []) if item.get("squad_id") == squad_id), None)
+    if not squad:
+        raise HTTPException(status_code=404, detail="Squad not found")
+    tasks = [item for item in company.get("tasks", []) if item.get("squad_id") == squad_id]
+    if body.action == "pause":
+        update_squad(company_id, squad_id, state="paused", lifecycle="review")
+        for task in tasks:
+            if task.get("state") in {"pending", "ready", "planned", "scheduled"}:
+                update_task(company_id, task["task_id"], state="waiting", blocked_reason="Paused by founder")
+    elif body.action == "cancel":
+        update_squad(company_id, squad_id, state="archived", lifecycle="archived")
+        for task in tasks:
+            if task.get("state") not in {"done", "blocked", "awaiting_approval"}:
+                update_task(company_id, task["task_id"], state="blocked", blocked_reason="Cancelled by founder")
+    else:
+        update_squad(company_id, squad_id, state="active", lifecycle="working")
+        missions = [item for item in company.get("missions", []) if item.get("squad_id") == squad_id]
+        for task in tasks:
+            if task.get("state") == "waiting" and task.get("blocked_reason") == "Paused by founder":
+                update_task(company_id, task["task_id"], state="pending", blocked_reason=None)
+        for mission in missions:
+            launch_mission(company_id, str(mission["mission_id"]))
+    reconcile_initiatives(company_id)
+    return {"ok": True, "action": body.action, "company": get_company_os(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/artifacts/{artifact_id}")

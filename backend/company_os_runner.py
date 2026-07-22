@@ -43,7 +43,7 @@ def launch_mission(company_id: str, mission_id: str) -> bool:
 
 
 async def run_mission(company_id: str, mission_id: str) -> None:
-    """Execute eligible mission tasks in order and leave a complete local audit trail."""
+    """Execute a mission's durable task graph in bounded dependency-ready rounds."""
     company = get_company_os(company_id)
     if not company:
         return
@@ -62,33 +62,56 @@ async def run_mission(company_id: str, mission_id: str) -> None:
     update_mission(company_id, mission_id, state="working")
     append_message(company_id, f"{mission['name']}: the {mission.get('department', 'operations').replace('_', ' ').title()} Lead started the squad work.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
 
-    for task in _mission_tasks(company_id, mission_id):
-        if task.get("state") not in {"pending", "scheduled"}:
-            continue
-        append_message(company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"], kind="status")
-        try:
-            result = await asyncio.to_thread(
-                execute_task, company_id, task, lambda current: _execute_internal_work(company_id, mission, current)
+    _meeting(company_id, mission, phase="kickoff")
+    blocked: list[Exception] = []
+    waiting = False
+    while True:
+        tasks = _mission_tasks(company_id, mission_id)
+        ready = _ready_tasks(tasks)
+        if not ready:
+            break
+        # Old missions have no graph metadata. Keep their historical serial
+        # order so rollout does not accidentally synthesize before evidence.
+        if not _has_task_graph(tasks):
+            ready = ready[:1]
+        limit = max(1, min(int((squad or {}).get("max_parallel_tasks") or 3), len(ready)))
+        for offset in range(0, len(ready), limit):
+            batch = ready[offset:offset + limit]
+            results = await asyncio.gather(
+                *[_run_task(company_id, mission, task) for task in batch], return_exceptions=True,
             )
-        except Exception as exc:
-            logger.exception("Company OS task failed: company=%s task=%s", company_id, task.get("task_id"))
-            update_mission(company_id, mission_id, state="review", blocked_reason=str(exc))
-            if squad:
-                update_squad(company_id, squad["squad_id"], state="review", lifecycle="review")
-            append_message(company_id, f"{mission['name']} needs review before continuing: {exc}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
-            reconcile_initiatives(company_id)
-            return
-        if result.get("status") == "awaiting_approval":
-            update_mission(company_id, mission_id, state="waiting")
-            if squad:
-                update_squad(company_id, squad["squad_id"], state="waiting", lifecycle="review")
-            append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
-            reconcile_initiatives(company_id)
-            return
+            for task, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    blocked.append(result)
+                    _meeting(company_id, mission, phase="checkpoint", task=task, blockers=[str(result)])
+                    continue
+                if result.get("status") == "awaiting_approval":
+                    waiting = True
+        if blocked or waiting:
+            break
+
+    if blocked:
+        detail = "; ".join(str(item) for item in blocked[:3])
+        update_mission(company_id, mission_id, state="review", blocked_reason=detail)
+        if squad:
+            update_squad(company_id, squad["squad_id"], state="review", lifecycle="review")
+        _meeting(company_id, mission, phase="closeout", blockers=[detail])
+        append_message(company_id, f"{mission['name']} needs review before continuing: {detail}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+        reconcile_initiatives(company_id)
+        return
+    if waiting:
+        update_mission(company_id, mission_id, state="waiting")
+        if squad:
+            update_squad(company_id, squad["squad_id"], state="waiting", lifecycle="review")
+        _meeting(company_id, mission, phase="checkpoint", blockers=["Approval required"])
+        append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+        reconcile_initiatives(company_id)
+        return
 
     final_state: str | None = None
     remaining = _mission_tasks(company_id, mission_id)
-    if all(task.get("state") in {"done", "awaiting_approval"} for task in remaining):
+    if _all_terminal(remaining):
+        _meeting(company_id, mission, phase="review")
         final_state = "done" if all(task.get("state") == "done" for task in remaining) else "waiting"
         update_mission(company_id, mission_id, state=final_state)
         if squad:
@@ -98,9 +121,48 @@ async def run_mission(company_id: str, mission_id: str) -> None:
         else:
             reply = f"{mission['name']} is waiting on your approval before the last step. Check Approvals in the sidebar."
         append_message(company_id, reply, author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="chat")
+        _meeting(company_id, mission, phase="closeout")
     reconcile_initiatives(company_id)
     if final_state == "done":
         _resume_ready_dependents(company_id, mission_id)
+
+
+async def _run_task(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
+    """Execute one role-owned task and leave a concise founder-visible status."""
+    _meeting(company_id, mission, phase="task_start", task=task)
+    append_message(company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+    try:
+        return await asyncio.to_thread(
+            execute_task, company_id, task, lambda current: _execute_internal_work(company_id, mission, current)
+        )
+    except Exception as exc:
+        logger.exception("Company OS task failed: company=%s task=%s", company_id, task.get("task_id"))
+        raise exc
+
+
+def _has_task_graph(tasks: list[Mapping[str, Any]]) -> bool:
+    return any(task.get("role_id") or task.get("depends_on_task_ids") or task.get("parallel_group") for task in tasks)
+
+
+def _ready_tasks(tasks: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    complete = {str(task.get("task_id")) for task in tasks if task.get("state") == "done"}
+    executable = {"pending", "scheduled", "ready", "planned"}
+    ready = [task for task in tasks if task.get("state") in executable and set(task.get("depends_on_task_ids") or []).issubset(complete)]
+    return [dict(task) for task in ready]
+
+
+def _all_terminal(tasks: list[Mapping[str, Any]]) -> bool:
+    return bool(tasks) and all(task.get("state") in {"done", "awaiting_approval", "blocked"} for task in tasks)
+
+
+def _meeting(company_id: str, mission: Mapping[str, Any], *, phase: str, task: Mapping[str, Any] | None = None,
+             blockers: list[str] | None = None) -> None:
+    """Meetings are optional during the staged rollout; execution never blocks on one."""
+    try:
+        from backend.company_os_meetings import hold_meeting
+        hold_meeting(company_id, mission, phase=phase, task=task, blockers=blockers or [])
+    except Exception:
+        logger.debug("Company OS meeting fallback: company=%s mission=%s phase=%s", company_id, mission.get("mission_id"), phase, exc_info=True)
 
 
 async def recover_pending_missions() -> int:
@@ -243,6 +305,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}", {"content": _website_brief(mission_name)}, source="internal analysis", internal=True)
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
+    if mission.get("department") == "research" and task.get("task_key") == "research-review":
+        title, content = _synthesis(mission_name, evidence)
+        return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
     if task.get("name", "").lower().startswith("synthesize"):
         title, content = _synthesis(mission_name, evidence)
         return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)

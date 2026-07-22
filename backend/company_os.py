@@ -18,7 +18,7 @@ from typing import Any, Iterable
 from backend.core.json_store import cross_process_file_lock, read_json, write_json_atomic
 
 _COLLECTIONS = (
-    "initiatives", "squads", "missions", "tasks", "task_attempts",
+    "initiatives", "squads", "squad_roles", "squad_meetings", "missions", "tasks", "task_attempts",
     "artifacts", "approvals", "conversation", "context_records", "policy_decisions", "mcp_audit",
     "dispatch_audit",
 )
@@ -172,7 +172,24 @@ def create_initiative(company_id: str, name: str, *, initiative_id: str | None =
 
 def create_squad(company_id: str, initiative_id: str, name: str, *, squad_id: str | None = None,
                  state: str = "active", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
-    return _create(company_id, "squad", {"squad_id": squad_id or _id("squad"), "initiative_id": initiative_id, "name": name, "state": state, **data}, root)
+    defaults = {"role_ids": [], "meeting_ids": []}
+    return _create(company_id, "squad", {"squad_id": squad_id or _id("squad"), "initiative_id": initiative_id, "name": name, "state": state, **defaults, **data}, root)
+
+
+def create_squad_role(company_id: str, squad_id: str, name: str, *, role_id: str | None = None,
+                      state: str = "active", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
+    """Create a durable role that can be assigned only within its squad."""
+    defaults = {"task_ids": []}
+    return _create(company_id, "squad_role", {"role_id": role_id or _id("role"), "squad_id": squad_id,
+                                                "name": name, "state": state, **defaults, **data}, root)
+
+
+def create_squad_meeting(company_id: str, squad_id: str, name: str, *, meeting_id: str | None = None,
+                         state: str = "scheduled", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
+    """Create a squad-scoped meeting with role participants."""
+    defaults = {"participant_role_ids": [], "task_ids": []}
+    return _create(company_id, "squad_meeting", {"meeting_id": meeting_id or _id("meeting"), "squad_id": squad_id,
+                                                   "name": name, "state": state, **defaults, **data}, root)
 
 
 def create_mission(company_id: str, initiative_id: str, squad_id: str, name: str, *, mission_id: str | None = None,
@@ -182,7 +199,8 @@ def create_mission(company_id: str, initiative_id: str, squad_id: str, name: str
 
 def create_task(company_id: str, initiative_id: str, squad_id: str, name: str, *, task_id: str | None = None,
                 mission_id: str | None = None, state: str = "pending", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
-    return _create(company_id, "task", {"task_id": task_id or _id("task"), "initiative_id": initiative_id, "squad_id": squad_id, "mission_id": mission_id, "name": name, "state": state, **data}, root)
+    defaults = {"role_id": None, "meeting_id": None, "depends_on_task_ids": []}
+    return _create(company_id, "task", {"task_id": task_id or _id("task"), "initiative_id": initiative_id, "squad_id": squad_id, "mission_id": mission_id, "name": name, "state": state, **defaults, **data}, root)
 
 
 def create_task_attempt(company_id: str, task_id: str, *, attempt_id: str | None = None,
@@ -281,9 +299,29 @@ def update_squad(company_id: str, squad_id: str, *, root: str | Path | None = No
     return _update(company_id, "squad", "squad_id", squad_id, changes, root)
 
 
+def update_squad_role(company_id: str, role_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    return _update(company_id, "squad_role", "role_id", role_id, changes, root)
+
+
+def update_squad_meeting(company_id: str, meeting_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    return _update(company_id, "squad_meeting", "meeting_id", meeting_id, changes, root)
+
+
 def update_mission(company_id: str, mission_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
     """Persist a mission lifecycle transition without mutating the snapshot directly."""
     return _update(company_id, "mission", "mission_id", mission_id, changes, root)
+
+
+def add_task_dependency(company_id: str, task_id: str, depends_on_task_id: str, *, root: str | Path | None = None) -> dict[str, Any]:
+    """Add one prerequisite to a task, preserving the task graph's invariants."""
+    company = get_company_os(company_id, root=root)
+    if company is None:
+        raise KeyError(f"unknown company: {company_id}")
+    task = _must_find(company, "tasks", "task_id", task_id)
+    dependencies = list(task.get("depends_on_task_ids") or [])
+    if depends_on_task_id not in dependencies:
+        dependencies.append(depends_on_task_id)
+    return update_task(company_id, task_id, root=root, depends_on_task_ids=dependencies)
 
 
 def update_task_attempt(company_id: str, attempt_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
@@ -316,19 +354,31 @@ def add_context_record(company_id: str, key: str, value: Any, *, scope: str = "c
 
 
 def resolve_context(company_id: str, *, initiative_id: str | None = None, squad_id: str | None = None,
-                    task_id: str | None = None, root: str | Path | None = None) -> dict[str, Any]:
-    """Resolve context by overlaying company -> initiative -> squad -> task records."""
+                    meeting_id: str | None = None, task_id: str | None = None,
+                    root: str | Path | None = None) -> dict[str, Any]:
+    """Resolve context by overlaying company -> initiative -> squad -> meeting -> task records."""
     record = get_company_os(company_id, root=root)
     if record is None:
         raise KeyError(f"unknown company: {company_id}")
-    targets = [("company", None), ("initiative", initiative_id), ("squad", squad_id), ("task", task_id)]
+    if meeting_id is not None:
+        meeting = _must_find(record, "squad_meetings", "meeting_id", meeting_id)
+        if squad_id is not None and meeting["squad_id"] != squad_id:
+            raise ValueError("meeting belongs to a different squad")
+        squad_id = squad_id or meeting["squad_id"]
+        squad = _must_find(record, "squads", "squad_id", squad_id)
+        if initiative_id is not None and squad["initiative_id"] != initiative_id:
+            raise ValueError("meeting belongs to a different initiative")
+        initiative_id = initiative_id or squad["initiative_id"]
+    targets = [("company", None), ("initiative", initiative_id), ("squad", squad_id), ("meeting", meeting_id), ("task", task_id)]
     resolved: dict[str, Any] = {}
     source_records: dict[str, dict[str, Any]] = {}
     for scope, scope_id in targets:
         for item in record["context_records"]:
             if item["scope"] == scope and item.get("scope_id") == scope_id:
                 previous = source_records.get(item["key"])
-                if previous and previous.get("canonical") and not item.get("promoted_revision"):
+                # Meetings are read-only consumers of squad context. Their local
+                # notes may add facts, but cannot silently replace a squad fact.
+                if previous and (previous.get("canonical") or scope == "meeting") and not item.get("promoted_revision"):
                     continue
                 resolved[item["key"]] = copy.deepcopy(item["value"])
                 source_records[item["key"]] = item
@@ -350,7 +400,7 @@ def _update(company_id: str, kind: str, key: str, entity_id: str, changes: dict[
 
 def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
     kind, separator, action = event["type"].partition(".")
-    allowed = {"initiative", "squad", "mission", "task", "task_attempt", "message", "context_record", "artifact", "approval"}
+    allowed = {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "message", "context_record", "artifact", "approval"}
     if separator != "." or kind not in allowed | {"policy", "mcp", "dispatch"}:
         raise ValueError(f"unsupported Company OS event: {event['type']}")
     if kind == "mcp" and action in {"tool_called", "tool_completed", "tool_failed"}:
@@ -371,15 +421,18 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         })
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"initiative", "squad", "mission", "task", "task_attempt", "artifact", "message"}:
+    if action == "updated" and kind in {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "artifact", "message"}:
         # A durable event log is append-only forever: even after the message
         # edit/delete API routes were pulled back (pending an audit-safe
         # design), any message.updated events already written by that code
         # still have to replay. Rejecting a historical event type here 500s
         # every read for any company whose log contains one -- not just the
         # new API surface, the entire company becomes unreadable.
-        key = {"initiative": "initiative_id", "squad": "squad_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id"}[kind]
-        entity = _must_find(state, "conversation" if kind == "message" else f"{kind}s", key, event["payload"][key])
+        key = {"initiative": "initiative_id", "squad": "squad_id", "squad_role": "role_id", "squad_meeting": "meeting_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id"}[kind]
+        collection = {"message": "conversation", "squad_role": "squad_roles", "squad_meeting": "squad_meetings"}.get(kind, f"{kind}s")
+        entity = _must_find(state, collection, key, event["payload"][key])
+        candidate = {**entity, **copy.deepcopy(event["payload"].get("changes") or {})}
+        _validate_entity_scope(state, kind, candidate, replacing_id=event["payload"][key])
         entity.update(copy.deepcopy(event["payload"].get("changes") or {}))
         entity["updated_at"] = event["at"]
         state["updated_at"] = event["at"]
@@ -388,13 +441,13 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         raise ValueError(f"unsupported Company OS event: {event['type']}")
     payload = copy.deepcopy(event["payload"])
     _validate_entity_scope(state, kind, payload)
-    collection = {"message": "conversation", "context_record": "context_records"}.get(kind, f"{kind}s")
+    collection = {"message": "conversation", "context_record": "context_records", "squad_role": "squad_roles", "squad_meeting": "squad_meetings"}.get(kind, f"{kind}s")
     payload.setdefault("created_at", event["at"])
     state[collection].append(payload)
     state["updated_at"] = event["at"]
 
 
-def _validate_entity_scope(state: dict[str, Any], kind: str, payload: dict[str, Any]) -> None:
+def _validate_entity_scope(state: dict[str, Any], kind: str, payload: dict[str, Any], *, replacing_id: str | None = None) -> None:
     if kind == "squad":
         _must_find(state, "initiatives", "initiative_id", payload["initiative_id"])
     elif kind == "mission":
@@ -402,6 +455,19 @@ def _validate_entity_scope(state: dict[str, Any], kind: str, payload: dict[str, 
         squad = _must_find(state, "squads", "squad_id", payload["squad_id"])
         if squad["initiative_id"] != payload["initiative_id"]:
             raise ValueError("squad belongs to a different initiative")
+    elif kind == "squad_role":
+        _must_find(state, "squads", "squad_id", payload["squad_id"])
+        if replacing_id is not None:
+            for task in state["tasks"]:
+                if task.get("role_id") == replacing_id and task.get("squad_id") != payload["squad_id"]:
+                    raise ValueError("role belongs to a different squad than an assigned task")
+    elif kind == "squad_meeting":
+        _must_find(state, "squads", "squad_id", payload["squad_id"])
+        _validate_role_ids(state, payload.get("participant_role_ids") or [], payload["squad_id"])
+        if replacing_id is not None:
+            for task in state["tasks"]:
+                if task.get("meeting_id") == replacing_id and task.get("squad_id") != payload["squad_id"]:
+                    raise ValueError("meeting belongs to a different squad than a linked task")
     elif kind == "task":
         _must_find(state, "initiatives", "initiative_id", payload["initiative_id"])
         squad = _must_find(state, "squads", "squad_id", payload["squad_id"])
@@ -411,6 +477,13 @@ def _validate_entity_scope(state: dict[str, Any], kind: str, payload: dict[str, 
             mission = _must_find(state, "missions", "mission_id", payload["mission_id"])
             if mission["squad_id"] != payload["squad_id"]:
                 raise ValueError("mission belongs to a different squad")
+        if payload.get("role_id"):
+            _validate_role_ids(state, [payload["role_id"]], payload["squad_id"])
+        if payload.get("meeting_id"):
+            meeting = _must_find(state, "squad_meetings", "meeting_id", payload["meeting_id"])
+            if meeting["squad_id"] != payload["squad_id"]:
+                raise ValueError("meeting belongs to a different squad")
+        _validate_task_dependencies(state, payload, replacing_id=replacing_id)
     elif kind == "task_attempt":
         _must_find(state, "tasks", "task_id", payload["task_id"])
     elif kind in {"message", "context_record"}:
@@ -418,9 +491,9 @@ def _validate_entity_scope(state: dict[str, Any], kind: str, payload: dict[str, 
 
 
 def _validate_scope(scope: str, scope_id: str | None, state: dict[str, Any] | None = None) -> None:
-    collections = {"company": None, "initiative": ("initiatives", "initiative_id"), "squad": ("squads", "squad_id"), "task": ("tasks", "task_id")}
+    collections = {"company": None, "initiative": ("initiatives", "initiative_id"), "squad": ("squads", "squad_id"), "meeting": ("squad_meetings", "meeting_id"), "task": ("tasks", "task_id")}
     if scope not in collections or (scope == "company" and scope_id is not None) or (scope != "company" and not scope_id):
-        raise ValueError("scope must be company, initiative, squad, or task with its matching scope_id")
+        raise ValueError("scope must be company, initiative, squad, meeting, or task with its matching scope_id")
     if state is not None and collections[scope] is not None:
         collection, key = collections[scope]
         _must_find(state, collection, key, scope_id)
@@ -431,6 +504,50 @@ def _must_find(state: dict[str, Any], collection: str, key: str, value: str) -> 
         if item.get(key) == value:
             return item
     raise ValueError(f"unknown {key}: {value}")
+
+
+def _validate_role_ids(state: dict[str, Any], role_ids: list[str], squad_id: str) -> None:
+    for role_id in role_ids:
+        role = _must_find(state, "squad_roles", "role_id", role_id)
+        if role["squad_id"] != squad_id:
+            raise ValueError("role belongs to a different squad")
+
+
+def _validate_task_dependencies(state: dict[str, Any], task: dict[str, Any], *, replacing_id: str | None) -> None:
+    dependencies = task.get("depends_on_task_ids") or []
+    if not isinstance(dependencies, list) or len(dependencies) != len(set(dependencies)):
+        raise ValueError("depends_on_task_ids must be a list of unique task ids")
+    if dependencies and not task.get("mission_id"):
+        raise ValueError("task dependencies require a mission")
+    task_id = task.get("task_id")
+    if task_id in dependencies:
+        raise ValueError("task cannot depend on itself")
+    tasks = [item for item in state["tasks"] if item.get("task_id") != replacing_id]
+    tasks.append(task)
+    by_id = {item.get("task_id"): item for item in tasks}
+    for dependency_id in dependencies:
+        dependency = _must_find({"tasks": tasks}, "tasks", "task_id", dependency_id)
+        if dependency.get("mission_id") != task.get("mission_id"):
+            raise ValueError("task dependency belongs to a different mission")
+
+    # Dependencies point from a task to its prerequisites. A DFS across the
+    # materialized candidate graph makes create and update event replay obey
+    # the same cycle rule.
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    def visit(current_id: str) -> None:
+        if current_id in visiting:
+            raise ValueError("task dependencies must be acyclic")
+        if current_id in visited:
+            return
+        visiting.add(current_id)
+        for dependency_id in by_id[current_id].get("depends_on_task_ids") or []:
+            if dependency_id in by_id:
+                visit(dependency_id)
+        visiting.remove(current_id)
+        visited.add(current_id)
+    for current_id in by_id:
+        visit(current_id)
 
 
 def _root(root: str | Path | None) -> Path:
@@ -532,11 +649,54 @@ def _events_after(directory: Path, sequence: int) -> Iterable[dict[str, Any]]:
 
 def _replay(directory: Path, loaded: dict[str, Any]) -> tuple[dict[str, Any], int]:
     state = copy.deepcopy(loaded["state"])
+    _normalize_state(state)
     sequence = int(loaded["last_sequence"])
     for event in _events_after(directory, sequence):
         _apply_event(state, event)
         sequence = event["sequence"]
+    _normalize_state(state)
     return state, sequence
+
+
+def _normalize_state(state: dict[str, Any]) -> None:
+    """Supply graph defaults while replaying snapshots written before squads had roles."""
+    for collection in _COLLECTIONS:
+        state.setdefault(collection, [])
+    for squad in state["squads"]:
+        squad.setdefault("role_ids", [])
+        squad.setdefault("meeting_ids", [])
+    for role in state["squad_roles"]:
+        role.setdefault("task_ids", [])
+    for meeting in state["squad_meetings"]:
+        meeting.setdefault("participant_role_ids", [])
+        meeting.setdefault("task_ids", [])
+    for task in state["tasks"]:
+        task.setdefault("role_id", None)
+        task.setdefault("meeting_id", None)
+        task.setdefault("depends_on_task_ids", [])
+
+    # Older snapshots do not have the denormalized graph indexes. Rebuild them
+    # from the authoritative collections so migrations remain idempotent.
+    roles_by_squad: dict[str, list[str]] = {}
+    meetings_by_squad: dict[str, list[str]] = {}
+    tasks_by_role: dict[str, list[str]] = {}
+    tasks_by_meeting: dict[str, list[str]] = {}
+    for role in state["squad_roles"]:
+        roles_by_squad.setdefault(role["squad_id"], []).append(role["role_id"])
+    for meeting in state["squad_meetings"]:
+        meetings_by_squad.setdefault(meeting["squad_id"], []).append(meeting["meeting_id"])
+    for task in state["tasks"]:
+        if task.get("role_id"):
+            tasks_by_role.setdefault(task["role_id"], []).append(task["task_id"])
+        if task.get("meeting_id"):
+            tasks_by_meeting.setdefault(task["meeting_id"], []).append(task["task_id"])
+    for squad in state["squads"]:
+        squad["role_ids"] = roles_by_squad.get(squad["squad_id"], [])
+        squad["meeting_ids"] = meetings_by_squad.get(squad["squad_id"], [])
+    for role in state["squad_roles"]:
+        role["task_ids"] = tasks_by_role.get(role["role_id"], [])
+    for meeting in state["squad_meetings"]:
+        meeting["task_ids"] = tasks_by_meeting.get(meeting["meeting_id"], [])
 
 
 def _read_segment(path: Path) -> Iterable[dict[str, Any]]:

@@ -53,6 +53,7 @@ function ArtifactDocument({ content }: { content: string }) {
 
 function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: CompanyHomeSquad; deleting: boolean; onDelete: () => void; onOpenWorkbench: () => void }) {
   const [open, setOpen] = useState(false);
+  const lead = squad.roster.find(member => member.isLead);
   return <article className="dc company-home-squad-card" style={{ minWidth: 0, flex: "none", padding: 0, cursor: "default" }}>
     <div style={{ display: "flex", alignItems: "center" }}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ flex: 1, minWidth: 0, padding: "11px 4px 11px 12px", border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
@@ -64,7 +65,11 @@ function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: Comp
       <button type="button" aria-label={`Open ${squad.name} workbench`} onClick={onOpenWorkbench} style={{ flexShrink: 0, width: 26, height: 26, marginRight: 4, display: "grid", placeItems: "center", border: 0, borderRadius: 6, background: "transparent", color: "var(--accent)", cursor: "pointer" }}><LayoutDashboard size={13} /></button>
       <button type="button" aria-label={`Delete ${squad.name}`} disabled={deleting} onClick={onDelete} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 22, height: 22, marginRight: 8, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deleting ? 0.5 : undefined }}><Trash2 size={11} /></button>
     </div>
-    {open && <div style={{ padding: "0 12px 12px", borderTop: "1px solid var(--bd)" }}>{squad.tasks.map(task => <div key={task.id} style={{ display: "flex", gap: 8, paddingTop: 10, fontSize: 11.5 }}><span style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", marginTop: 4, background: STATUS_COLOR[task.status] }} /><span style={{ color: "var(--fg)", flex: 1, minWidth: 0 }}>{task.title}{task.note && <small style={{ display: "block", color: "var(--fm)", marginTop: 2 }}>{task.note}</small>}</span><small style={{ color: "var(--fm)", flexShrink: 0 }}>{task.status}</small></div>)}</div>}
+    {open && <div style={{ padding: "10px 12px 12px", borderTop: "1px solid var(--bd)" }}>
+      {(lead || squad.charter) && <div style={{ marginBottom: 8, color: "var(--fm)", fontSize: 11, lineHeight: 1.45 }}>{lead && <div><b style={{ color: "var(--fg)" }}>Lead: </b>{lead.name} · {lead.role} · {lead.status}</div>}{squad.charter && <div><b style={{ color: "var(--fg)" }}>Charter: </b>{squad.charter}</div>}</div>}
+      {squad.roster.filter(member => !member.isLead).map(member => <div key={`${member.name}-${member.role}`} style={{ padding: "5px 0", color: "var(--fm)", fontSize: 10.5 }}><b style={{ color: "var(--fg)" }}>{member.name}</b> · {member.role} · {member.status}{member.responsibility && ` · ${member.responsibility}`}</div>)}
+      {squad.tasks.map(task => <div key={task.id} style={{ display: "flex", gap: 8, paddingTop: 8, fontSize: 11.5 }}><span style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", marginTop: 4, background: STATUS_COLOR[task.status] }} /><span style={{ color: "var(--fg)", flex: 1, minWidth: 0 }}>{task.title}{task.note && <small style={{ display: "block", color: "var(--fm)", marginTop: 2 }}>{task.note}</small>}</span><small style={{ color: "var(--fm)", flexShrink: 0 }}>{task.status}</small></div>)}
+    </div>}
   </article>;
 }
 
@@ -73,7 +78,9 @@ const WORKBENCH_LABEL = { complete: "Done", active: "In progress", blocked: "Blo
 
 function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad: CompanyHomeSquad; onClose: () => void; onRetryTask: (taskId: string) => void; retryingTaskId: string }) {
   const [selectedId, setSelectedId] = useState(() => squad.tasks.find(t => t.status === "active")?.id ?? squad.tasks[0]?.id ?? "");
+  const [meetingsOpen, setMeetingsOpen] = useState(false);
   const selected = squad.tasks.find(t => t.id === selectedId) ?? squad.tasks[0] ?? null;
+  const lanes = squad.tasks.reduce<Record<string, typeof squad.tasks>>((groups, task) => ({ ...groups, [task.parallelLane]: [...(groups[task.parallelLane] ?? []), task] }), {});
   return <div role="dialog" aria-modal="true" aria-label={`${squad.name} workbench`} onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.72)" }}>
     <section onClick={(e: MouseEvent) => e.stopPropagation()} style={{ width: "min(760px, 100%)", maxHeight: "86vh", display: "flex", flexDirection: "column", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "var(--bg-surface)", border: "1px solid var(--bd)", boxShadow: "var(--shell-shadow)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 20px", borderBottom: "1px solid var(--bd)", flexShrink: 0 }}>
@@ -87,18 +94,24 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
         </div>
       </div>
 
+      {(squad.charter || squad.roster.length) && <div style={{ padding: "10px 20px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)", fontSize: 11.5, color: "var(--fm)" }}>
+        {squad.charter && <div style={{ marginBottom: squad.roster.length ? 5 : 0 }}><b style={{ color: "var(--fg)" }}>Charter: </b>{squad.charter}</div>}
+        {squad.roster.length > 0 && <div><b style={{ color: "var(--fg)" }}>Team: </b>{squad.roster.map(member => `${member.name} (${member.isLead ? "Lead, " : ""}${member.role} · ${member.status})`).join(" · ")}</div>}
+      </div>}
+
       {squad.tasks.length === 0 ? (
         <div className="empty"><div className="empty-title">No tasks yet</div><p style={{ margin: 0, fontSize: 12 }}>This squad hasn&apos;t started work.</p></div>
       ) : <>
-        <div className="depts">
-          {squad.tasks.map(task => (
+        <div className="depts" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
+          {Object.entries(lanes).flatMap(([lane, tasks]) => tasks.map((task, index) => (
             <button key={task.id} type="button" onClick={() => setSelectedId(task.id)}
               className={`dc ${WORKBENCH_STATE[task.status]}${task.id === selected?.id ? " sel" : ""}`}
               style={{ textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit" }}>
               <div className="dc-top"><span className="dc-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.title}</span></div>
+              {index === 0 && <small style={{ display: "block", margin: "4px 0", color: "var(--fm)", fontSize: 9.5 }}>Parallel lane: {lane}</small>}
               <span className={`dc-badge ${WORKBENCH_STATE[task.status]}`}>{WORKBENCH_LABEL[task.status]}</span>
             </button>
-          ))}
+          )))}
         </div>
         <div className="dscroll" style={{ flex: 1 }}>
           {selected && <>
@@ -106,6 +119,7 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
             <h3 style={{ margin: "0 0 10px", fontSize: 15, color: "var(--fg)" }}>{selected.title}</h3>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span className={`dc-badge ${WORKBENCH_STATE[selected.status]}`}>{WORKBENCH_LABEL[selected.status]}</span>
+              <small style={{ color: selected.dependencyState === "ready" ? "var(--green)" : selected.dependencyState === "blocked" ? "var(--red)" : "var(--amber)", fontSize: 11 }}>Dependencies: {selected.dependencyState === "ready" ? "ready" : selected.dependencyState === "blocked" ? "blocked" : "waiting"}{selected.dependencyIds.length ? ` (${selected.dependencyIds.join(", ")})` : ""}</small>
               {selected.status === "blocked" && (
                 <button type="button" className="btn sm" disabled={retryingTaskId === selected.id} onClick={() => onRetryTask(selected.id)}>
                   {retryingTaskId === selected.id ? "Retrying…" : "Retry"}
@@ -115,6 +129,7 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
             <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
           </>}
         </div>
+        {squad.meetings.length > 0 && <section style={{ borderTop: "1px solid var(--bd)", padding: "0 20px 16px", flexShrink: 0 }}><button type="button" onClick={() => setMeetingsOpen(!meetingsOpen)} aria-expanded={meetingsOpen} style={{ width: "100%", padding: "13px 0", border: 0, background: "transparent", color: "var(--fg)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 12 }}><span>Meeting timeline · {squad.meetings.length}</span><ChevronDown size={14} style={{ transform: meetingsOpen ? "rotate(180deg)" : undefined, transition: "transform .18s" }} /></button>{meetingsOpen && <div style={{ display: "grid", gap: 8 }}>{squad.meetings.map(meeting => <article key={meeting.id} style={{ padding: 10, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", color: "var(--fm)", fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "var(--fg)" }}>{meeting.phase}</b> <small>· {meeting.occurredAt}</small>{meeting.decisions.length > 0 && <div>Decisions: {meeting.decisions.join("; ")}</div>}{meeting.blockers.length > 0 && <div style={{ color: "var(--red)" }}>Blockers: {meeting.blockers.join("; ")}</div>}{meeting.nextAction && <div><b style={{ color: "var(--fg)" }}>Next: </b>{meeting.nextAction}</div>}</article>)}</div>}</section>}
       </>}
     </section>
   </div>;

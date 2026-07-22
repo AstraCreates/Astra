@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 from datetime import datetime, timezone
 
@@ -231,13 +232,14 @@ async def test_research_mission_runs_to_a_durable_decision_brief(tmp_path, monke
     await run_mission("acme", dispatch["mission"]["mission_id"])
 
     state = company_os.get_company_os("acme")
-    assert [task["state"] for task in state["tasks"]] == ["done", "done", "done"]
-    assert [attempt["state"] for attempt in state["task_attempts"]] == ["completed"] * 3
+    assert state["tasks"] and all(task["state"] == "done" for task in state["tasks"])
+    assert state["task_attempts"] and all(attempt["state"] == "completed" for attempt in state["task_attempts"])
     assert state["missions"][-1]["state"] == "done"
     assert state["squads"][-1]["lifecycle"] == "done"
-    assert len(state["artifacts"]) == 3
-    assert state["artifacts"][-1]["name"] == "AI Consulting Viability Brief"
-    assert "Bottom line" in state["artifacts"][-1]["content"]
+    founder_artifacts = [artifact for artifact in state["artifacts"] if artifact["state"] == "active"]
+    assert len(founder_artifacts) == 1
+    assert founder_artifacts[0]["name"] == "AI Consulting Viability Brief"
+    assert "Bottom line" in founder_artifacts[0]["content"]
     assert any("Working on:" in message["message"] for message in state["conversation"])
     assert any("differentiation" in message["message"] for message in state["conversation"] if message.get("kind") == "chat")
 
@@ -274,6 +276,39 @@ async def test_document_synthesis_falls_back_to_raw_excerpt_when_llm_fails(tmp_p
     state = company_os.get_company_os("acme")
     # A model hiccup must never block the mission -- it degrades to a plain
     # excerpt instead of leaving the task blocked.
-    assert [task["state"] for task in state["tasks"]] == ["done", "done", "done"]
+    assert state["tasks"] and all(task["state"] == "done" for task in state["tasks"])
     assert "Demand exists" in state["artifacts"][-1]["content"]
     assert any(message.get("kind") == "chat" for message in state["conversation"])
+
+
+@pytest.mark.asyncio
+async def test_dependency_ready_role_tasks_execute_in_parallel(tmp_path, monkeypatch):
+    """Independent specialist lanes must not regress to the legacy serial loop."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("acme", "founder", "Acme")
+    initiative = company_os.create_initiative("acme", "Parallel research")
+    squad = company_os.create_squad("acme", initiative["initiative_id"], "Insights", department="research")
+    mission = company_os.create_mission("acme", initiative["initiative_id"], squad["squad_id"], "Parallel research", department="research")
+    for name in ("Market lane", "Technical lane"):
+        role = company_os.create_squad_role("acme", squad["squad_id"], name)
+        company_os.create_task("acme", initiative["initiative_id"], squad["squad_id"], name,
+                               mission_id=mission["mission_id"], role_id=role["role_id"], parallel_group="evidence-lanes")
+
+    active = 0
+    peak = 0
+
+    async def complete_in_parallel(company_id, _mission, task):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.03)
+        active -= 1
+        company_os.update_task(company_id, task["task_id"], state="done")
+        return {"status": "completed"}
+
+    monkeypatch.setattr("backend.company_os_runner._run_task", complete_in_parallel)
+    await run_mission("acme", mission["mission_id"])
+
+    assert peak == 2
+    assert all(task["state"] == "done" for task in company_os.get_company_os("acme")["tasks"])

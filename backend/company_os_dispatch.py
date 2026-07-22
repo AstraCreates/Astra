@@ -2,7 +2,7 @@
 
 This module deliberately owns orchestration, not persistence.  The Company OS
 store is the source of truth and is accessed only through its small frozen
-contract: ``get_company_os``, the five create functions, and ``append_event``.
+contract: ``get_company_os``, its create functions, and ``append_event``.
 """
 from __future__ import annotations
 
@@ -30,6 +30,46 @@ CAPABILITY_REGISTRY: dict[str, dict[str, Any]] = {
 }
 DEPARTMENT_HEADS = tuple(CAPABILITY_REGISTRY)
 _DEFAULT_DEPARTMENT = "operations"
+
+# A squad is assembled for the work at hand rather than being a permanent
+# department template.  Keep this version on every squad so future changes can
+# make an intentional compatibility decision when reusing historical squads.
+SQUAD_PROFILE_VERSION = 1
+SQUAD_ROLE_REGISTRY: dict[str, list[dict[str, Any]]] = {
+    "research": [
+        {"role_key": "research_lead", "title": "Research Lead", "capabilities": {"research", "synthesis"}, "keywords": set()},
+        {"role_key": "market_analyst", "title": "Market Analyst", "capabilities": {"compare", "competitive analysis", "market analysis"}, "keywords": {"market", "competitor", "compare"}},
+        {"role_key": "scientific_analyst", "title": "Scientific Analyst", "capabilities": {"evidence research"}, "keywords": {"evidence", "scientific", "technical"}},
+        {"role_key": "customer_regulatory_analyst", "title": "Customer & Regulatory Analyst", "capabilities": set(), "keywords": {"customer", "regulatory", "compliance"}},
+    ],
+    "product_technical": [
+        {"role_key": "technical_lead", "title": "Technical Lead", "capabilities": {"product delivery"}, "keywords": set()},
+        {"role_key": "architect", "title": "Architect", "capabilities": {"technical architecture"}, "keywords": {"architecture", "system"}},
+        {"role_key": "backend_engineer", "title": "Backend Engineer", "capabilities": {"software engineering"}, "keywords": {"backend", "api", "database"}},
+        {"role_key": "frontend_engineer", "title": "Frontend Engineer", "capabilities": {"website", "landing page", "website delivery", "local preview"}, "keywords": {"website", "landing", "frontend", "ui"}},
+    ],
+    "design": [
+        {"role_key": "design_lead", "title": "Design Lead", "capabilities": {"visual design"}, "keywords": set()},
+        {"role_key": "ux_researcher", "title": "UX Researcher", "capabilities": {"user experience"}, "keywords": {"user", "ux", "research"}},
+        {"role_key": "interaction_designer", "title": "Product & Interaction Designer", "capabilities": {"interaction design"}, "keywords": {"interaction", "flow", "product"}},
+        {"role_key": "visual_designer", "title": "Visual & Prototype Designer", "capabilities": {"prototype"}, "keywords": {"visual", "brand", "prototype"}},
+    ],
+    "marketing": [
+        {"role_key": "marketing_lead", "title": "Marketing Lead", "capabilities": {"positioning"}, "keywords": set()},
+        {"role_key": "audience_strategist", "title": "Audience Strategist", "capabilities": {"audience strategy"}, "keywords": {"audience", "segment", "persona"}},
+        {"role_key": "content_specialist", "title": "Positioning & Content Specialist", "capabilities": {"content"}, "keywords": {"content", "copy", "positioning"}},
+        {"role_key": "campaign_analyst", "title": "Campaign Analyst", "capabilities": {"campaign development"}, "keywords": {"campaign", "launch", "channel"}},
+    ],
+    "sales": [
+        {"role_key": "sales_lead", "title": "Sales Lead", "capabilities": {"pipeline strategy"}, "keywords": set()},
+        {"role_key": "account_researcher", "title": "Account Researcher", "capabilities": {"account research"}, "keywords": {"account", "target", "prospect"}},
+        {"role_key": "pipeline_strategist", "title": "Pipeline Strategist", "capabilities": {"pipeline strategy"}, "keywords": {"pipeline", "funnel"}},
+        {"role_key": "sales_materials_specialist", "title": "Sales Materials Specialist", "capabilities": {"sales materials"}, "keywords": {"deck", "materials", "proposal"}},
+    ],
+    "finance": [{"role_key": "finance_specialist", "title": "Finance Specialist", "capabilities": {"financial analysis", "budgeting", "forecasting", "pricing analysis"}, "keywords": set()}],
+    "legal": [{"role_key": "legal_specialist", "title": "Legal & Risk Specialist", "capabilities": {"legal analysis", "compliance review", "contract review", "privacy review"}, "keywords": set()}],
+    "operations": [{"role_key": "operations_specialist", "title": "Operations Specialist", "capabilities": {"operating systems", "process design", "scheduling", "vendor operations"}, "keywords": set()}],
+}
 
 _APPROVAL_TERMS = (
     "send", "email", "message", "contact", "outreach", "publish", "post", "deploy",
@@ -232,66 +272,112 @@ def choose_department(intent: str) -> tuple[str, str]:
     return route["department"], route["squad_name"]
 
 
-def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-    """Build a small safe plan from work shape, not a department template."""
-    request = request or infer_work_request(intent)
-    capabilities = set(request.get("required_capabilities") or [])
-    research_capabilities = {"research", "compare", "evidence research", "competitive analysis"}
-    website_capabilities = {"website", "landing page", "website delivery", "local preview"}
-    # A mixed request can contain both website and research capabilities. The
-    # department head owns the mission shape: a Research handoff must never be
-    # handed website tasks just because the overall initiative also builds a
-    # site. This keeps the visible squad activity honest and gives the runner
-    # the correct MCP task contract.
-    if department == "research" and research_capabilities & capabilities:
-        steps = [
-            ("Gather validated evidence", "internal_analysis", "astra_company_research"),
-            ("Synthesize findings and uncertainties", "draft", None),
-            ("Produce a decision brief", "draft", None),
-        ]
-    elif website_capabilities & capabilities:
-        # These are local, reversible deliverables. A later explicit
-        # publish/deploy task is the only action that may require approval.
-        steps = [
-            ("Define the local website brief", "internal_analysis", None),
-            ("Create a local website preview", "local_preview", None),
-            ("Prepare the publication decision", "internal_review", None),
-            ("Publish the website to Vercel", "external_deploy", "vercel_deploy"),
-        ]
-    elif research_capabilities & capabilities:
-        steps = [
-            ("Gather validated evidence", "internal_analysis", "astra_company_research"),
-            ("Synthesize findings and uncertainties", "draft", None),
-            ("Produce a decision brief", "draft", None),
-        ]
-    else:
-        steps = [
-            ("Define acceptance criteria and constraints", "internal_analysis", None),
-            ("Create a reviewable local deliverable", "draft", None),
-            ("Review outcome and next actions", "internal_review", None),
-        ]
+def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any]:
+    """Select a lead and at most three specialists from the actual request."""
+    capabilities = {str(value).lower() for value in request.get("required_capabilities") or []}
+    text = " ".join([str(request.get("objective") or ""), *(str(v) for v in request.get("deliverables") or [])]).lower()
+    definitions = SQUAD_ROLE_REGISTRY[lead]
+    selected = [definitions[0]]
+    scored = [(len(capabilities & role["capabilities"]) * 10 + sum(keyword in text for keyword in role["keywords"]), role)
+              for role in definitions[1:]]
+    selected.extend(role for score, role in sorted(scored, key=lambda item: (-item[0], item[1]["role_key"])) if score > 0)
+    # A website needs a structural design pass as well as implementation even
+    # when the model only labels it "website". Research needs independent
+    # evidence lanes instead of one generalist pretending to validate all
+    # dimensions. These are bounded defaults, not "all roles every time".
+    defaults: list[str] = []
+    if lead == "research" and capabilities & {"research", "compare", "evidence research", "competitive analysis"}:
+        defaults = ["market_analyst", "scientific_analyst"]
+    elif lead == "product_technical" and capabilities & {"website", "landing page", "website delivery", "local preview"}:
+        defaults = ["architect", "frontend_engineer"]
+    for role_key in defaults:
+        role = next(item for item in definitions[1:] if item["role_key"] == role_key)
+        if role not in selected:
+            selected.append(role)
+    selected = selected[:4]
+    return {"version": SQUAD_PROFILE_VERSION, "department": lead, "lead_role": selected[0]["role_key"],
+            "role_keys": [role["role_key"] for role in selected], "roles": selected}
+
+
+def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Build role-owned, dependency-addressable work rather than a fixed plan."""
+    capabilities = {str(value).lower() for value in request.get("required_capabilities") or []}
     subject = _subject_for(request, intent)
-    titles: list[str] = []
-    descriptions: list[str] = []
-    for index, (fallback_title, operation, mcp_tool) in enumerate(steps):
-        # Pull the most specific title source for this lane. Per-subject
-        # titles turn three copy-paste "Gather / Synthesize / Produce a
-        # decision brief" rows with the goal pasted after each into rows
-        # that each name what is actually happening to the user's input.
-        if department == "research" and research_capabilities & capabilities:
-            specific = _specific_research_title(operation, index, subject)
-        elif website_capabilities & capabilities:
-            specific = _specific_website_title(operation, subject)
-        else:
-            specific = _specific_generic_title(operation, subject)
-        titles.append(specific or fallback_title)
-        descriptions.append(_description_for(operation, index, capabilities))
-    return [{"title": title, "description": description, "department": department,
-             "operation": operation, "mcp_tool": mcp_tool,
-             "execution_scope": "external" if operation == "external_deploy" else "local",
-             "required_capabilities": sorted(capabilities)}
-            for title, description, (_, operation, mcp_tool) in zip(
-                titles, descriptions, steps)]
+    suffix = f" for {subject}" if subject else ""
+    criteria = list(request.get("acceptance_criteria") or []) or ["Reviewable deliverable meets the stated objective"]
+    inputs = list(request.get("dependencies") or []) + list(request.get("constraints") or [])
+    tasks: list[dict[str, Any]] = []
+
+    def add(role: str, key: str, title: str, purpose: str, deliverable: str, operation: str, *,
+            depends_on: list[str] | None = None, group: str = "discovery", mcp_tool: str | None = None) -> None:
+        tasks.append({"task_key": key, "title": title, "description": purpose, "role_key": role,
+                      "purpose": purpose, "deliverable": deliverable, "inputs": inputs,
+                      "expected_outputs": [deliverable], "acceptance_criteria": criteria,
+                      "dependencies": depends_on or [], "parallel_group": group,
+                      "handoffs": [], "department": department, "operation": operation,
+                      "mcp_tool": mcp_tool, "execution_scope": "external" if operation == "external_deploy" else "local",
+                      "required_capabilities": sorted(capabilities)})
+
+    role_keys = list(profile.get("role_keys") or [])
+    department = str(profile.get("department") or "operations")
+    role = lambda index: role_keys[min(index, len(role_keys) - 1)]
+    if department == "research":
+        specialist_roles = role_keys[1:] or [role(0)]
+        evidence_keys: list[str] = []
+        for specialist_role in specialist_roles:
+            role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
+            key = f"research-{specialist_role}"
+            evidence_keys.append(key)
+            add(specialist_role, key, f"{role_title}: gather validated evidence{suffix}",
+                f"Independently investigate the {role_title.lower()} dimension with fetched, cited sources.",
+                f"{role_title} evidence pack", "internal_analysis", group="evidence-lanes", mcp_tool="astra_company_research")
+        add(role(0), "research-review", f"Review evidence and resolve conflicts{suffix}",
+            "Compare specialist evidence, validate coverage, and identify targeted follow-ups.",
+            "Validated evidence review", "internal_review", depends_on=evidence_keys, group="review")
+        add(role(0), "research-brief", f"Produce a decision brief{suffix}",
+            "Turn the reviewed evidence into a founder-ready synthesis with explicit gaps.",
+            "Decision brief", "draft", depends_on=["research-review"], group="synthesis")
+    elif department == "product_technical":
+        add(role(0), "product-brief", f"Define the local website brief{suffix}" if capabilities & {"website", "landing page", "website delivery", "local preview"} else f"Define product delivery brief{suffix}", "Set scope and technical acceptance criteria.", "Product delivery brief", "internal_analysis")
+        specialist_roles = role_keys[1:]
+        architect = next((item for item in specialist_roles if item == "architect"), None)
+        architecture_key = "product-brief"
+        if architect:
+            architecture_key = "product-architecture"
+            add(architect, architecture_key, f"Design the technical architecture{suffix}", "Define the system boundary, interfaces, and implementation plan.", "Architecture decision", "internal_analysis", depends_on=["product-brief"], group="architecture")
+        build_keys: list[str] = []
+        implementation_roles = [item for item in specialist_roles if item != "architect"] or [role(0)]
+        for implementation_role in implementation_roles:
+            is_frontend = implementation_role == "frontend_engineer"
+            key = f"product-{implementation_role}"
+            build_keys.append(key)
+            title = f"Create a local website preview{suffix}" if is_frontend and capabilities & {"website", "landing page", "website delivery", "local preview"} else f"Implement {implementation_role.replace('_', ' ')} deliverable{suffix}"
+            deliverable = "Local website preview" if is_frontend else f"{implementation_role.replace('_', ' ').title()} implementation"
+            operation = "local_preview" if is_frontend and capabilities & {"website", "landing page", "website delivery", "local preview"} else "draft"
+            add(implementation_role, key, title, "Build a local, reviewable implementation within the agreed architecture.", deliverable, operation, depends_on=[architecture_key], group="implementation")
+        if capabilities & {"website", "landing page", "website delivery", "local preview"}:
+            add(role(0), "product-review", f"Prepare the publication decision{suffix}", "Verify the local preview before any external action.", "Publication readiness review", "internal_review", depends_on=build_keys, group="review")
+            add(role(0), "product-publish", f"Publish the website to Vercel{suffix}", "Publish only after approval is granted.", "Published website", "external_deploy", depends_on=["product-review"], group="release", mcp_tool="vercel_deploy")
+    else:
+        role_title = profile["roles"][0]["title"]
+        add(role(0), f"{department}-deliverable", f"Create {role_title.lower()} deliverable{suffix}", f"Produce the {role_title.lower()} contribution needed for the objective.", f"{role_title} deliverable", "draft", group="specialist")
+    # A task plan must always contain lead-owned work, even for a malformed
+    # capability extraction that selected no recognizable specialist lane.
+    if not tasks:
+        add(str(profile["lead_role"]), "lead-brief", f"Define acceptance criteria and constraints{suffix}", "Make the outcome executable and reviewable.", "Execution brief", "internal_analysis")
+    by_key = {task["task_key"]: task for task in tasks}
+    for task in tasks:
+        for dependency in task["dependencies"]:
+            predecessor = by_key.get(dependency)
+            if predecessor and predecessor["role_key"] != task["role_key"]:
+                predecessor["handoffs"].append({"to_role": task["role_key"], "deliverable": predecessor["deliverable"]})
+    return tasks
+
+
+def specialist_task_plan(department: str, intent: str, *, request: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Compatibility wrapper for callers migrating to ``squad_task_dag``."""
+    request = request or infer_work_request(intent)
+    return squad_task_dag(intent, request, select_squad_profile(request, department))
 
 
 def _subject_for(request: Mapping[str, Any], intent: str) -> str:
@@ -444,6 +530,48 @@ def enforce_dispatch_policy(
             "policy_version": "company-os-dispatch-v1", "decided_at": _utcnow()}
 
 
+def _squad_roles(company: Mapping[str, Any], squad: Mapping[str, Any]) -> list[str]:
+    """Read role composition from either the squad projection or role records."""
+    composition = squad.get("role_composition") or squad.get("role_keys")
+    if isinstance(composition, list):
+        return [str(value) for value in composition]
+    squad_id = _entity_id(squad, "squad_id")
+    return [str(item.get("role_key")) for item in company.get("squad_roles", [])
+            if item.get("squad_id") == squad_id and item.get("role_key")]
+
+
+def _compatible_squad(company: Mapping[str, Any], squad: Mapping[str, Any], profile: Mapping[str, Any]) -> bool:
+    return (squad.get("profile_version") == profile["version"]
+            and _squad_roles(company, squad) == list(profile["role_keys"]))
+
+
+def _create_squad_profile_records(company_id: str, company: Mapping[str, Any], squad_id: str, initiative_id: str, intent: str,
+                                  request: Mapping[str, Any], profile: Mapping[str, Any]) -> dict[str, str]:
+    """Persist the charter and role records before tasks reference their role IDs."""
+    charter = {
+        "profile_version": profile["version"], "objective": request.get("outcome") or request.get("objective") or intent,
+        "lead_role": profile["lead_role"], "role_composition": list(profile["role_keys"]),
+        "deliverables": list(request.get("deliverables") or []),
+        "acceptance_criteria": list(request.get("acceptance_criteria") or []),
+        "risk": request.get("risk", "internal"),
+    }
+    existing = {str(item.get("role_key")): _entity_id(item, "role_id") for item in company.get("squad_roles", [])
+                if item.get("squad_id") == squad_id and item.get("role_key")}
+    role_ids = dict(existing)
+    if not existing:
+        _call("create_squad_meeting", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id,
+              name="Squad charter", meeting_type="charter", charter=charter, profile_version=profile["version"])
+    for order, role in enumerate(profile["roles"]):
+        if role["role_key"] in role_ids:
+            continue
+        record = _call("create_squad_role", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id,
+                       role_key=role["role_key"], name=role["title"], title=role["title"],
+                       is_lead=role["role_key"] == profile["lead_role"], position=order,
+                       capabilities=sorted(role["capabilities"]), profile_version=profile["version"])
+        role_ids[role["role_key"]] = _entity_id(record, "role_id")
+    return role_ids
+
+
 def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0, forced_initiative_id: str | None = None,
                     work_request: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Create initiative, squad, mission, and specialist tasks for an intent.
@@ -458,6 +586,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if work_request.get("requires_clarification"):
         return {"needs_clarification": True, "work_request": work_request}
     route = route_work_request(company, work_request)
+    profile = select_squad_profile(work_request, route["department"])
     research_request = bool(set(work_request.get("required_capabilities") or []) & {"research", "evidence research", "competitive analysis", "compare"})
     reuse = None
     if forced_initiative_id:
@@ -481,7 +610,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if reuse:
         initiative = reuse
         initiative_id = _entity_id(initiative, "initiative_id")
-        candidates = [item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("department") == department and item.get("state") != "archived"]
+        candidates = [item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("department") == department and item.get("state") != "archived" and _compatible_squad(company, item, profile)]
         active = [item for item in candidates if item.get("state") in {"active", "working", "review"}]
         capacity = CAPABILITY_REGISTRY[department]["capacity"]
         squad = next((item for item in active if sum(1 for mission in company.get("missions", []) if mission.get("squad_id") == item.get("squad_id") and mission.get("state") in {"active", "working", "review"}) < capacity), None)
@@ -494,15 +623,18 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
                 squad = {**squad, "state": "active", "lifecycle": "formed"}
         if squad is None:
             squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
-                          capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=department, lifecycle="formed")
+                          capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=profile["lead_role"], lifecycle="formed",
+                          profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": work_request["outcome"]})
         squad_id = _entity_id(squad, "squad_id")
     else:
         initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, director=route["director"],
                            objective=work_request["outcome"], state="planned", work_request=work_request)
         initiative_id = _entity_id(initiative, "initiative_id")
         squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
-                      capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=department, lifecycle="formed")
+                      capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=profile["lead_role"], lifecycle="formed",
+                      profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": work_request["outcome"]})
         squad_id = _entity_id(squad, "squad_id")
+    role_ids = _create_squad_profile_records(company_id, company, squad_id, initiative_id, intent, work_request, profile)
     mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent,
                     department=department, state="active", initiative_director=route["director"], handoff_requests=route.get("handoffs", []))
     mission_id = _entity_id(mission, "mission_id")
@@ -510,68 +642,65 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         "initiative_id": initiative_id, "squad_id": squad_id, "mission_id": mission_id,
         "department": department, "research_profile": "company_os_deep_research" if research_request else None,
         "mcp_tool": "astra_company_research" if research_request else None,
+        "profile_version": profile["version"], "role_composition": profile["role_keys"],
         "continuation_target": forced_initiative_id, "continuation_reused": bool(reuse),
     })
     created_tasks = []
-    for spec in specialist_task_plan(department, intent, request=work_request):
+    task_ids: dict[str, str] = {}
+    for spec in squad_task_dag(intent, work_request, profile):
         policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
+        dependency_ids = [task_ids[key] for key in spec["dependencies"] if key in task_ids]
         task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, mission_id=mission_id,
                      name=spec["title"], description=spec["description"], department=department, operation=spec["operation"],
-                     mcp_tool=spec.get("mcp_tool"),
+                     mcp_tool=spec.get("mcp_tool"), role_id=role_ids.get(spec["role_key"]), role_key=spec["role_key"],
+                     task_key=spec["task_key"],
+                     purpose=spec["purpose"], deliverable=spec["deliverable"], inputs=spec["inputs"],
+                     expected_outputs=spec["expected_outputs"], acceptance_criteria=spec["acceptance_criteria"],
+                     depends_on_task_ids=dependency_ids,
+                     parallel_group=spec["parallel_group"], handoffs=spec["handoffs"],
                      state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
+        task_ids[spec["task_key"]] = _entity_id(task, "task_id")
         _record_policy(company_id, task, policy)
         if policy["decision"] == "require_approval":
             _create_approval_card(company_id, task, policy)
         created_tasks.append(task)
     handoff_missions = []
-    # A handoff is real work, not a label on the primary mission. Form a
-    # bounded sibling squad under the same initiative so its lead owns the
-    # work and Copilot can report one integrated initiative outcome.
+    # Departments do not become pseudo-roles in the lead squad. Each matching
+    # department receives its own bounded profile and a clear handoff mission.
     for handoff_department in route.get("handoffs", []):
-        profile = CAPABILITY_REGISTRY[handoff_department]
-        handoff_squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=profile["squad"],
-                              department=handoff_department, capabilities=sorted(profile["capabilities"]), lead=handoff_department, lifecycle="formed")
-        handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id,
-                                squad_id=_entity_id(handoff_squad, "squad_id"), name=f"{profile['squad']} support: {intent}",
-                                department=handoff_department, state="active", initiative_director=route["director"], handoff_for=mission_id)
-        for spec in specialist_task_plan(handoff_department, intent, request=work_request):
+        handoff_profile = select_squad_profile(work_request, handoff_department)
+        handoff_squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id,
+                              name=CAPABILITY_REGISTRY[handoff_department]["squad"], department=handoff_department,
+                              capabilities=sorted(CAPABILITY_REGISTRY[handoff_department]["capabilities"]),
+                              lead=handoff_profile["lead_role"], lifecycle="formed",
+                              profile_version=handoff_profile["version"], role_composition=handoff_profile["role_keys"])
+        handoff_squad_id = _entity_id(handoff_squad, "squad_id")
+        handoff_role_ids = _create_squad_profile_records(company_id, company, handoff_squad_id, initiative_id, intent, work_request, handoff_profile)
+        handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,
+                                name=f"{CAPABILITY_REGISTRY[handoff_department]['squad']} support: {intent}", department=handoff_department,
+                                state="active", initiative_director=route["director"], handoff_for=mission_id)
+        handoff_task_ids: dict[str, str] = {}
+        for spec in squad_task_dag(intent, work_request, handoff_profile):
             policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
-            task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=_entity_id(handoff_squad, "squad_id"),
+            dependencies = [handoff_task_ids[key] for key in spec["dependencies"] if key in handoff_task_ids]
+            task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,
                          mission_id=_entity_id(handoff_mission, "mission_id"), name=spec["title"], description=spec["description"],
                          department=handoff_department, operation=spec["operation"], mcp_tool=spec.get("mcp_tool"),
+                         role_id=handoff_role_ids.get(spec["role_key"]), role_key=spec["role_key"], task_key=spec["task_key"], purpose=spec["purpose"],
+                         deliverable=spec["deliverable"], inputs=spec["inputs"], expected_outputs=spec["expected_outputs"],
+                         acceptance_criteria=spec["acceptance_criteria"], depends_on_task_ids=dependencies,
+                         parallel_group=spec["parallel_group"], handoffs=spec["handoffs"],
                          state="pending" if policy["decision"] == "auto" else "awaiting_approval", policy_decision=policy)
+            handoff_task_ids[spec["task_key"]] = _entity_id(task, "task_id")
             _record_policy(company_id, task, policy)
             if policy["decision"] == "require_approval":
                 _create_approval_card(company_id, task, policy)
         handoff_missions.append(handoff_mission)
-    # A website that incorporates comparison findings must not race ahead of
-    # research, whether Product Delivery or Research happened to lead the
-    # initiative. Attach the dependency to the website mission in either
-    # topology rather than assuming it is always the primary mission.
-    if {"website", "landing page", "website delivery", "local preview"} & set(work_request.get("required_capabilities") or []):
-        all_missions = [mission, *handoff_missions]
-        research_dependencies = [
-            _entity_id(item, "mission_id") for item in all_missions
-            if item.get("department") == "research" and _entity_id(item, "mission_id")
-        ]
-        for candidate in all_missions:
-            if candidate.get("department") != "product_technical":
-                continue
-            candidate_id = _entity_id(candidate, "mission_id")
-            dependencies = [item for item in research_dependencies if item != candidate_id]
-            if not dependencies:
-                continue
-            _call("update_mission", company_id=company_id, mission_id=candidate_id,
-                  depends_on_mission_ids=dependencies)
-            updated = {**candidate, "depends_on_mission_ids": dependencies}
-            if candidate_id == mission_id:
-                mission = updated
-            else:
-                handoff_missions = [updated if _entity_id(item, "mission_id") == candidate_id else item for item in handoff_missions]
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
-            "work_request": work_request, "routing": route, "handoff_missions": handoff_missions,
+            "work_request": work_request, "routing": route, "handoff_missions": handoff_missions, "squad_profile": profile,
             "dispatch_metadata": {"department": department, "initiative_reused": bool(reuse),
                                   "squad_reuse_or_create": "reused_or_reopened" if reuse else "created",
+                                  "profile_version": profile["version"], "role_composition": profile["role_keys"],
                                   "research_profile": "company_os_deep_research" if research_request else "quick_lookup_or_internal",
                                   "mcp_tool": "astra_company_research" if research_request else None}}
 

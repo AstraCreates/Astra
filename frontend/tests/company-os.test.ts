@@ -40,6 +40,37 @@ test("normalizes an initiative workspace with its brief, roster, dependencies, a
   assert.equal(home.brain.artifacts[0].initiativeId, "i1");
 });
 
+test("normalizes squad roles, charter, task lanes, meeting summaries, and keeps meeting chatter out of chat", () => {
+  const home = normalizeCompanyHomeData({
+    company_name: "Northstar Labs",
+    missions: [{
+      id: "growth", name: "Growth", status: "active", charter: "Validate the repeatable acquisition motion.",
+      roster: [
+        { display_name: "Maya", role: "Growth lead", status: "working", responsibility: "Own acquisition strategy" },
+        { display_name: "Lee", role: "Research specialist", state: "available", focus: "Customer interviews" },
+      ],
+      tasks: [
+        { id: "t1", title: "Interview customers", status: "active", parallel_group: "Discovery" },
+        { id: "t2", title: "Write synthesis", status: "planned", depends_on: ["t1"], dependency_state: "waiting", lane: "Synthesis" },
+      ],
+      meeting_summaries: [{ meeting_id: "m1", date: "2026-07-21", phase: "discovery", decisions: ["Interview five founders"], blockers: ["Recruiting access"], next_action: "Send the screener today" }],
+    }],
+    conversation: [
+      { message_id: "public", author: "copilot", message: "The squad has started.", kind: "status" },
+      { message_id: "internal-meeting", author: "agent", message: "Raw internal discussion", kind: "meeting_chatter" },
+      { message_id: "private", author: "agent", message: "Private deliberation", visibility: "internal" },
+    ],
+  });
+  const squad = home.squads[0];
+  assert.equal(squad.charter, "Validate the repeatable acquisition motion.");
+  assert.deepEqual(squad.roster[0], { name: "Maya", role: "Growth Lead", status: "Working", responsibility: "Own acquisition strategy", isLead: true });
+  assert.equal(squad.tasks[0].parallelLane, "Discovery");
+  assert.deepEqual(squad.tasks[1].dependencyIds, ["t1"]);
+  assert.equal(squad.tasks[1].dependencyState, "waiting");
+  assert.deepEqual(squad.meetings[0], { id: "m1", occurredAt: "2026-07-21", phase: "Discovery", decisions: ["Interview five founders"], blockers: ["Recruiting access"], nextAction: "Send the screener today" });
+  assert.deepEqual(home.conversation.map(message => message.id), ["public"]);
+});
+
 test("updateInitiative sends the complete editable brief through the company-scoped endpoint", async () => {
   let request: Request | undefined;
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {

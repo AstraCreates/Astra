@@ -12,13 +12,18 @@ export type CompanyHomeTask = {
   squad: string;
   note: string;
   searchCount?: number;
+  dependencyIds: string[];
+  dependencyState: "ready" | "waiting" | "blocked";
+  parallelLane: string;
 };
 
 export type CompanyInitiativeDependency = { id: string; name: string; status: string };
 export type CompanyInitiativeTimelineItem = { id: string; title: string; detail: string; occurredAt: string; status: string };
 export type CompanyInitiativeBrief = { objective: string; successCriteria: string; priority: string; owner: string; budget: string; dueDate: string };
 export type CompanyHomeInitiative = { id: string; title: string; status: string; progress: number; taskCount: number; archived: boolean; brief: CompanyInitiativeBrief; dependencies: CompanyInitiativeDependency[]; timeline: CompanyInitiativeTimelineItem[] };
-export type CompanyHomeSquad = { id: string; initiativeId: string; name: string; lifecycle: string; activity: string; members: string[]; tasks: CompanyHomeTask[]; archived: boolean };
+export type CompanyHomeSquadMember = { name: string; role: string; status: string; responsibility: string; isLead: boolean };
+export type CompanyHomeMeeting = { id: string; occurredAt: string; phase: string; decisions: string[]; blockers: string[]; nextAction: string };
+export type CompanyHomeSquad = { id: string; initiativeId: string; name: string; lifecycle: string; activity: string; members: string[]; roster: CompanyHomeSquadMember[]; charter: string; tasks: CompanyHomeTask[]; meetings: CompanyHomeMeeting[]; archived: boolean };
 export type CompanyHomeApproval = { id: string; title: string; squad: string; detail: string };
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; initiativeId?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
@@ -89,6 +94,73 @@ function members(value: unknown): string[] {
   }).filter(Boolean);
 }
 
+function roster(value: unknown): CompanyHomeSquadMember[] {
+  return list(value).map((item, index) => {
+    const member = record(item);
+    const role = text(member.role ?? member.title ?? member.specialty, index === 0 ? "Specialist" : "Specialist");
+    const status = titleCase(text(member.status ?? member.state ?? member.availability, "Active"));
+    return { name: text(typeof item === "string" ? item : member.name ?? member.display_name ?? member.agent_name, role), role: titleCase(role), status, responsibility: text(member.responsibility ?? member.responsibilities ?? member.focus ?? member.mandate), isLead: Boolean(member.is_lead ?? member.lead) || /lead|manager|owner/i.test(role) };
+  }).filter(member => Boolean(member.name));
+}
+
+function dependencyIds(value: unknown): string[] {
+  return list(value).map(item => text(typeof item === "string" ? item : record(item).id ?? record(item).task_id ?? record(item).depends_on)).filter(Boolean);
+}
+
+function charter(value: unknown): string {
+  if (typeof value === "string") return text(value);
+  const details = record(value);
+  const objective = text(details.objective ?? details.outcome);
+  const criteria = list(details.acceptance_criteria).map(item => text(item)).filter(Boolean);
+  return [objective, criteria.length ? `Done when: ${criteria.join("; ")}` : ""].filter(Boolean).join("\n");
+}
+
+function dependencyState(value: UnknownRecord, dependencies: string[]): CompanyHomeTask["dependencyState"] {
+  const state = text(value.dependency_state ?? value.depends_on_state ?? value.readiness).toLowerCase();
+  if (["blocked", "failed"].includes(state)) return "blocked";
+  if (["waiting", "pending", "blocked by dependency", "not ready"].includes(state) || dependencies.length > 0) return "waiting";
+  return "ready";
+}
+
+function meetings(value: unknown): CompanyHomeMeeting[] {
+  return list(value).map((item, index) => {
+    const meeting = record(item);
+    const decisions = list(meeting.decisions ?? meeting.decision).map(item => text(item)).filter(Boolean);
+    const blockers = list(meeting.blockers ?? meeting.risks).map(item => text(item)).filter(Boolean);
+    return { id: text(meeting.id ?? meeting.meeting_id, `meeting-${index}`), occurredAt: text(meeting.occurred_at ?? meeting.created_at ?? meeting.date, "Recently"), phase: titleCase(text(meeting.phase ?? meeting.stage, "Coordination")), decisions, blockers, nextAction: text(meeting.next_action ?? meeting.next_steps ?? meeting.action) };
+  });
+}
+
+function task(value: UnknownRecord, fallbackId: string, squadName: string): CompanyHomeTask {
+  const dependencies = dependencyIds(value.depends_on_task_ids ?? value.dependencies ?? value.depends_on ?? value.depends_on_ids ?? value.prerequisites);
+  return { id: text(value.id ?? value.task_id, fallbackId), title: text(value.title ?? value.name, "Untitled task"), status: taskStatus(value.status ?? value.state), squad: titleCase(text(value.owner_agent ?? value.department, squadName)), note: text(value.notes ?? value.detail ?? value.description), searchCount: Number.isFinite(Number(value.search_count)) && Number(value.search_count) > 0 ? Number(value.search_count) : undefined, dependencyIds: dependencies, dependencyState: dependencyState(value, dependencies), parallelLane: text(value.parallel_lane ?? value.parallel_group ?? value.lane ?? value.wave ?? value.batch, "Main lane") };
+}
+
+function resolveDependencyStates(tasks: CompanyHomeTask[]): CompanyHomeTask[] {
+  const byId = new Map(tasks.map(item => [item.id, item]));
+  return tasks.map(item => {
+    if (!item.dependencyIds.length) return item;
+    const dependencies = item.dependencyIds.map(id => byId.get(id)).filter((value): value is CompanyHomeTask => Boolean(value));
+    if (dependencies.some(dependency => dependency.status === "blocked")) return { ...item, dependencyState: "blocked" };
+    if (dependencies.length === item.dependencyIds.length && dependencies.every(dependency => dependency.status === "complete")) return { ...item, dependencyState: "ready" };
+    return { ...item, dependencyState: "waiting" };
+  });
+}
+
+function conversation(value: unknown): CompanyHomeMessage[] {
+  return list(value).filter(item => {
+    const message = record(item);
+    const kind = text(message.kind ?? message.type).toLowerCase();
+    return !message.archived && !message.internal && text(message.visibility).toLowerCase() !== "internal" && !["meeting", "meeting_chatter", "internal"].includes(kind);
+  }).map((item, index) => {
+    const message = record(item);
+    const kindRaw = text(message.kind, "chat");
+    const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
+    const options = list(message.options).map(option => text(option)).filter(Boolean);
+    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
+  });
+}
+
 function initiativeDependencies(value: unknown): CompanyInitiativeDependency[] {
   return list(value).map((item, index) => {
     const dependency = record(item);
@@ -151,25 +223,20 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
   }).filter((initiative) => !initiative.archived);
   const squads = squadPayload.map((item, index) => {
     const mission = record(item);
-    const missionTasks = list(mission.tasks).map((task, taskIndex): CompanyHomeTask => {
-      const value = record(task);
-      return {
-        id: text(value.id, `task-${index}-${taskIndex}`),
-        title: text(value.title ?? value.name, "Untitled task"),
-        status: taskStatus(value.status),
-        squad: titleCase(text(value.owner_agent ?? mission.department, "Operations")),
-        note: text(value.notes ?? value.detail),
-      };
-    });
+    const squadName = text(mission.name ?? mission.department, "Operations squad");
+    const missionTasks = resolveDependencyStates(list(mission.tasks).map((item, taskIndex) => task(record(item), `task-${index}-${taskIndex}`, squadName)));
     const lifecycle = titleCase(text(mission.status, "active"));
     const active = missionTasks.find((task) => task.status === "active") ?? missionTasks[0];
     return {
       id: text(mission.id, `squad-${index}`), initiativeId: text(mission.initiative_id),
-      name: text(mission.name ?? mission.department, "Operations squad"),
+      name: squadName,
       lifecycle,
       activity: active ? active.title : text(mission.goal, "Setting direction"),
       members: members(mission.members ?? mission.roster ?? mission.agents),
+      roster: roster(mission.members ?? mission.roster ?? mission.agents),
+      charter: text(mission.charter ?? mission.mission ?? mission.purpose ?? mission.goal),
       tasks: missionTasks,
+      meetings: meetings(mission.meetings ?? mission.meeting_timeline ?? mission.meeting_summaries),
       archived: false,
     };
   });
@@ -208,7 +275,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       recordCount: records.length,
       artifacts,
     },
-    conversation: [],
+    conversation: conversation(root.conversation),
   };
 }
 
@@ -309,6 +376,8 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
   const tasks = list(root.tasks).map(record);
   const missions = list(root.missions).map(record);
   const squads = list(root.squads).map(record);
+  const squadRoles = list(root.squad_roles).map(record);
+  const squadMeetings = list(root.squad_meetings).map(record);
   const initiatives = list(root.initiatives).map(record);
   const approvals = list(root.approvals).map(record);
   const brainRecords = list(root.context_records).map(record);
@@ -325,27 +394,19 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
       })
       .filter(initiative => !initiative.archived),
     squads: squads.map((squad, index) => {
-      const matching = tasks.filter(task => task.squad_id === squad.squad_id).map((task, taskIndex) => {
-        const searchCount = Number(task.search_count);
-        return { id: text(task.task_id, `task-${index}-${taskIndex}`), title: text(task.name, "Untitled task"), status: taskStatus(task.state), squad: titleCase(text(squad.department, "Operations")), note: text(task.description), searchCount: Number.isFinite(searchCount) && searchCount > 0 ? searchCount : undefined };
-      });
+      const squadName = text(squad.name, "Squad");
+      const matching = resolveDependencyStates(tasks.filter(task => task.squad_id === squad.squad_id).map((item, taskIndex) => task(item, `task-${index}-${taskIndex}`, titleCase(text(squad.department, "Operations")))));
       const mission = missions.find(item => item.squad_id === squad.squad_id);
       const active = matching.find(task => task.status === "active") ?? matching[0];
-      return { id: text(squad.squad_id, `squad-${index}`), initiativeId: text(squad.initiative_id), name: text(squad.name, "Squad"), lifecycle: titleCase(text(mission?.state ?? squad.lifecycle, "formed")), activity: active?.title ?? "Setting direction", members: members(squad.members ?? squad.roster ?? squad.agents), tasks: matching, archived: text(squad.state).toLowerCase() === "archived" };
+      const roleRecords = squadRoles.filter(role => role.squad_id === squad.squad_id);
+      const rosterRecords = roleRecords.length ? roleRecords : list(squad.members ?? squad.roster ?? squad.agents).map(record);
+      const meetingRecords = squadMeetings.filter(meeting => meeting.squad_id === squad.squad_id);
+      const squadMeetingTimeline = meetings(meetingRecords.length ? meetingRecords : squad.meetings ?? squad.meeting_timeline ?? squad.meeting_summaries ?? mission?.meetings);
+      const squadCharter = charter(squad.squad_charter ?? squad.charter ?? mission?.charter ?? mission?.goal ?? squad.mission ?? squad.purpose);
+      return { id: text(squad.squad_id, `squad-${index}`), initiativeId: text(squad.initiative_id), name: squadName, lifecycle: titleCase(text(mission?.state ?? squad.lifecycle, "formed")), activity: active?.title ?? squadMeetingTimeline[0]?.nextAction ?? "Setting direction", members: members(rosterRecords), roster: roster(rosterRecords), charter: squadCharter, tasks: matching, meetings: squadMeetingTimeline, archived: text(squad.state).toLowerCase() === "archived" };
     }).filter(squad => !squad.archived),
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
     brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
-    conversation: list(root.conversation).filter(item => !record(item).archived).map((item, index) => {
-      const message = record(item);
-      const kindRaw = text(message.kind, "chat");
-      const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
-      const options = list(message.options).map(option => text(option)).filter(Boolean);
-      return {
-        id: text(message.message_id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message),
-        kind, edited: Boolean(message.edited),
-        ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}),
-        ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}),
-      };
-    }),
+    conversation: conversation(root.conversation),
   };
 }

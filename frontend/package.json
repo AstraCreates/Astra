@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node --max-old-space-size=4096 node_modules/next/dist/bin/next dev",
     "build": "next build",
-    "test": "node --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "start": "next start",
     "lint": "eslint"
   },
@@ -41,6 +41,7 @@
     "eslint-config-next": "16.2.6",
     "playwright": "^1.61.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

@@ -97,6 +97,67 @@ def test_canonical_context_requires_a_promoted_revision_to_override(tmp_path):
     assert company_os.resolve_context("acme", initiative_id="i1", root=root)["brand"] == "bold"
 
 
+def test_dynamic_squad_roles_meetings_and_context_replay(tmp_path):
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "f1", "Acme", root=root)
+    company_os.create_initiative("acme", "Launch", initiative_id="i1", root=root)
+    company_os.create_squad("acme", "i1", "Product", squad_id="s1", root=root)
+    role = company_os.create_squad_role("acme", "s1", "Designer", role_id="r1", root=root)
+    meeting = company_os.create_squad_meeting("acme", "s1", "Design review", meeting_id="mt1", root=root,
+                                              participant_role_ids=[role["role_id"]])
+    task = company_os.create_task("acme", "i1", "s1", "Review flows", task_id="t1", root=root,
+                                  role_id=role["role_id"], meeting_id=meeting["meeting_id"])
+    company_os.add_context_record("acme", "voice", "calm", scope="squad", scope_id="s1", root=root)
+    company_os.add_context_record("acme", "voice", "urgent", scope="meeting", scope_id="mt1", root=root)
+
+    company_os.snapshot("acme", root=root)
+    stored = company_os.get_company_os("acme", root=root)
+    assert stored["squads"][0]["role_ids"] == ["r1"]
+    assert stored["squads"][0]["meeting_ids"] == ["mt1"]
+    assert stored["squad_roles"][0]["task_ids"] == [task["task_id"]]
+    assert stored["squad_meetings"][0]["task_ids"] == [task["task_id"]]
+    assert company_os.resolve_context("acme", squad_id="s1", meeting_id="mt1", root=root)["voice"] == "calm"
+
+
+def test_task_graph_and_squad_membership_validation(tmp_path):
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "f1", "Acme", root=root)
+    company_os.create_initiative("acme", "Launch", initiative_id="i1", root=root)
+    company_os.create_squad("acme", "i1", "Product", squad_id="s1", root=root)
+    company_os.create_squad("acme", "i1", "Growth", squad_id="s2", root=root)
+    company_os.create_mission("acme", "i1", "s1", "Build", mission_id="m1", root=root)
+    company_os.create_mission("acme", "i1", "s1", "Launch", mission_id="m2", root=root)
+    company_os.create_squad_role("acme", "s2", "Marketer", role_id="r2", root=root)
+    company_os.create_task("acme", "i1", "s1", "First", task_id="t1", mission_id="m1", root=root)
+    company_os.create_task("acme", "i1", "s1", "Second", task_id="t2", mission_id="m1", root=root,
+                           depends_on_task_ids=["t1"])
+
+    with pytest.raises(ValueError, match="role belongs to a different squad"):
+        company_os.update_task("acme", "t1", root=root, role_id="r2")
+    with pytest.raises(ValueError, match="different mission"):
+        company_os.create_task("acme", "i1", "s1", "Other", task_id="t3", mission_id="m2", root=root,
+                               depends_on_task_ids=["t1"])
+    with pytest.raises(ValueError, match="acyclic"):
+        company_os.update_task("acme", "t1", root=root, depends_on_task_ids=["t2"])
+    with pytest.raises(ValueError, match="role belongs to a different squad"):
+        company_os.create_squad_meeting("acme", "s1", "Bad scope", root=root, participant_role_ids=["r2"])
+
+
+def test_legacy_snapshot_is_normalized_with_squad_graph_defaults(tmp_path):
+    root = tmp_path / "company"
+    company_os.create_company_os("acme", "f1", "Acme", root=root)
+    snapshot = root / "acme" / "snapshot.json"
+    payload = json.loads(snapshot.read_text(encoding="utf-8"))
+    payload["state"].pop("squad_roles")
+    payload["state"].pop("squad_meetings")
+    payload["checksum"] = company_os._checksum({key: value for key, value in payload.items() if key != "checksum"})
+    snapshot.write_text(json.dumps(payload), encoding="utf-8")
+
+    stored = company_os.get_company_os("acme", root=root)
+    assert stored["squad_roles"] == []
+    assert stored["squad_meetings"] == []
+
+
 def test_initiative_rollup_requires_acceptance_and_keeps_multiple_squads(tmp_path):
     root = tmp_path / "company"
     company_os.create_company_os("acme", "f1", "Acme", root=root)
