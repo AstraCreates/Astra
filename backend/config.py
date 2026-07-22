@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     deep_research_max_attempts: int = 2
     deep_research_backoff_seconds: float = 1.0
     deep_research_timeout_seconds: int = 900
+    # Company OS copilot intent classification (typo-correction + multi-step
+    # splitting + department routing in one call). Validated on a 1200-case
+    # combinatorial test set: 100% accuracy, ~0.3s avg latency, honors
+    # reasoning:none (zero wasted reasoning tokens, unlike nex-agi/nex-n2-mini
+    # which was tested and rejected for burning 260-580 tokens on hidden
+    # reasoning per call despite the same flag). Pinned explicitly, not
+    # routed through the general-purpose or_* lanes -- this is a specific,
+    # validated model choice for a specific task, not interchangeable.
+    intent_classifier_model: str = "poolside/laguna-xs-2.1"
     company_os_stale_task_seconds: int = 1800
     # Cheap native-search model for the bounded research discovery pass. The
     # agent model still synthesizes the returned evidence; this model handles

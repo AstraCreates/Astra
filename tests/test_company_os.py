@@ -230,3 +230,46 @@ async def test_copilot_route_keeps_the_founder_bubble_clean_but_feeds_attachment
     # ...but the durable, founder-visible chat bubble stays exactly what they typed.
     founder_bubble = next(m for m in company_os.get_company_os("acme")["conversation"] if m["author"] == "founder")
     assert founder_bubble["message"] == "Summarize this"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_archives_everything_after_it_and_resubmits(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.append_message("acme", "what is Blackstone", author="founder", role="user", message_id="m1")
+    company_os.append_message("acme", "Blackstone is an asset manager.", author="copilot", role="assistant", kind="chat", message_id="m2")
+    company_os.append_message("acme", "and how do they make money", author="founder", role="user", message_id="m3")
+    company_os.append_message("acme", "Management fees and carried interest.", author="copilot", role="assistant", kind="chat", message_id="m4")
+
+    seen_messages = []
+
+    async def fake_coordinate_turn(company_id, message, *, proposed_spend=0.0):
+        seen_messages.append(message)
+        return {"message": "Looking into Apple instead.", "dispatch": None}
+    monkeypatch.setattr("backend.api.company_os_routes.coordinate_turn", fake_coordinate_turn)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch(
+            "/companies/acme/os/messages/m1",
+            json={"founder_id": "founder", "message": "what is Apple"},
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"] == "Looking into Apple instead."
+    # The edited message's own new text is what gets resubmitted, not the old one.
+    assert seen_messages == ["what is Apple"]
+
+    state = company_os.get_company_os("acme")
+    edited = next(m for m in state["conversation"] if m["message_id"] == "m1")
+    assert edited["message"] == "what is Apple"
+    assert not edited.get("archived")
+    for stale_id in ("m2", "m3", "m4"):
+        stale = next(m for m in state["conversation"] if m["message_id"] == stale_id)
+        assert stale.get("archived") is True

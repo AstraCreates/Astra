@@ -3,9 +3,8 @@ import json
 import pytest
 
 from backend import company_os
-from backend.company_os_copilot import coordinate_turn
-from backend.company_os_copilot import _classify_turn
-from backend.company_os_copilot import _build_prompt
+from backend.company_os_copilot import _build_prompt, coordinate_turn
+from backend.tools.intent_classifier import IntentClassification, IntentStep
 
 
 def _no_launch(monkeypatch):
@@ -14,18 +13,23 @@ def _no_launch(monkeypatch):
     monkeypatch.setattr("backend.company_os_copilot.launch_mission", lambda *_a, **_k: False)
 
 
+def _mock_classification(monkeypatch, classification: IntentClassification):
+    monkeypatch.setattr("backend.company_os_copilot.classify_intent", lambda *_a, **_k: classification)
+
+
 @pytest.mark.asyncio
-async def test_answer_action_replies_without_creating_an_initiative(tmp_path, monkeypatch):
+async def test_answer_kind_replies_without_dispatching(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
+    _mock_classification(monkeypatch, IntentClassification(kind="answer"))
 
     def fail_dispatch(*_a, **_k):
-        raise AssertionError("answer action must not dispatch a new initiative")
+        raise AssertionError("an answer-kind classification must never dispatch")
     monkeypatch.setattr("backend.company_os_copilot.dispatch_intent", fail_dispatch)
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
-        {"action": "answer", "initiative_id": None, "reply": "Nothing's running yet -- what should I start?"}
+        {"initiative_id": None, "reply": "Nothing's running yet -- what should I start?"}
     ))
 
     result = await coordinate_turn("acme", "what were the results")
@@ -38,194 +42,136 @@ async def test_answer_action_replies_without_creating_an_initiative(tmp_path, mo
 
 
 @pytest.mark.asyncio
-async def test_continue_without_a_valid_work_request_asks_for_clarification(tmp_path, monkeypatch):
+async def test_negated_kind_acknowledges_without_an_llm_call_or_dispatch(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
-    first = company_os.create_initiative("acme", "Big Pharma ML consulting viability", department="research", director="research")
-    initiative_id = first["initiative_id"]
+    _mock_classification(monkeypatch, IntentClassification(kind="negated"))
 
+    def fail_anything(*_a, **_k):
+        raise AssertionError("negation must be handled without any further LLM call or dispatch")
+    monkeypatch.setattr("backend.company_os_copilot.dispatch_intent", fail_anything)
+    monkeypatch.setattr("backend.tools._llm.generate", fail_anything)
+
+    result = await coordinate_turn("acme", "don't build a website yet, just tell me what you found")
+
+    assert result["dispatch"] is None
+    assert "holding off" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_mcp_command_kind_replies_without_dispatching(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+    _mock_classification(monkeypatch, IntentClassification(kind="mcp_command"))
+
+    def fail_dispatch(*_a, **_k):
+        raise AssertionError("an mcp_command classification must never dispatch a squad")
+    monkeypatch.setattr("backend.company_os_copilot.dispatch_intent", fail_dispatch)
     monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
-        {"action": "continue", "initiative_id": initiative_id, "reply": "Digging further into that now."}
+        {"initiative_id": None, "reply": "I can't approve that from chat yet -- use the Approvals panel."}
     ))
 
-    result = await coordinate_turn("acme", "results")
+    result = await coordinate_turn("acme", "approve the pending task")
 
     assert result["dispatch"] is None
-    assert "Work request needs one clarification" in result["message"]
-    state = company_os.get_company_os("acme")
-    assert len(state["initiatives"]) == 1  # no duplicate or blocked squad spawned
+    assert "approvals" in result["message"].lower()
 
 
 @pytest.mark.asyncio
-async def test_malformed_llm_output_does_not_create_unrouted_work(tmp_path, monkeypatch):
+async def test_work_kind_dispatches_using_the_classifier_departments_directly(tmp_path, monkeypatch):
+    """The classifier decides departments; no separate capability-extraction
+    LLM call happens anymore."""
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
-    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "not json at all")
-
-    result = await coordinate_turn("acme", "find out if a cookie clicker game can be monetized")
-
-    assert result["dispatch"] is None
-    assert "Work request needs one clarification" in result["message"]
-    state = company_os.get_company_os("acme")
-    assert state["initiatives"] == []
-
-
-@pytest.mark.asyncio
-async def test_ambiguous_new_work_asks_a_structured_question(tmp_path, monkeypatch):
-    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
-    monkeypatch.chdir(tmp_path)
-    _no_launch(monkeypatch)
-    company_os.create_company_os("acme", "founder", "Acme")
-
-    def fake_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            return json.dumps({"action": "new", "initiative_id": None, "reply": "On it."})
-        return json.dumps({
-            "objective": "Build the MVP", "deliverables": [], "acceptance_criteria": [], "constraints": [],
-            "entities": [], "dependencies": [], "primary_capability": "website", "required_capabilities": ["website"],
-            "risk": "internal", "clarification_question": "Which platform should the MVP target?",
-            "clarification_options": ["iOS", "Android", "Both"], "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
-
-    result = await coordinate_turn("acme", "build me an MVP")
-
-    assert result["dispatch"] is None
-    state = company_os.get_company_os("acme")
-    last = state["conversation"][-1]
-    assert last["kind"] == "question"
-    assert last["question"] == "Which platform should the MVP target?"
-    assert last["options"] == ["iOS", "Android", "Both"]
-    assert state["initiatives"] == []  # nothing dispatched while awaiting the answer
-
-    # The founder answers. Even if the (mocked, stubborn) model tries to ask
-    # ANOTHER clarifying question on this reply, the copilot must never chain
-    # a second round -- that's the exact interrogation loop that made a plain
-    # "what is X" ask take three rounds of increasingly irrelevant questions
-    # in production before any research squad ever formed.
-    captured_intent = {}
-
-    def stubborn_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            return json.dumps({"action": "new", "initiative_id": None, "reply": "Building it now."})
-        captured_intent["prompt"] = prompt
-        return json.dumps({
-            "objective": "Build an iOS MVP", "deliverables": [], "acceptance_criteria": [], "constraints": [],
-            "entities": [], "dependencies": [], "primary_capability": "website", "required_capabilities": ["website"],
-            "risk": "internal", "clarification_question": "Which audience is this for?",
-            "clarification_options": ["Consumers", "Businesses"], "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", stubborn_generate)
-    company_os.append_message("acme", "iOS", author="founder", role="user")
-
-    result = await coordinate_turn("acme", "iOS")
-
-    assert result["dispatch"] is not None  # dispatched despite the model wanting to ask again
-    state = company_os.get_company_os("acme")
-    assert not any(m.get("kind") == "question" and m["message"] != last["message"] for m in state["conversation"])
-    # The original objective ("build the MVP") was merged with the founder's
-    # terse reply ("iOS") into one coherent intent, not sent bare.
-    assert "Build the MVP" in captured_intent["prompt"]
-    assert "iOS" in captured_intent["prompt"]
-
-
-@pytest.mark.asyncio
-async def test_reply_to_a_pending_clarification_dispatches_even_if_the_classifier_would_say_answer(tmp_path, monkeypatch):
-    """A bare one-word reply like "website" carries no subject of its own --
-    the turn classifier can plausibly (and did, in production) misread it as
-    a conversational "answer" and short-circuit, silently dropping the
-    founder's actual answer to the question the copilot just asked. Resolving
-    a pending clarification must never go through the classifier at all."""
-    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
-    monkeypatch.chdir(tmp_path)
-    _no_launch(monkeypatch)
-    company_os.create_company_os("acme", "founder", "Acme")
-    company_os.append_message("acme", "What concrete outcome should this work produce?", author="copilot",
-                               role="assistant", kind="question", question="What concrete outcome should this work produce?",
-                               work_request={"objective": "build a website that lists all of doge's actions"})
-    company_os.append_message("acme", "website", author="founder", role="user")
-
-    def fake_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            raise AssertionError("the turn classifier must never run when a clarification is pending")
-        return json.dumps({
-            "objective": "Build a website listing Doge's actions", "deliverables": [], "acceptance_criteria": [],
-            "constraints": [], "entities": [], "dependencies": [], "primary_capability": "website",
-            "required_capabilities": ["website"], "risk": "internal", "clarification_question": None,
-            "clarification_options": None, "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
-
-    result = await coordinate_turn("acme", "website")
-
-    assert result["dispatch"] is not None
-    state = company_os.get_company_os("acme")
-    assert state["initiatives"]
-
-
-@pytest.mark.asyncio
-async def test_direct_work_request_dispatches_without_calling_the_turn_classifier(tmp_path, monkeypatch):
-    """Confirmed live: "create a website about blackstone", sent right after
-    a completed Blackstone research mission, got classified "answer" (a
-    plausible-sounding conversational reply reusing the existing research)
-    instead of dispatching a build -- a non-deterministic model hiccup, not
-    reproducible on retry. An imperative deliverable verb at the start of a
-    message is unambiguous enough to skip the classifier call entirely."""
-    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
-    monkeypatch.chdir(tmp_path)
-    _no_launch(monkeypatch)
-    company_os.create_company_os("acme", "founder", "Acme")
-
-    def fake_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            raise AssertionError("the turn classifier must not run for a direct work request")
-        return json.dumps({
-            "objective": "Build a website about Blackstone", "deliverables": [], "acceptance_criteria": [],
-            "constraints": [], "entities": [], "dependencies": [], "primary_capability": "website",
-            "required_capabilities": ["website"], "risk": "internal", "clarification_question": None,
-            "clarification_options": None, "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+    _mock_classification(monkeypatch, IntentClassification(kind="work", steps=[
+        IntentStep(text="create a website about blackstone", department="product_technical"),
+    ]))
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
+        {"initiative_id": None, "reply": "On it -- building a site about Blackstone now."}
+    ))
 
     result = await coordinate_turn("acme", "create a website about blackstone")
 
     assert result["dispatch"] is not None
+    assert result["dispatch"]["department"] == "product_technical"
     state = company_os.get_company_os("acme")
     assert state["initiatives"]
 
 
 @pytest.mark.asyncio
-async def test_compound_lookup_then_deliverable_dispatches_both_parts(tmp_path, monkeypatch):
-    """Confirmed live: "what is Blackstone ... then create a site to display
-    the results" got classified "answer" and answered only the lookup half --
-    "then create a site" was silently dropped, since the direct-work-request
-    bypass only checked the message's start and the build verb was buried in
-    a second, "then"-chained clause."""
+async def test_compound_work_dispatches_a_primary_mission_and_a_handoff(tmp_path, monkeypatch):
+    """Confirmed live before this rewrite: a compound "what is X ... then
+    create a site" request got answered as a status check and silently
+    dropped the second clause. The classifier now returns both steps
+    directly; dispatch_intent's existing handoff-mission mechanism (already
+    used for other multi-capability requests) picks up the second one with
+    no new dispatch logic needed."""
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
-
-    def fake_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            raise AssertionError("the turn classifier must not run for a chained direct work request")
-        return json.dumps({
-            "objective": "Research Blackstone and build a site displaying the results", "deliverables": [],
-            "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
-            "primary_capability": "research", "required_capabilities": ["research", "website delivery"],
-            "risk": "internal", "clarification_question": None, "clarification_options": None, "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+    _mock_classification(monkeypatch, IntentClassification(kind="work", steps=[
+        IntentStep(text="what is Blackstone the company and how do they make money", department="research"),
+        IntentStep(text="create a site to display the results of the research", department="product_technical"),
+    ]))
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
+        {"initiative_id": None, "reply": "I'll research Blackstone first, then build a site around it."}
+    ))
 
     result = await coordinate_turn("acme", "what is Blackstone the company and how do they make money "
                                             "then create a site to display the results of the research")
 
     assert result["dispatch"] is not None
+    assert result["dispatch"]["department"] == "research"
     assert result["dispatch"]["handoff_missions"]
+    assert result["dispatch"]["handoff_missions"][0]["department"] == "product_technical"
+
+
+@pytest.mark.asyncio
+async def test_a_total_classifier_failure_still_dispatches_instead_of_blocking(tmp_path, monkeypatch):
+    """intent_classifier.classify_intent() falls back to a single
+    unclassified step (department="") when every provider attempt fails.
+    coordinate_turn must still produce a real dispatch (to whatever default
+    department route_work_request's own tie-break picks) rather than ever
+    leaving the founder stuck waiting on a clarifying question -- there is
+    no clarification mechanism in this architecture at all."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+    _mock_classification(monkeypatch, IntentClassification(kind="work", steps=[
+        IntentStep(text="find out if a cookie clicker game can be monetized", department=""),
+    ]))
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "not json at all")
+
+    result = await coordinate_turn("acme", "find out if a cookie clicker game can be monetized")
+
+    assert result["dispatch"] is not None
+    state = company_os.get_company_os("acme")
+    assert state["initiatives"]
+
+
+@pytest.mark.asyncio
+async def test_ground_and_reply_failure_falls_back_to_a_generated_plan_reply(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+    _mock_classification(monkeypatch, IntentClassification(kind="work", steps=[
+        IntentStep(text="research Instacart", department="research"),
+    ]))
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "not json at all")
+
+    result = await coordinate_turn("acme", "research instacart")
+
+    assert result["dispatch"] is not None
+    assert "**Work plan**" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -234,16 +180,12 @@ async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_
     monkeypatch.chdir(tmp_path)
     _no_launch(monkeypatch)
     company_os.create_company_os("acme", "founder", "Acme")
-
-    def fake_generate(prompt, *, model=None, **_kwargs):
-        if model == "fast":
-            return json.dumps({"action": "new", "initiative_id": None, "reply": "On it."})
-        return json.dumps({
-            "objective": "Research Instacart", "deliverables": [], "acceptance_criteria": [], "constraints": [],
-            "entities": [], "dependencies": [], "primary_capability": "research", "required_capabilities": ["research"],
-            "risk": "internal", "clarification_question": None, "clarification_options": None, "confidence": 0.9,
-        })
-    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+    _mock_classification(monkeypatch, IntentClassification(kind="work", steps=[
+        IntentStep(text="what is instacart", department="research"),
+    ]))
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: json.dumps(
+        {"initiative_id": None, "reply": "On it."}
+    ))
 
     result = await coordinate_turn("acme", "what is instacart")
 
@@ -253,19 +195,13 @@ async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_
     assert last["kind"] == "plan"
     assert last["squad_id"] == result["dispatch"]["squad"]["squad_id"]
 
-def test_direct_work_requests_bypass_the_answer_classifier(monkeypatch):
-    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: "should not run")
-    assert _classify_turn({}, "Compare Cofounder.co to AstraCreates.com")["action"] == "new"
-    assert _classify_turn({}, "Make a website for a competing company")["action"] == "new"
 
-
-def test_classify_prompt_forbids_answering_a_new_subject_from_an_unrelated_finding():
-    """Real production leak: asking "what is Palantir" after a Northrop
-    Grumman research initiative existed returned an answer entirely about
-    Northrop Grumman -- the model treated "answer using the findings below"
-    as license to use ANY existing finding regardless of subject match. The
-    prompt must explicitly forbid that and default a new named subject to
-    "new" rather than "answer"."""
+def test_grounded_prompt_injects_the_classifier_steps_and_forbids_cross_subject_answers():
+    """The classifier decides WHAT department(s); this prompt's only jobs
+    are continue-vs-new and reply-writing -- but the anti-leak guardrail from
+    the old single-call design (a finding about a different company must
+    never answer a question about this one) still has to hold for the
+    "answer" kind's reply-writing instructions."""
     company = {
         "initiatives": [{"initiative_id": "i1", "name": "Northrop Grumman research", "department": "research", "state": "working"}],
         "squads": [{"squad_id": "s1", "initiative_id": "i1", "name": "Insights"}],
@@ -273,8 +209,12 @@ def test_classify_prompt_forbids_answering_a_new_subject_from_an_unrelated_findi
         "artifacts": [{"task_id": "t1", "content": "Northrop Grumman makes money via defense contracts."}],
         "conversation": [],
     }
-    prompt = _build_prompt(company, "what is Palantir and how do they make money")
+    classification = IntentClassification(kind="work", steps=[IntentStep(text="what is Palantir and how do they make money", department="research")])
+    prompt = _build_prompt(company, "what is Palantir and how do they make money", classification)
 
     assert "Palantir" in prompt
-    assert "a finding about a DIFFERENT company is not an answer" in prompt
-    assert "names a specific real-world subject" in prompt
+    assert '"what is Palantir and how do they make money" -> research' in prompt
+
+    answer_classification = IntentClassification(kind="answer")
+    answer_prompt = _build_prompt(company, "what were the results", answer_classification)
+    assert "never use a different initiative's finding just because one exists" in answer_prompt

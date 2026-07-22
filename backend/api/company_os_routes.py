@@ -223,13 +223,25 @@ async def copilot_message_route(company_id: str, body: CopilotMessageBody, reque
 @router.patch("/companies/{company_id}/os/messages/{message_id}")
 async def edit_company_os_message(company_id: str, message_id: str, body: MessageEditBody, request: Request):
     """Edit a founder's own chat message. Copilot replies aren't editable --
-    they're the durable record of what Astra actually said and did."""
-    _company(request, company_id, body.founder_id, operator=True)
+    they're the durable record of what Astra actually said and did.
+
+    Everything after the edited message is now stale (it was a reply to text
+    that no longer exists) -- archive it, same soft-delete convention as a
+    single deleted message, then resubmit the edited text through the normal
+    copilot turn so a fresh reply actually gets generated instead of leaving
+    the edit sitting there with the old (now-mismatched) conversation below
+    it."""
+    company = _company(request, company_id, body.founder_id, operator=True)
     message = _message(company_id, message_id)
     if message.get("author") != "founder":
         raise HTTPException(status_code=400, detail="Only your own messages can be edited")
+    conversation = company.get("conversation", [])
+    edited_index = next(i for i, item in enumerate(conversation) if item.get("message_id") == message_id)
+    for later in conversation[edited_index + 1:]:
+        update_message(company_id, later["message_id"], archived=True)
     update_message(company_id, message_id, message=body.message, edited=True)
-    return {"ok": True, "message_id": message_id, "company": get_company_os(company_id)}
+    result = await coordinate_turn(company_id, body.message)
+    return {"ok": True, "message_id": message_id, "message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/messages/{message_id}")
