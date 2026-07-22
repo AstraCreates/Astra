@@ -353,6 +353,11 @@ TOOLS: list[dict[str, Any]] = [
         "description": "List the MCP and specialist tools available to Copilot and Company OS squads, including capability, availability, mutability, and approval risk.",
         "inputSchema": _schema({"company_id": {"type": "string"}, "include_external": {"type": "boolean", "default": True}, "founder_id": {"type": "string"}}, ["company_id"]),
     },
+    {
+        "name": "vercel_deploy",
+        "description": "Publish an approved Company OS website artifact. Uses the founder's Vercel integration when available, otherwise publishes on the Astra server.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "project_slug": {"type": "string"}, "html": {"type": "string"}, "css": {"type": "string", "default": ""}, "js": {"type": "string", "default": ""}, "founder_id": {"type": "string"}}, ["company_id", "project_slug", "html"]),
+    },
 ]
 
 # The old MCP actions were session/run commands. Phase 3 keeps only tools that
@@ -709,6 +714,27 @@ def _company_tool_catalog(args: dict) -> dict:
     from backend.company_os_mcp import available_tools
     return {"ok": True, "tools": available_tools(include_external=bool(args.get("include_external", True)))}
 
+
+def _vercel_deploy(args: dict) -> dict:
+    """Company-scoped publishing with Vercel-or-server fallback.
+
+    The policy gate lives in Company OS dispatch; this MCP handler only checks
+    that the caller owns the company before using the saved integration.
+    """
+    from backend.company_os import get_company_os
+    company = get_company_os(str(args["company_id"]))
+    if not company or company.get("founder_id") != (args.get("founder_id") or _founder_id()):
+        return {"ok": False, "error": "Company not found"}
+    from backend.tools.vercel_deploy import vercel_deploy
+    return {
+        "ok": True,
+        **vercel_deploy(
+            project_slug=str(args["project_slug"]), html=str(args["html"]),
+            css=str(args.get("css") or ""), js=str(args.get("js") or ""),
+            founder_id=company["founder_id"],
+        ),
+    }
+
 _DISPATCH: dict[str, Any] = {
     "astra_submit_goal": _submit_goal,
     "astra_session_status": _session_status,
@@ -733,6 +759,7 @@ _DISPATCH: dict[str, Any] = {
     "astra_company_os_context": _company_os_context,
     "astra_company_research": _company_research,
     "astra_company_tool_catalog": _company_tool_catalog,
+    "vercel_deploy": _vercel_deploy,
 }
 
 # ── JSON-RPC handler ──────────────────────────────────────────────────────────

@@ -281,7 +281,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         )
         if not result.get("deployed") or not result.get("url"):
             raise RuntimeError(str(result.get("error") or result.get("note") or "Vercel deployment did not return a public URL."))
-        update_artifact(company_id, str(artifact["artifact_id"]), url=result["url"], hosting="vercel", hosting_project=project_slug, hosting_status="deployed")
+        update_artifact(company_id, str(artifact["artifact_id"]), url=result["url"],
+                        hosting=str(result.get("hosting") or "vercel"), hosting_project=project_slug,
+                        hosting_status="deployed")
         return {"deployed": True, "url": result["url"], "artifact_id": artifact["artifact_id"]}
     if mission.get("department") == "research" and task.get("operation") == "internal_analysis":
         evidence = invoke_mcp(

@@ -706,7 +706,10 @@ def _local_fallback(project_slug: str, html: str, css: str, js: str) -> dict:
     return {
         "deployed": True,
         "hosting": "astra-server",
-        "url": f"{os.environ.get('ASTRA_SERVER_PREVIEW_BASE_URL', 'http://localhost:8000/hosted-preview').rstrip('/')}/{project_slug}",
+        # Company OS needs a founder-accessible URL, not the backend
+        # container's loopback address. Self-hosters can override this with
+        # ASTRA_SERVER_PREVIEW_BASE_URL.
+        "url": f"{os.environ.get('ASTRA_SERVER_PREVIEW_BASE_URL', 'https://app.astracreates.com/api/hosted-preview').rstrip('/')}/{project_slug}",
         "local_path": out_dir,
         "note": "Published on the Astra server because no Vercel integration was available.",
     }
