@@ -733,9 +733,19 @@ def execute_task(company_id: str, task: Mapping[str, Any], executor: Callable[[M
     company = _call("get_company_os", company_id=company_id) or {}
     policy = enforce_dispatch_policy(task, company=company, proposed_spend=proposed_spend)
     _record_policy(company_id, task, policy)
-    if policy["decision"] != "auto":
+    approved_approval = _approved_approval_for_task(company, task)
+    if policy["decision"] != "auto" and not approved_approval:
         approval = _create_approval_card(company_id, task, policy)
         return {"status": "awaiting_approval", "policy": policy, "approval_task": approval}
+    if approved_approval:
+        # Policy remains the source of truth: this is still an external action.
+        # The durable approval is the only authority that lets this exact task
+        # consume the gate. Without this check, every resume created another
+        # approval card and left the task queued forever.
+        _call("append_event", company_id=company_id, event_type="policy.approval_consumed", payload={
+            "task_id": _id(task), "approval_id": approved_approval.get("approval_id"),
+            "decision": policy["decision"],
+        })
     key = idempotency_key or _attempt_key(company_id, task)
     existing = _existing_attempt(company, key)
     if existing:
@@ -872,6 +882,21 @@ def _record_policy(company_id: str, task: Mapping[str, Any], policy: Mapping[str
 
 
 def _create_approval_card(company_id: str, task: Mapping[str, Any], policy: Mapping[str, Any]) -> Any:
+    task_id = _id(task)
+    company = _call("get_company_os", company_id=company_id) or {}
+    existing = next((approval for approval in company.get("approvals", [])
+                     if approval.get("task_id") == task_id and approval.get("state") == "pending"), None)
+    if existing:
+        return existing
     return _call("create_approval", company_id=company_id, title=f"Approval required: {task.get('name') or task.get('title', 'task')}",
-                 task_id=_id(task), detail="Review the policy-gated action before execution.",
+                 task_id=task_id, detail="Review the policy-gated action before execution.",
                  department=task.get("department"), policy_decision=dict(policy))
+
+
+def _approved_approval_for_task(company: Mapping[str, Any], task: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Return a founder-approved gate for this task, never a task flag alone."""
+    task_id = _id(task)
+    if task.get("approval_decision") != "approved" or not task_id:
+        return None
+    return next((approval for approval in company.get("approvals", [])
+                 if approval.get("task_id") == task_id and approval.get("state") == "approved"), None)

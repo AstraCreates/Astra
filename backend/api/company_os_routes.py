@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_squad, update_task
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.tenant_auth import require_founder_access
@@ -396,6 +396,10 @@ async def decide_company_os_approval(company_id: str, approval_id: str, body: Ap
     if task:
         update_task(company_id, task_id, state="pending" if body.approved else "blocked", approval_decision="approved" if body.approved else "rejected", approval_note=body.note)
         if body.approved and task.get("mission_id"):
+            # A previous runner round deliberately marks the mission waiting.
+            # Move it back to active before scheduling so restart recovery and
+            # live execution agree on the same durable state.
+            update_mission(company_id, str(task["mission_id"]), state="active", blocked_reason=None)
             launch_mission(company_id, str(task["mission_id"]))
     reconcile_initiatives(company_id)
     return {"ok": True, "approval_id": approval_id, "approved": body.approved, "company": get_company_os(company_id)}

@@ -283,6 +283,29 @@ def test_execute_task_persists_research_metadata_from_the_executor_result(monkey
     assert completed_update["evidence_validation"] == executor_result["evidence_validation"]
 
 
+def test_approved_external_task_consumes_its_matching_durable_approval(monkeypatch):
+    dispatch, store = _dispatch(monkeypatch)
+    task = {"id": "publish-1", "title": "Publish preview", "operation": "external_deploy",
+            "approval_decision": "approved"}
+    store.company["approvals"] = [{"approval_id": "approval-1", "task_id": "publish-1", "state": "approved"}]
+    ran = []
+
+    result = dispatch.execute_task("co", task, lambda _: ran.append(True) or {"deployed": True})
+
+    assert result["status"] == "completed"
+    assert ran == [True]
+    assert any(event["event_type"] == "policy.approval_consumed" for event in store.company["events"])
+
+
+def test_pending_approval_card_is_reused_for_the_same_task(monkeypatch):
+    dispatch, store = _dispatch(monkeypatch)
+    store.company["approvals"] = [{"approval_id": "approval-existing", "task_id": "publish-1", "state": "pending"}]
+
+    approval = dispatch._create_approval_card("co", {"id": "publish-1", "title": "Publish preview"}, {"decision": "require_approval"})
+
+    assert approval["approval_id"] == "approval-existing"
+
+
 def test_local_publication_preparation_never_requires_approval():
     from backend.company_os_dispatch import enforce_dispatch_policy
 

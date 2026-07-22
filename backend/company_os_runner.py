@@ -192,9 +192,13 @@ async def recover_pending_missions() -> int:
     recovered = 0
     for company in await asyncio.to_thread(list_company_os):
         for mission in company.get("missions", []):
-            if mission.get("state") not in {"active", "working", "review"}:
-                continue
             mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
+            approved_waiting = mission.get("state") == "waiting" and any(
+                task.get("state") in {"pending", "scheduled"} and task.get("approval_decision") == "approved"
+                for task in mission_tasks
+            )
+            if mission.get("state") not in {"active", "working", "review"} and not approved_waiting:
+                continue
             # A task sitting "pending" behind another task that is genuinely
             # still working -- not stale -- is completely normal (every
             # multi-task mission looks like this while its current step
@@ -216,11 +220,17 @@ async def recover_pending_missions() -> int:
                     current = get_company_os(company["company_id"]) or {}
                     current_mission = _find(current.get("missions", []), "mission_id", mission["mission_id"])
                     current_tasks = [task for task in current.get("tasks", []) if task.get("mission_id") == mission["mission_id"]]
+                    current_approved_waiting = current_mission and current_mission.get("state") == "waiting" and any(
+                        task.get("state") in {"pending", "scheduled"} and task.get("approval_decision") == "approved"
+                        for task in current_tasks
+                    )
                     if any(task.get("state") == "working" and not is_stale(task) for task in current_tasks):
                         continue
                     current_stale = [task for task in current_tasks if is_stale(task)]
                     current_pending = [task for task in current_tasks if task.get("state") in {"pending", "scheduled"}]
-                    if not current_mission or not current_stale and not current_pending:
+                    if not current_mission or (not current_stale and not current_pending) or (
+                        current_mission.get("state") == "waiting" and not current_approved_waiting
+                    ):
                         continue
                     for task in [*current_stale, *current_pending]:
                         for attempt in current.get("task_attempts", []):
@@ -234,6 +244,8 @@ async def recover_pending_missions() -> int:
                                     recovery_reason="stale_working_task_after_process_restart")
                         append_message(company["company_id"], f"Recovered stalled work: {task.get('name', 'task')} is being retried.",
                                        author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+                    if current_approved_waiting:
+                        update_mission(company["company_id"], mission["mission_id"], state="active", blocked_reason=None)
                     # Await instead of using fire-and-forget startup work so
                     # the claim and first attempt cannot be lost.
                     await run_mission(company["company_id"], mission["mission_id"])
