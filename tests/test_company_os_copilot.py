@@ -168,6 +168,37 @@ async def test_reply_to_a_pending_clarification_dispatches_even_if_the_classifie
 
 
 @pytest.mark.asyncio
+async def test_direct_work_request_dispatches_without_calling_the_turn_classifier(tmp_path, monkeypatch):
+    """Confirmed live: "create a website about blackstone", sent right after
+    a completed Blackstone research mission, got classified "answer" (a
+    plausible-sounding conversational reply reusing the existing research)
+    instead of dispatching a build -- a non-deterministic model hiccup, not
+    reproducible on retry. An imperative deliverable verb at the start of a
+    message is unambiguous enough to skip the classifier call entirely."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    def fake_generate(prompt, *, model=None, **_kwargs):
+        if model == "fast":
+            raise AssertionError("the turn classifier must not run for a direct work request")
+        return json.dumps({
+            "objective": "Build a website about Blackstone", "deliverables": [], "acceptance_criteria": [],
+            "constraints": [], "entities": [], "dependencies": [], "primary_capability": "website",
+            "required_capabilities": ["website"], "risk": "internal", "clarification_question": None,
+            "clarification_options": None, "confidence": 0.9,
+        })
+    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+
+    result = await coordinate_turn("acme", "create a website about blackstone")
+
+    assert result["dispatch"] is not None
+    state = company_os.get_company_os("acme")
+    assert state["initiatives"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from backend.company_os import append_message, get_company_os
@@ -25,6 +26,19 @@ logger = logging.getLogger(__name__)
 _MAX_INITIATIVES_IN_CONTEXT = 5
 _MAX_CONVERSATION_TURNS = 8
 _ARTIFACT_EXCERPT_CHARS = 2500
+# An imperative deliverable verb at the very start of a message is an
+# unambiguous work request -- the _build_prompt rules already say so
+# explicitly ("research, a comparison, a design, a website, a change, or a
+# deliverable ... must be 'new' or 'continue', never 'answer'"). But that's
+# only a prompt instruction, not a guarantee: confirmed live, "create a
+# website about blackstone" got classified "answer" (a plausible-sounding
+# conversational reply reusing existing research findings) instead of
+# dispatching a build. Non-deterministic model output, not reproducible on
+# retry -- so the fix is a deterministic bypass, not a prompt tweak.
+_DIRECT_WORK_REQUEST = re.compile(
+    r"^(build|create|make|design|develop|draft|write|compare|research|redesign|update|revise|launch|deploy|publish)\b",
+    re.IGNORECASE,
+)
 
 
 def _pending_clarification(company: dict[str, Any]) -> dict[str, Any] | None:
@@ -59,6 +73,8 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     pending = _pending_clarification(company)
     if pending:
         plan: dict[str, Any] = {"action": "new", "initiative_id": None, "reply": ""}
+    elif _DIRECT_WORK_REQUEST.match(message.strip()):
+        plan = {"action": "new", "initiative_id": None, "reply": ""}
     else:
         plan = await asyncio.to_thread(_classify_turn, company, message)
         if plan["action"] == "answer":
