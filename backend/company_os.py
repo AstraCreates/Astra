@@ -23,6 +23,7 @@ _COLLECTIONS = (
     "dispatch_audit",
 )
 _SEGMENT_LIMIT = 250
+_SNAPSHOT_INTERVAL = 50
 logger = logging.getLogger(__name__)
 
 
@@ -122,6 +123,12 @@ def append_event(company_id: str, event_type: str | dict[str, Any], payload: dic
         _apply_event(state, event)
         event["checksum"] = _checksum(event)
         _append_line(_active_segment(directory), event)
+        if event["sequence"] % _SNAPSHOT_INTERVAL == 0:
+            # `state` is already fully materialized post-event, so advancing
+            # the snapshot here is free and keeps every future _replay() to a
+            # short tail instead of the whole event log (was O(total events)
+            # on every read, 26k+ events -> 100s+ per GET /os).
+            _write_snapshot(directory, state, event["sequence"])
         return copy.deepcopy(event)
 
 
