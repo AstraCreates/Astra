@@ -127,7 +127,9 @@ function meetings(value: unknown): CompanyHomeMeeting[] {
     const meeting = record(item);
     const decisions = list(meeting.decisions ?? meeting.decision).map(item => text(item)).filter(Boolean);
     const blockers = list(meeting.blockers ?? meeting.risks).map(item => text(item)).filter(Boolean);
-    return { id: text(meeting.id ?? meeting.meeting_id, `meeting-${index}`), occurredAt: text(meeting.occurred_at ?? meeting.created_at ?? meeting.date, "Recently"), phase: titleCase(text(meeting.phase ?? meeting.stage, "Coordination")), decisions, blockers, nextAction: text(meeting.next_action ?? meeting.next_steps ?? meeting.action) };
+    const nextAction = text(meeting.next_action ?? meeting.next_steps ?? meeting.action)
+      || list(meeting.next_actions).map(item => text(item)).filter(Boolean).join(" ");
+    return { id: text(meeting.id ?? meeting.meeting_id, `meeting-${index}`), occurredAt: text(meeting.occurred_at ?? meeting.created_at ?? meeting.updated_at ?? meeting.date, "Recently"), phase: titleCase(text(meeting.phase ?? meeting.stage, "Coordination")), decisions, blockers, nextAction };
   });
 }
 

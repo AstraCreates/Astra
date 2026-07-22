@@ -54,6 +54,7 @@ function ArtifactDocument({ content }: { content: string }) {
 function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: CompanyHomeSquad; deleting: boolean; onDelete: () => void; onOpenWorkbench: () => void }) {
   const [open, setOpen] = useState(false);
   const lead = squad.roster.find(member => member.isLead);
+  const latestMeeting = squad.meetings.at(-1);
   return <article className="dc company-home-squad-card" style={{ minWidth: 0, flex: "none", padding: 0, cursor: "default" }}>
     <div style={{ display: "flex", alignItems: "center" }}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} style={{ flex: 1, minWidth: 0, padding: "11px 4px 11px 12px", border: 0, background: "transparent", textAlign: "left", cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
@@ -68,6 +69,7 @@ function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: Comp
     {open && <div style={{ padding: "10px 12px 12px", borderTop: "1px solid var(--bd)" }}>
       {(lead || squad.charter) && <div style={{ marginBottom: 8, color: "var(--fm)", fontSize: 11, lineHeight: 1.45 }}>{lead && <div><b style={{ color: "var(--fg)" }}>Lead: </b>{lead.name} · {lead.role} · {lead.status}</div>}{squad.charter && <div><b style={{ color: "var(--fg)" }}>Charter: </b>{squad.charter}</div>}</div>}
       {squad.roster.filter(member => !member.isLead).map(member => <div key={`${member.name}-${member.role}`} style={{ padding: "5px 0", color: "var(--fm)", fontSize: 10.5 }}><b style={{ color: "var(--fg)" }}>{member.name}</b> · {member.role} · {member.status}{member.responsibility && ` · ${member.responsibility}`}</div>)}
+      {latestMeeting && <button type="button" onClick={onOpenWorkbench} style={{ width: "100%", marginTop: 9, padding: "8px 9px", border: "1px solid var(--bd)", borderRadius: 7, background: "var(--bg-sunken)", color: "var(--fm)", textAlign: "left", cursor: "pointer", fontSize: 10.5, lineHeight: 1.4 }}><b style={{ color: "var(--fg)" }}>Collaboration · {squad.meetings.length} meetings</b><span style={{ display: "block", marginTop: 2 }}>{latestMeeting.phase}{latestMeeting.nextAction ? ` · ${latestMeeting.nextAction}` : " · Open the workbench to review"}</span></button>}
       {squad.tasks.map(task => <div key={task.id} style={{ display: "flex", gap: 8, paddingTop: 8, fontSize: 11.5 }}><span style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", marginTop: 4, background: STATUS_COLOR[task.status] }} /><span style={{ color: "var(--fg)", flex: 1, minWidth: 0 }}>{task.title}{task.note && <small style={{ display: "block", color: "var(--fm)", marginTop: 2 }}>{task.note}</small>}</span><small style={{ color: "var(--fm)", flexShrink: 0 }}>{task.status}</small></div>)}
     </div>}
   </article>;
@@ -75,6 +77,11 @@ function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: Comp
 
 const WORKBENCH_STATE = { complete: "done", active: "run", blocked: "err", waiting: "que", planned: "que" } as const;
 const WORKBENCH_LABEL = { complete: "Done", active: "In progress", blocked: "Blocked", waiting: "Waiting on you", planned: "Queued" } as const;
+
+function MeetingTimeline({ meetings, open, onToggle }: { meetings: CompanyHomeSquad["meetings"]; open: boolean; onToggle: () => void }) {
+  if (!meetings.length) return null;
+  return <section style={{ borderTop: "1px solid var(--bd)", padding: "0 20px 16px", flexShrink: 0 }}><button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", padding: "13px 0", border: 0, background: "transparent", color: "var(--fg)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 12 }}><span>Meeting timeline · {meetings.length}</span><ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .18s" }} /></button>{open && <div style={{ display: "grid", gap: 8 }}>{meetings.map(meeting => <article key={meeting.id} style={{ padding: 10, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", color: "var(--fm)", fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "var(--fg)" }}>{meeting.phase}</b> <small>· {meeting.occurredAt}</small>{meeting.decisions.length > 0 && <div>Decisions: {meeting.decisions.join("; ")}</div>}{meeting.blockers.length > 0 && <div style={{ color: "var(--red)" }}>Blockers: {meeting.blockers.join("; ")}</div>}{meeting.nextAction && <div><b style={{ color: "var(--fg)" }}>Next: </b>{meeting.nextAction}</div>}</article>)}</div>}</section>;
+}
 
 function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad: CompanyHomeSquad; onClose: () => void; onRetryTask: (taskId: string) => void; retryingTaskId: string }) {
   const [selectedId, setSelectedId] = useState(() => squad.tasks.find(t => t.status === "active")?.id ?? squad.tasks[0]?.id ?? "");
@@ -100,7 +107,7 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
       </div>}
 
       {squad.tasks.length === 0 ? (
-        <div className="empty"><div className="empty-title">No tasks yet</div><p style={{ margin: 0, fontSize: 12 }}>This squad hasn&apos;t started work.</p></div>
+        <><div className="empty"><div className="empty-title">No tasks yet</div><p style={{ margin: 0, fontSize: 12 }}>This squad hasn&apos;t started work.</p></div><MeetingTimeline meetings={squad.meetings} open={meetingsOpen} onToggle={() => setMeetingsOpen(!meetingsOpen)} /></>
       ) : <>
         <div className="depts" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           {Object.entries(lanes).flatMap(([lane, tasks]) => tasks.map((task, index) => (
@@ -129,7 +136,7 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
             <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
           </>}
         </div>
-        {squad.meetings.length > 0 && <section style={{ borderTop: "1px solid var(--bd)", padding: "0 20px 16px", flexShrink: 0 }}><button type="button" onClick={() => setMeetingsOpen(!meetingsOpen)} aria-expanded={meetingsOpen} style={{ width: "100%", padding: "13px 0", border: 0, background: "transparent", color: "var(--fg)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 12 }}><span>Meeting timeline · {squad.meetings.length}</span><ChevronDown size={14} style={{ transform: meetingsOpen ? "rotate(180deg)" : undefined, transition: "transform .18s" }} /></button>{meetingsOpen && <div style={{ display: "grid", gap: 8 }}>{squad.meetings.map(meeting => <article key={meeting.id} style={{ padding: 10, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", color: "var(--fm)", fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "var(--fg)" }}>{meeting.phase}</b> <small>· {meeting.occurredAt}</small>{meeting.decisions.length > 0 && <div>Decisions: {meeting.decisions.join("; ")}</div>}{meeting.blockers.length > 0 && <div style={{ color: "var(--red)" }}>Blockers: {meeting.blockers.join("; ")}</div>}{meeting.nextAction && <div><b style={{ color: "var(--fg)" }}>Next: </b>{meeting.nextAction}</div>}</article>)}</div>}</section>}
+        <MeetingTimeline meetings={squad.meetings} open={meetingsOpen} onToggle={() => setMeetingsOpen(!meetingsOpen)} />
       </>}
     </section>
   </div>;

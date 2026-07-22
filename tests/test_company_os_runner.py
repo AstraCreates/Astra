@@ -220,6 +220,18 @@ def test_website_preview_uses_llm_copy_specific_to_the_request(monkeypatch):
     assert "Bring the whole company into view" not in preview  # generic fallback copy must not leak through
 
 
+def test_website_preview_accepts_a_bespoke_generated_page(monkeypatch):
+    from backend.company_os_runner import _website_preview
+
+    bespoke = "<!doctype html><html><head><style>body{background:#111;color:#f90}.ledger{display:grid;grid-template-columns:1fr 1fr}</style></head><body><main class='ledger'><h1>BlackRock / Blackstone</h1><p>Original comparison layout.</p>" + "x" * 2_100 + "</main></body></html>"
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: '{"html": ' + __import__("json").dumps(bespoke) + '}')
+
+    preview = _website_preview("build a website comparing BlackRock and Blackstone", [], {"objective": "A contrast-led comparison"})
+
+    assert "class='ledger'" in preview
+    assert "Original comparison layout" in preview
+
+
 def test_website_preview_falls_back_to_generic_copy_when_llm_fails(monkeypatch):
     from backend.company_os_runner import _website_preview
 
@@ -232,7 +244,8 @@ def test_website_preview_falls_back_to_generic_copy_when_llm_fails(monkeypatch):
     assert "Bring the whole company into view" in preview  # degrades to the old static copy, never blank/broken
 
 
-def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():
+def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request(monkeypatch):
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline test fallback")))
     preview = _website_preview("compare cofounder.co and astracreates.com and create a website for goon.com that has the best of both worlds", [{"title": "Source", "url": "https://example.com"}])
     assert "Goon" in preview
     assert "goon.com" in preview

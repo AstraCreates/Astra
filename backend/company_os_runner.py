@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import html
 import logging
 import re
@@ -310,12 +311,17 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         return _store_artifact(company_id, task, f"Research evidence — {_short_title(mission_name)}", evidence, source="web research", internal=True)
 
     if mission.get("department") == "product_technical" and _is_website_request(mission_name):
-        title = str(task.get("name") or "")
-        if "local website preview" in title.lower():
+        task_key = str(task.get("task_key") or "")
+        website_context = _website_generation_context(company_id, mission, task)
+        if task_key == "product-frontend_engineer" or "local website preview" in str(task.get("name") or "").lower():
             sources = _initiative_evidence(company_id, mission.get("initiative_id"))
             return _store_artifact(company_id, task, f"Website preview — {_short_title(mission_name)}",
-                                   {"content": _website_preview(mission_name, sources), "sources": sources}, source="local website", internal=False)
-        if "publication decision" in title.lower() or "publish approval" in title.lower():
+                                   {"content": _website_preview(mission_name, sources, website_context), "sources": sources,
+                                    "generation_context": website_context}, source="local website", internal=False)
+        if task_key == "product-architecture":
+            return _store_artifact(company_id, task, f"Website architecture — {_short_title(mission_name)}",
+                                   {"content": _website_architecture(mission_name, website_context)}, source="internal analysis", internal=True)
+        if task_key == "product-review" or "publication decision" in str(task.get("name") or "").lower() or "publish approval" in str(task.get("name") or "").lower():
             # specialist_task_plan always queues a Vercel publish task directly
             # after this one (company_os_dispatch.py:359-360) -- it is never a
             # separate, not-yet-requested follow-up. Claiming "no publication
@@ -325,7 +331,8 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             # the same breath, a "waiting on your approval" status for that
             # exact publish request).
             return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Local preview ready\n\nThe local website preview is available in the Library. Publishing to Vercel has been queued and is waiting on your approval -- check Approvals in the sidebar when you're ready to make it public."}, source="internal analysis")
-        return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}", {"content": _website_brief(mission_name)}, source="internal analysis", internal=True)
+        return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}",
+                               {"content": _website_brief(mission_name, website_context)}, source="internal analysis", internal=True)
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
     if mission.get("department") == "research" and task.get("task_key") == "research-review":
@@ -578,9 +585,47 @@ def _is_website_request(value: str) -> bool:
     return any(term in value.lower() for term in ("website", "web site", "landing page", "web app", "frontend"))
 
 
-def _website_brief(request: str) -> str:
+def _website_generation_context(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
+    """Carry the planner's intent and completed handoffs into page generation."""
+    company = get_company_os(company_id) or {}
+    initiative = _find(company.get("initiatives", []), "initiative_id", mission.get("initiative_id")) or {}
+    squad = _find(company.get("squads", []), "squad_id", mission.get("squad_id")) or {}
+    by_id = {str(item.get("task_id")): item for item in company.get("tasks", [])}
+    required: set[str] = set()
+    pending = list(task.get("depends_on_task_ids") or [])
+    while pending:
+        task_id = str(pending.pop())
+        if task_id in required:
+            continue
+        required.add(task_id)
+        pending.extend(by_id.get(task_id, {}).get("depends_on_task_ids") or [])
+    handoff_ids = {str(item.get("task_id")) for item in company.get("tasks", []) if str(item.get("task_id")) in required}
+    handoffs = []
+    for artifact in company.get("artifacts", []):
+        if str(artifact.get("task_id")) in handoff_ids and str(artifact.get("content") or "").strip():
+            handoffs.append({"name": artifact.get("name"), "content": str(artifact.get("content"))[:5_000]})
+    request = initiative.get("work_request") if isinstance(initiative.get("work_request"), Mapping) else {}
+    return {
+        "objective": request.get("outcome") or initiative.get("objective") or mission.get("name"),
+        "deliverables": request.get("deliverables") or [], "constraints": request.get("constraints") or [],
+        "entities": request.get("entities") or [], "acceptance_criteria": task.get("acceptance_criteria") or initiative.get("success_criteria") or [],
+        "squad_charter": squad.get("squad_charter") or squad.get("charter") or "",
+        "handoffs": handoffs,
+    }
+
+
+def _website_brief(request: str, context: Mapping[str, Any] | None = None) -> str:
     domain, brand = _website_identity(request)
-    return f"## {brand} local website brief\n\n- **Destination:** `{domain}`\n- **Scope:** a local, reviewable website concept only\n- **Research dependency:** comparison evidence informs the preview before it is generated\n- **Publication:** no deployment or external change is included in this mission\n"
+    context = context or {}
+    deliverables = ", ".join(str(item) for item in context.get("deliverables") or []) or "A reviewable website preview"
+    criteria = "; ".join(str(item) for item in context.get("acceptance_criteria") or []) or "Clear, request-specific structure and copy"
+    return f"## {brand} website brief\n\n- **Destination:** `{domain}`\n- **Outcome:** {context.get('objective') or request}\n- **Deliverables:** {deliverables}\n- **Acceptance:** {criteria}\n- **Scope:** a local, reviewable website concept before any external publication\n"
+
+
+def _website_architecture(request: str, context: Mapping[str, Any]) -> str:
+    domain, brand = _website_identity(request)
+    entities = ", ".join(str(item) for item in context.get("entities") or []) or brand
+    return f"## {brand} website architecture\n\n- **Information architecture:** narrative hero, subject-specific proof, focused offer, and one clear call to action.\n- **Primary subject:** {entities}\n- **Design constraint:** create a distinct visual direction from the initiative brief, not a generic product dashboard.\n- **Handoffs considered:** {len(context.get('handoffs') or [])} completed upstream artifact(s).\n- **Responsive contract:** usable at 320px and desktop widths, with no external side effects.\n"
 
 
 _GENERIC_WEBSITE_COPY = {
@@ -634,8 +679,12 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
     return generic
 
 
-def _website_preview(request: str, sources: list[Mapping[str, Any]] | None = None) -> str:
+def _website_preview(request: str, sources: list[Mapping[str, Any]] | None = None,
+                     context: Mapping[str, Any] | None = None) -> str:
     domain, brand = _website_identity(request)
+    generated = _generated_website_html(request, brand, domain, sources, context or {})
+    if generated:
+        return generated
     evidence_count = len(sources or [])
     source_note = f"Informed by {evidence_count} cited research source{'s' if evidence_count != 1 else ''} gathered for this initiative." if evidence_count else "Built as a local concept; product claims remain pending verified comparison evidence."
     copy_data = _website_copy(request, brand, sources)
@@ -643,8 +692,53 @@ def _website_preview(request: str, sources: list[Mapping[str, Any]] | None = Non
         f'<article class="card"><span class="number">{html.escape(str(c["label"]))}</span><b>{html.escape(str(c["title"]))}</b><span>{html.escape(str(c["description"]))}</span></article>'
         for c in copy_data["cards"]
     )
+    variant = int(hashlib.sha256(request.encode("utf-8")).hexdigest()[:2], 16) % 3
+    themes = (
+        ("#10211e", "#f4f0e8", "#d8ff52", "#16342d", "#0d201c", "#fbf9f4"),
+        ("#101827", "#f3f7fc", "#6ee7ff", "#14213d", "#273a68", "#ffffff"),
+        ("#341b18", "#fff6eb", "#ff9d66", "#7c3026", "#3b1716", "#fffdfa"),
+    )
+    ink, canvas, accent, hero_start, hero_end, card = themes[variant]
     return f"""<!doctype html>
-<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(brand)} | Local preview</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap\" rel=\"stylesheet\"><style>:root{{--ink:#10211e;--cream:#f4f0e8;--acid:#d8ff52}}*{{box-sizing:border-box}}body{{margin:0;background:var(--cream);color:var(--ink);font-family:Manrope,sans-serif}}.hero{{min-height:680px;padding:28px clamp(24px,6vw,88px);background:radial-gradient(circle at 85% 16%,#d8ff52 0 9%,transparent 30%),linear-gradient(124deg,#16342d,#0d201c 60%,#25443b);color:#f8f5ed;overflow:hidden}}nav{{display:flex;justify-content:space-between;align-items:center;font-weight:800}}.mark{{display:flex;gap:9px;align-items:center;font-size:20px}}.dot{{width:13px;height:13px;border-radius:50%;background:var(--acid);box-shadow:0 0 0 6px #d8ff5233}}.navlink,.eyebrow,.caption,.number,footer{{font:500 11px 'DM Mono';letter-spacing:.1em;text-transform:uppercase}}.navlink{{color:#d7e6dc}}.hero-copy{{max-width:870px;margin:120px 0 64px}}.eyebrow{{color:var(--acid);letter-spacing:.13em}}h1{{font:600 clamp(52px,8vw,112px)/.96 'Playfair Display',serif;letter-spacing:-.06em;margin:18px 0 28px}}h1 em{{color:var(--acid)}}.lede{{font-size:clamp(18px,2vw,24px);line-height:1.5;max-width:640px;color:#d8e5de}}.actions{{display:flex;gap:14px;align-items:center;margin-top:38px}}button{{border:0;border-radius:999px;padding:15px 22px;background:var(--acid);color:#10211e;font:800 14px Manrope}}.caption{{color:#b8cbc1;letter-spacing:0;text-transform:none}}section{{padding:88px clamp(24px,6vw,88px)}}.split{{display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:start}}h2{{font:600 clamp(36px,5vw,60px)/1 'Playfair Display',serif;letter-spacing:-.05em;margin:0}}.body{{font-size:18px;line-height:1.65;color:#40534d}}.cards{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:46px}}.card{{min-height:210px;padding:24px;border:1px solid #cfd8d1;border-radius:16px;background:#fbf9f4}}.card b{{display:block;margin:40px 0 8px;font-size:18px}}.number{{color:#788b83}}.evidence{{padding:24px 28px;border-radius:14px;background:#e0e8e2;font:500 13px/1.6 'DM Mono';color:#385048}}footer{{padding:28px clamp(24px,6vw,88px);display:flex;justify-content:space-between;border-top:1px solid #ced7d0;color:#667972}}@media(max-width:700px){{.hero{{min-height:560px}}.hero-copy{{margin-top:82px}}.split,.cards{{grid-template-columns:1fr}}section{{padding-top:60px;padding-bottom:60px}}}}</style></head><body><header class=\"hero\"><nav><div class=\"mark\"><span class=\"dot\"></span>{html.escape(brand)}</div><span class=\"navlink\">{html.escape(domain)} / local concept</span></nav><div class=\"hero-copy\"><div class=\"eyebrow\">{html.escape(str(copy_data["eyebrow"]))}</div><h1>{html.escape(str(copy_data["headline_plain"]))} <em>{html.escape(str(copy_data["headline_emphasis"]))}</em></h1><p class=\"lede\">{html.escape(str(copy_data["lede"]))}</p><div class=\"actions\"><button>See the operating system</button><span class=\"caption\">Preview only. Nothing has been published.</span></div></div></header><main><section class=\"split\"><h2>{html.escape(str(copy_data["section2_heading"]))}</h2><div class=\"body\">{html.escape(str(copy_data["section2_body"]))}</div></section><section><div class=\"eyebrow\" style=\"color:#466c5e\">How it works</div><div class=\"cards\">{cards_html}</div></section><section><div class=\"evidence\">RESEARCH STATUS / {html.escape(source_note)}</div></section></main><footer><span>{html.escape(brand)} / {html.escape(domain)}</span><span>LOCAL WEBSITE PREVIEW</span></footer></body></html>"""
+<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(brand)} | Preview</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap\" rel=\"stylesheet\"><style>:root{{--ink:{ink};--canvas:{canvas};--accent:{accent};--card:{card}}}*{{box-sizing:border-box}}body{{margin:0;background:var(--canvas);color:var(--ink);font-family:Manrope,sans-serif}}.hero{{min-height:680px;padding:28px clamp(24px,6vw,88px);background:radial-gradient(circle at 85% 16%,var(--accent) 0 9%,transparent 30%),linear-gradient(124deg,{hero_start},{hero_end} 60%,{hero_start});color:#f8f5ed;overflow:hidden}}nav{{display:flex;justify-content:space-between;align-items:center;font-weight:800}}.mark{{display:flex;gap:9px;align-items:center;font-size:20px}}.dot{{width:13px;height:13px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 20%,transparent)}}.navlink,.eyebrow,.caption,.number,footer{{font:500 11px 'DM Mono';letter-spacing:.1em;text-transform:uppercase}}.navlink{{color:#d7e6dc}}.hero-copy{{max-width:870px;margin:120px 0 64px}}.eyebrow{{color:var(--accent);letter-spacing:.13em}}h1{{font:600 clamp(52px,8vw,112px)/.96 'Playfair Display',serif;letter-spacing:-.06em;margin:18px 0 28px}}h1 em{{color:var(--accent)}}.lede{{font-size:clamp(18px,2vw,24px);line-height:1.5;max-width:640px;color:#d8e5de}}.actions{{display:flex;gap:14px;align-items:center;margin-top:38px}}button{{border:0;border-radius:999px;padding:15px 22px;background:var(--accent);color:var(--ink);font:800 14px Manrope}}.caption{{color:#b8cbc1;letter-spacing:0;text-transform:none}}section{{padding:88px clamp(24px,6vw,88px)}}.split{{display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:start}}h2{{font:600 clamp(36px,5vw,60px)/1 'Playfair Display',serif;letter-spacing:-.05em;margin:0}}.body{{font-size:18px;line-height:1.65;color:color-mix(in srgb,var(--ink) 70%,white)}}.cards{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:46px}}.card{{min-height:210px;padding:24px;border:1px solid color-mix(in srgb,var(--ink) 15%,transparent);border-radius:{12 + variant * 8}px;background:var(--card)}}.card b{{display:block;margin:40px 0 8px;font-size:18px}}.number{{color:color-mix(in srgb,var(--ink) 55%,white)}}.evidence{{padding:24px 28px;border-radius:14px;background:color-mix(in srgb,var(--accent) 20%,var(--canvas));font:500 13px/1.6 'DM Mono';color:var(--ink)}}footer{{padding:28px clamp(24px,6vw,88px);display:flex;justify-content:space-between;border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent);color:color-mix(in srgb,var(--ink) 62%,white)}}@media(max-width:700px){{.hero{{min-height:560px}}.hero-copy{{margin-top:82px}}.split,.cards{{grid-template-columns:1fr}}section{{padding-top:60px;padding-bottom:60px}}}}</style></head><body><header class=\"hero\"><nav><div class=\"mark\"><span class=\"dot\"></span>{html.escape(brand)}</div><span class=\"navlink\">{html.escape(domain)} / local concept</span></nav><div class=\"hero-copy\"><div class=\"eyebrow\">{html.escape(str(copy_data["eyebrow"]))}</div><h1>{html.escape(str(copy_data["headline_plain"]))} <em>{html.escape(str(copy_data["headline_emphasis"]))}</em></h1><p class=\"lede\">{html.escape(str(copy_data["lede"]))}</p><div class=\"actions\"><button>Explore the idea</button><span class=\"caption\">Local preview</span></div></div></header><main><section class=\"split\"><h2>{html.escape(str(copy_data["section2_heading"]))}</h2><div class=\"body\">{html.escape(str(copy_data["section2_body"]))}</div></section><section><div class=\"eyebrow\" style=\"color:var(--ink)\">What it makes possible</div><div class=\"cards\">{cards_html}</div></section><section><div class=\"evidence\">RESEARCH STATUS / {html.escape(source_note)}</div></section></main><footer><span>{html.escape(brand)} / {html.escape(domain)}</span><span>LOCAL WEBSITE PREVIEW</span></footer></body></html>"""
+
+
+def _generated_website_html(request: str, brand: str, domain: str, sources: list[Mapping[str, Any]] | None,
+                            context: Mapping[str, Any]) -> str | None:
+    """Generate an original, safe-to-host static page rather than filling one shell."""
+    try:
+        from backend.tools._llm import generate, parse_json_response
+        evidence = "\n".join(
+            f"- {item.get('title') or 'Source'}: {item.get('url') or ''}"
+            for item in (sources or [])[:8] if isinstance(item, Mapping)
+        ) or "No verified research sources were attached."
+        handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or []) or "No upstream artifacts yet."
+        prompt = f"""You are the lead designer and frontend engineer for a bespoke website concept.
+
+Founder request: {request!r}
+Brand: {brand!r}
+Destination: {domain!r}
+Verified source references: {evidence}
+Initiative objective: {context.get('objective') or request}
+Deliverables: {context.get('deliverables') or []}
+Constraints: {context.get('constraints') or []}
+Acceptance criteria: {context.get('acceptance_criteria') or []}
+Squad charter: {context.get('squad_charter') or '(not recorded)'}
+Completed squad handoffs:
+{handoffs[:10_000]}
+
+Create an ORIGINAL, self-contained single-page website for this exact request. Do not reuse a generic SaaS dashboard layout, a prior visual direction, or generic phrases such as "bring the whole company into view." Pick one distinct art direction that fits the request, then make the typography, color system, composition, sections, and copy serve that direction. Use real, request-specific copy. Do not invent factual claims unsupported by the source references. This is a static reviewable preview: no JavaScript, forms, iframes, analytics, external images, or external links. You may use CSS only, including inline SVG shapes.
+
+Return ONLY JSON: {{"html":"<!doctype html>..."}}. The HTML must include responsive CSS and be between 2,000 and 55,000 characters."""
+        parsed = parse_json_response(generate(prompt, model="large", json_mode=True, max_tokens=6000, temperature=0.85))
+        candidate = str(parsed.get("html") or "").strip()
+        blocked = ("<script", "<iframe", "<form", "javascript:", " onerror=", " onclick=")
+        if (candidate.lower().startswith("<!doctype html") and 2_000 <= len(candidate) <= 55_000
+                and all(token not in candidate.lower() for token in blocked)):
+            return candidate
+    except Exception:
+        logger.info("Bespoke website generation fell back to the resilient themed renderer", exc_info=True)
+    return None
 
 
 def _website_identity(request: str) -> tuple[str, str]:
