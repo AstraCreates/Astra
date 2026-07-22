@@ -411,8 +411,10 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         })
         state["updated_at"] = event["at"]
         return
-    if kind == "policy" and action == "decided":
-        state["policy_decisions"].append({**copy.deepcopy(event["payload"]), "created_at": event["at"]})
+    if kind == "policy" and action in {"decided", "approval_consumed"}:
+        state["policy_decisions"].append({
+            "event_type": event["type"], **copy.deepcopy(event["payload"]), "created_at": event["at"],
+        })
         state["updated_at"] = event["at"]
         return
     if kind == "dispatch" and action == "routed":
