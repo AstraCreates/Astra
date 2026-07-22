@@ -655,19 +655,26 @@ def _company_research(args: dict) -> dict:
                             else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search))
             if task_id:
                 evidence.setdefault("search_count", counter.get("n", 0))
-                try:
-                    from backend.company_os import update_task
-                    # A nested deep_worker call must persist the running
-                    # cumulative total (matching on_search's live counter),
-                    # not just its own local count, or finishing resets the
-                    # task back down to one call's small cap. The top-level
-                    # supervisor call has no local searches of its own -- its
-                    # evidence["search_count"] is already the adapter's own
-                    # correct sum across every delegated call.
-                    persisted_count = (base_search_count + counter.get("n", 0)) if args.get("deep_worker") else int(evidence.get("search_count") or 0)
-                    update_task(company_id, str(task_id), search_count=persisted_count)
-                except Exception:
-                    pass
+                # Only a nested deep_worker call persists here -- it must write
+                # the running CUMULATIVE total (base_search_count + this call's
+                # own on_search increments), not just its own local count, or
+                # finishing resets the task back down to one call's small cap.
+                # The top-level supervisor call must NOT also write search_count:
+                # every real website visit already happened (and was already
+                # live-persisted) inside its nested deep_worker calls sharing
+                # this same task_id, so by the time the supervisor returns the
+                # task already holds the true final total. evidence["search_count"]
+                # here is the adapter's OWN independently-computed sum (each
+                # nested call's own local count re-summed) -- a redundant,
+                # differently-derived number with no guarantee of matching the
+                # live total, and overwriting with it is exactly what produced
+                # a live-reported jump (24 -> 96) at the end of a real run.
+                if args.get("deep_worker"):
+                    try:
+                        from backend.company_os import update_task
+                        update_task(company_id, str(task_id), search_count=base_search_count + counter.get("n", 0))
+                    except Exception:
+                        pass
             validation = validate_deep_research(evidence)
             # The supervisor path (run_open_deep_research) already stamps its own
             # "open_deep_research_langgraph" profile; keep that intact instead of

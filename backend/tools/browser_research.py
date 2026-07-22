@@ -1176,8 +1176,17 @@ def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None
                     results_by_query[q] = fut.result()
                 except Exception as e:
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(e)}
+                # on_search fires once per WEBSITE actually visited (one call
+                # per fetched source), not once per query -- a query returns
+                # up to max_results_each sources, so counting queries badly
+                # undercounted real work and, worse, is a unit founders don't
+                # have an intuition for ("6 searches" tells them nothing; "24
+                # websites visited" does). A failed/timed-out query visited
+                # zero sites, so it naturally contributes zero here instead
+                # of the flat +1 the old per-query counter gave it.
                 if on_search:
-                    on_search()
+                    for _ in results_by_query[q].get("sources", []):
+                        on_search()
         except TimeoutError:
             timed_out = True
             _record_crw_result(False)
@@ -1185,8 +1194,6 @@ def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None
                 if q not in results_by_query:
                     fut.cancel()
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_timeout"}
-                    if on_search:
-                        on_search()
     finally:
         if timed_out or (cancel_event is not None and cancel_event.is_set()):
             for fut, q in futures.items():
@@ -1407,8 +1414,12 @@ def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=Non
                         results_by_query[q] = fut.result()
                     except Exception as e:
                         results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+                    # See _crw_batch_search's matching comment: on_search fires
+                    # once per website actually visited (one fetched source),
+                    # not once per query.
                     if on_search:
-                        on_search()
+                        for _ in results_by_query[q].get("sources", []):
+                            on_search()
             except TimeoutError:
                 for fut, q in futures.items():
                     if q in results_by_query:
@@ -1422,7 +1433,8 @@ def batch_search(queries=None, max_results_each: int = 8, cancellation_fence=Non
                         fut.cancel()
                         results_by_query[q] = {"query": q, "results": [], "error": "search_timeout"}
                     if on_search:
-                        on_search()
+                        for _ in results_by_query[q].get("sources", []):
+                            on_search()
 
     combined = []
     all_sources = []

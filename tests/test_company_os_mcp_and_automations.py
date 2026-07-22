@@ -15,7 +15,17 @@ def test_company_os_replays_mcp_audit_events(tmp_path):
     assert [entry["event_type"] for entry in state["mcp_audit"]] == ["mcp.tool_called", "mcp.tool_completed"]
 
 
-def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, monkeypatch):
+def test_company_research_does_not_overwrite_the_live_count_with_its_own_redundant_total(tmp_path, monkeypatch):
+    """Confirmed live: search_count visibly jumped (24 -> 96) the instant a
+    research mission finished. Root cause: the top-level supervisor call
+    used to persist evidence["search_count"] -- the adapter's OWN
+    independently-computed sum (re-summing each nested delegated call's own
+    local count) -- clobbering whatever the nested deep_worker calls had
+    already correctly, live-accumulated onto the same task via on_search.
+    These are two unrelated tallies with no guarantee of matching. The
+    top-level call must leave search_count untouched; only a nested
+    deep_worker call (simulated here by writing search_count directly,
+    exactly as a real nested call would via on_search) may persist it."""
     from backend import company_os
     import backend.astra_mcp as mcp
 
@@ -26,34 +36,26 @@ def test_company_research_persists_a_live_search_count_onto_the_task(tmp_path, m
     squad = company_os.create_squad("co", "i1", "Insights", squad_id="s1")
     task = company_os.create_task("co", "i1", "s1", "Gather validated evidence", task_id="t1", state="working")
 
-    def fake_pipeline(topic, *, focus, max_results_each, on_search=None):
-        for _ in range(3):
-            on_search()
-        return {
-            "combined_formatted": "evidence", "queries_run": 3,
-            "sources": [{"url": "https://example.com/a", "retrieved_at": "2026-07-21T00:00:00Z"},
-                        {"url": "https://example.org/b", "retrieved_at": "2026-07-21T00:00:00Z"}],
-        }
-    # The public Company OS research boundary is deep research. The old
-    # batch pipeline is only used by delegated worker calls.
     async def fake_deep(topic, **scope):
         assert scope["task_id"] == "t1"
+        # Simulates what real nested deep_worker calls already did live via
+        # on_search before the supervisor returns.
+        company_os.update_task("co", "t1", search_count=24)
         return {
             "combined_formatted": "evidence", "queries_run": 3,
-            "search_count": 3,
+            "search_count": 96,  # the adapter's own redundant, differently-derived total
             "sources": [{"url": "https://example.com/a", "retrieved_at": "2026-07-21T00:00:00Z"},
                         {"url": "https://example.org/b", "retrieved_at": "2026-07-21T00:00:00Z"}],
             "structured": {"evidence": [{"claim": "supported"}]},
             "coverage": {"ready": True, "gaps": []},
         }
     monkeypatch.setattr("backend.tools.open_deep_research_adapter.run_open_deep_research", fake_deep)
-    monkeypatch.setattr("backend.tools.browser_research.run_research_pipeline", fake_pipeline)
 
     result = mcp._company_research({"company_id": "co", "founder_id": "founder", "subject": "instacart", "task_id": "t1"})
 
     assert result["ok"] is True
     updated_task = next(item for item in company_os.get_company_os("co")["tasks"] if item["task_id"] == "t1")
-    assert updated_task["search_count"] == 3
+    assert updated_task["search_count"] == 24  # not overwritten with the adapter's own 96
 
 
 def test_deep_worker_uses_quick_pipeline_without_recursing_into_supervisor(tmp_path, monkeypatch):
