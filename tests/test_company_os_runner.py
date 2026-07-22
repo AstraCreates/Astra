@@ -1,4 +1,5 @@
 import contextlib
+from datetime import datetime, timezone
 
 import pytest
 
@@ -73,6 +74,40 @@ async def test_recover_pending_missions_requeues_stale_working_tasks(monkeypatch
     assert attempt_updates[0][1]["error"] == "orphaned_after_process_restart"
     assert launches == [("acme", "mission-1")]
     assert "Recovered stalled work" in messages[0][0][1]
+
+
+@pytest.mark.asyncio
+async def test_recover_pending_missions_leaves_a_genuinely_in_progress_mission_alone(monkeypatch):
+    """A task sitting "pending" behind another task that is actively (and
+    NOT stale) "working" is completely normal for any multi-task mission --
+    it is not evidence the process died. Production incident: this alone
+    used to trigger a redundant run_mission that skipped the fresh working
+    task (not pending/scheduled) and ran the NEXT task for real with no
+    evidence yet, permanently blocking it (deep research evidence gate)."""
+    company = {
+        "company_id": "acme",
+        "missions": [{"mission_id": "mission-1", "state": "working"}],
+        "tasks": [
+            {"task_id": "task-1", "mission_id": "mission-1", "name": "Gather evidence",
+             "state": "working", "updated_at": datetime.now(timezone.utc).isoformat()},
+            {"task_id": "task-2", "mission_id": "mission-1", "name": "Synthesize findings", "state": "pending"},
+        ],
+        "task_attempts": [],
+    }
+
+    class _Settings:
+        company_os_stale_task_seconds = 1800
+
+    monkeypatch.setattr("backend.config.settings", _Settings())
+    monkeypatch.setattr("backend.company_os_runner.list_company_os", lambda: [company])
+    monkeypatch.setattr("backend.company_os_runner.get_company_os", lambda *_args, **_kwargs: company)
+
+    def fail_if_called(*_a, **_k):
+        raise AssertionError("must not relaunch a mission with a genuinely fresh working task")
+    monkeypatch.setattr("backend.company_os_runner.run_mission", fail_if_called)
+    monkeypatch.setattr("backend.company_os_runner.update_task", fail_if_called)
+
+    assert await recover_pending_missions() == 0
 
 
 def test_comparison_document_never_recommends_with_unbalanced_evidence():

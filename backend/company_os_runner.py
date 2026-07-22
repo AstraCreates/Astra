@@ -132,6 +132,16 @@ async def recover_pending_missions() -> int:
             if mission.get("state") not in {"active", "working", "review"}:
                 continue
             mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
+            # A task sitting "pending" behind another task that is genuinely
+            # still working -- not stale -- is completely normal (every
+            # multi-task mission looks like this while its current step
+            # runs); it is not evidence of an interrupted process. Without
+            # this guard, "pending_tasks" alone fired a redundant run_mission
+            # for a mission that was simply still in progress, which then
+            # skipped the (not-yet-stale) working task and ran the NEXT task
+            # for real with no evidence from the one still actually running.
+            if any(task.get("state") == "working" and not is_stale(task) for task in mission_tasks):
+                continue
             stale_tasks = [task for task in mission_tasks if is_stale(task)]
             pending_tasks = [task for task in mission_tasks if task.get("state") in {"pending", "scheduled"}]
             if stale_tasks or pending_tasks:
@@ -143,6 +153,8 @@ async def recover_pending_missions() -> int:
                     current = get_company_os(company["company_id"]) or {}
                     current_mission = _find(current.get("missions", []), "mission_id", mission["mission_id"])
                     current_tasks = [task for task in current.get("tasks", []) if task.get("mission_id") == mission["mission_id"]]
+                    if any(task.get("state") == "working" and not is_stale(task) for task in current_tasks):
+                        continue
                     current_stale = [task for task in current_tasks if is_stale(task)]
                     current_pending = [task for task in current_tasks if task.get("state") in {"pending", "scheduled"}]
                     if not current_mission or not current_stale and not current_pending:
