@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Brain, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileText, LayoutDashboard, Link2, Loader2, MessageCircle, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard, Link2, Loader2, MessageCircle, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -14,6 +14,33 @@ const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_BACKOFF_MS = 60000;
 const STARTER_PROMPTS = ["What needs my attention?", "Summarize where things stand.", "What's blocked right now?"];
+const DEFAULT_RAIL_WIDTH = 420;
+const MIN_RAIL_WIDTH = 320;
+const MAX_RAIL_WIDTH = 620;
+
+type DeleteKind = "initiative" | "squad" | "artifact";
+
+function removeCompanyItem(data: CompanyHomeData, kind: DeleteKind, id: string): CompanyHomeData {
+  if (kind === "initiative") {
+    const removedSquadNames = new Set(data.squads.filter(squad => squad.initiativeId === id).map(squad => squad.name));
+    return {
+      ...data,
+      initiatives: data.initiatives.filter(item => item.id !== id),
+      squads: data.squads.filter(squad => squad.initiativeId !== id),
+      approvals: data.approvals.filter(approval => !removedSquadNames.has(approval.squad)),
+      brain: { ...data.brain, artifacts: data.brain.artifacts.filter(item => item.initiativeId !== id) },
+    };
+  }
+  if (kind === "squad") {
+    const squadName = data.squads.find(squad => squad.id === id)?.name;
+    return {
+      ...data,
+      squads: data.squads.filter(squad => squad.id !== id),
+      approvals: data.approvals.filter(approval => approval.squad !== squadName),
+    };
+  }
+  return { ...data, brain: { ...data.brain, artifacts: data.brain.artifacts.filter(item => item.id !== id) } };
+}
 
 function InlineMarkdown({ text, inverse = false }: { text: string; inverse?: boolean }) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^\s)]+\))/g);
@@ -175,9 +202,10 @@ export default function CompanyHome() {
   const [sending, setSending] = useState(false);
   const [artifact, setArtifact] = useState<CompanyArtifactDetail | null>(null);
   const [artifactError, setArtifactError] = useState("");
-  const [deletingId, setDeletingId] = useState("");
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [retryingTaskId, setRetryingTaskId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
+  const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
   const [workspaceInitiativeId, setWorkspaceInitiativeId] = useState("");
   const [savingInitiative, setSavingInitiative] = useState(false);
@@ -187,9 +215,34 @@ export default function CompanyHome() {
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
-  const initiativesRailRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingDeleteIdsRef = useRef(new Set<string>());
+
+  const setItemDeleting = (id: string, deleting: boolean) => {
+    if (deleting) pendingDeleteIdsRef.current.add(id);
+    else pendingDeleteIdsRef.current.delete(id);
+    setDeletingIds(new Set(pendingDeleteIdsRef.current));
+  };
+
+  const applyPendingDeletes = (data: CompanyHomeData) => {
+    let next = data;
+    for (const id of pendingDeleteIdsRef.current) {
+      next = removeCompanyItem(removeCompanyItem(removeCompanyItem(next, "initiative", id), "squad", id), "artifact", id);
+    }
+    return next;
+  };
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("astra-company-rail-width");
+    if (!saved) return;
+    const width = Number(saved);
+    if (Number.isFinite(width)) setRailWidth(Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, width)));
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("astra-company-rail-width", String(railWidth));
+  }, [railWidth]);
 
   // Exponential backoff on repeated failures instead of a fixed 3s interval
   // forever. Confirmed production incident: a corrupted Company OS event log
@@ -207,7 +260,7 @@ export default function CompanyHome() {
       void getCompanyHomeData({ founderId, companyId })
         .then((data) => {
           if (!live) return;
-          setHome(data);
+          setHome(applyPendingDeletes(data));
           setNotice("");
           consecutiveFailures = 0;
           schedule(POLL_INTERVAL_MS);
@@ -229,15 +282,21 @@ export default function CompanyHome() {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [home.conversation.length]);
 
+  const reconcileAfterFailedDelete = () => {
+    void getCompanyHomeData({ founderId, companyId }).then(data => setHome(applyPendingDeletes(data))).catch(() => undefined);
+  };
+
   const handleDeleteInitiative = async (initiativeId: string) => {
-    setDeletingId(initiativeId);
+    setItemDeleting(initiativeId, true);
+    setHome(current => removeCompanyItem(current, "initiative", initiativeId));
+    if (workspaceInitiativeId === initiativeId) setWorkspaceInitiativeId("");
     try {
-      const data = await deleteInitiative({ founderId, companyId }, initiativeId);
-      setHome(data);
+      await deleteInitiative({ founderId, companyId }, initiativeId);
     } catch {
       setNotice("Could not delete that initiative — try again.");
+      reconcileAfterFailedDelete();
     } finally {
-      setDeletingId("");
+      setItemDeleting(initiativeId, false);
     }
   };
 
@@ -260,14 +319,16 @@ export default function CompanyHome() {
   };
 
   const handleDeleteSquad = async (squadId: string) => {
-    setDeletingId(squadId);
+    setItemDeleting(squadId, true);
+    setHome(current => removeCompanyItem(current, "squad", squadId));
+    if (workbenchSquadId === squadId) setWorkbenchSquadId("");
     try {
-      const data = await deleteSquad({ founderId, companyId }, squadId);
-      setHome(data);
+      await deleteSquad({ founderId, companyId }, squadId);
     } catch {
       setNotice("Could not delete that squad — try again.");
+      reconcileAfterFailedDelete();
     } finally {
-      setDeletingId("");
+      setItemDeleting(squadId, false);
     }
   };
 
@@ -285,19 +346,30 @@ export default function CompanyHome() {
 
   const handleDeleteArtifact = async (artifactId: string, event: MouseEvent) => {
     event.stopPropagation();
-    setDeletingId(artifactId);
+    setItemDeleting(artifactId, true);
+    setHome(current => removeCompanyItem(current, "artifact", artifactId));
+    if (artifact?.id === artifactId) setArtifact(null);
     try {
-      const data = await deleteArtifact({ founderId, companyId }, artifactId);
-      setHome(data);
+      await deleteArtifact({ founderId, companyId }, artifactId);
     } catch {
       setNotice("Could not delete that artifact — try again.");
+      reconcileAfterFailedDelete();
     } finally {
-      setDeletingId("");
+      setItemDeleting(artifactId, false);
     }
   };
 
-  const scrollInitiatives = (direction: -1 | 1) => {
-    initiativesRailRef.current?.scrollBy({ left: direction * 260, behavior: "smooth" });
+  const startRailResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = railWidth;
+    const move = (pointer: PointerEvent) => setRailWidth(Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, startWidth + startX - pointer.clientX)));
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
   };
 
   const startEditingMessage = (turn: { id: string; message: string }) => {
@@ -409,7 +481,7 @@ export default function CompanyHome() {
 
   return <div style={{ display: "flex", height: "100%", minHeight: "100vh", background: "var(--bg)" }}>
     <style>{`
-      .company-home-initiative-delete { opacity: 0; transition: opacity .14s, background .14s, color .14s; }
+      .company-home-initiative-delete { opacity: .68; transition: opacity .14s, background .14s, color .14s; }
       .company-home-initiative-card:hover .company-home-initiative-delete,
       .company-home-artifact-row:hover .company-home-initiative-delete,
       .company-home-squad-card:hover .company-home-initiative-delete,
@@ -423,7 +495,11 @@ export default function CompanyHome() {
       .company-home-rail-toggle:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
       .company-home-initiative-card { transition: border-color .14s, transform .14s, box-shadow .14s; cursor: pointer; }
       .company-home-initiative-card:hover { border-color: var(--accent) !important; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15,23,42,.08); }
+      .company-home-rail-resizer { width: 9px; flex: 0 0 9px; cursor: col-resize; position: relative; background: transparent; touch-action: none; }
+      .company-home-rail-resizer::after { content: ""; position: absolute; inset: 0 3px; background: var(--bd); transition: background .14s, width .14s; }
+      .company-home-rail-resizer:hover::after, .company-home-rail-resizer:focus-visible::after { background: var(--accent); width: 3px; }
       @media (max-width: 860px) { .company-home-rail { display: none !important; } }
+      @media (max-width: 860px) { .company-home-rail-resizer { display: none !important; } }
       .company-home-chat-actions { opacity: 0; transition: opacity .14s; }
       .company-home-chat-turn:hover .company-home-chat-actions, .company-home-chat-actions:focus-within { opacity: 1; }
       .company-home-chat-actions button:hover { background: var(--bdim) !important; color: var(--accent) !important; }
@@ -662,33 +738,31 @@ export default function CompanyHome() {
         typography than a control-room dashboard would use. Everything that
         used to be full-width sections (Initiatives, Squad activity, Mission
         board, Approvals, Artifacts, Company Brain) lives here now. */}
-    {railOpen && (
-      <aside className="company-home-rail" style={{ width: 340, flexShrink: 0, height: "100vh", overflowY: "auto", borderLeft: "1px solid var(--bd)", padding: "20px 18px", background: "var(--bg-sunken)" }}>
+    {railOpen && <>
+      <div className="company-home-rail-resizer" role="separator" aria-orientation="vertical" aria-label="Resize company panel" tabIndex={0} onPointerDown={startRailResize} onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") setRailWidth(width => Math.min(MAX_RAIL_WIDTH, width + 20));
+        if (event.key === "ArrowRight") setRailWidth(width => Math.max(MIN_RAIL_WIDTH, width - 20));
+      }} />
+      <aside className="company-home-rail" style={{ width: railWidth, flexShrink: 0, height: "100vh", overflowY: "auto", borderLeft: "1px solid var(--bd)", padding: "18px 16px 30px", background: "var(--bg-sunken)" }}>
         <section style={{ marginBottom: 22 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg)", fontWeight: 700, fontSize: 13 }}><Brain size={15} color="var(--accent)" /> Company Brain</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg)", fontWeight: 700, fontSize: 13 }}><Brain size={15} color="var(--accent)" /> Company Brain</div><button type="button" onClick={() => setRailWidth(DEFAULT_RAIL_WIDTH)} title="Reset panel width" style={{ padding: "3px 6px", border: "1px solid var(--bd)", borderRadius: 5, background: "var(--bg-surface)", color: "var(--fm)", fontSize: 9.5, cursor: "pointer" }}>Reset width</button></div>
           <p style={{ color: "var(--fm)", fontSize: 11.5, lineHeight: 1.5, margin: "6px 0" }}>{home.brain.summary}</p>
-          <div style={{ display: "flex", gap: 14, fontSize: 11 }}><span style={{ color: "var(--fd)" }}><b>{home.brain.recordCount}</b> records</span><span style={{ color: "var(--fd)" }}><b>{home.brain.sourceCount}</b> sources</span></div>
+          <div style={{ display: "flex", gap: 7, fontSize: 10.5 }}><span style={{ padding: "4px 7px", borderRadius: 99, background: "var(--bg-surface)", color: "var(--fd)" }}><b>{home.brain.recordCount}</b> records</span><span style={{ padding: "4px 7px", borderRadius: 99, background: "var(--bg-surface)", color: "var(--fd)" }}><b>{home.brain.sourceCount}</b> sources</span></div>
         </section>
 
         <section style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <h2 className="sec-label" style={{ margin: 0 }}>Initiatives {home.initiatives.length > 0 && <span style={{ color: "var(--fm)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· {home.initiatives.length}</span>}</h2>
-            {home.initiatives.length > 1 && (
-              <div style={{ display: "flex", gap: 4 }}>
-                <button type="button" aria-label="Scroll initiatives left" onClick={() => scrollInitiatives(-1)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: "1px solid var(--bd)", borderRadius: 6, background: "var(--bg-surface)", color: "var(--fm)", cursor: "pointer" }}><ChevronLeft size={12} /></button>
-                <button type="button" aria-label="Scroll initiatives right" onClick={() => scrollInitiatives(1)} style={{ width: 22, height: 22, display: "grid", placeItems: "center", border: "1px solid var(--bd)", borderRadius: 6, background: "var(--bg-surface)", color: "var(--fm)", cursor: "pointer" }}><ChevronRight size={12} /></button>
-              </div>
-            )}
           </div>
           {home.initiatives.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>No initiatives yet. Ask Copilot to kick one off.</p>
           ) : (
-            <div ref={initiativesRailRef} style={{ display: "flex", gap: 8, overflowX: "auto", scrollSnapType: "x proximity", paddingBottom: 4 }}>
+            <div style={{ display: "grid", gap: 8 }}>
               {home.initiatives.map(item => (
-                <article key={item.id} className="company-home-initiative-card" onClick={() => setWorkspaceInitiativeId(item.id)} style={{ position: "relative", flex: "0 0 auto", width: 180, scrollSnapAlign: "start", padding: 11, border: "1px solid var(--bd)", borderRadius: "var(--radius)", background: "var(--bg-surface)" }}>
+                <article key={item.id} className="company-home-initiative-card" onClick={() => setWorkspaceInitiativeId(item.id)} style={{ position: "relative", padding: "11px 12px", border: "1px solid var(--bd)", borderRadius: "var(--radius)", background: "var(--bg-surface)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "flex-start" }}>
-                    <b style={{ color: "var(--fg)", fontSize: 11.5, lineHeight: 1.3 }}>{item.title}</b>
-                    <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingId === item.id} onClick={(event) => { event.stopPropagation(); void handleDeleteInitiative(item.id); }} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 20, height: 20, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingId === item.id ? 0.5 : undefined }}><Trash2 size={11} /></button>
+                    <b style={{ color: "var(--fg)", fontSize: 12, lineHeight: 1.35 }}>{item.title}</b>
+                    <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingIds.has(item.id)} onClick={(event) => { event.stopPropagation(); void handleDeleteInitiative(item.id); }} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 24, height: 24, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingIds.has(item.id) ? 0.35 : undefined }}><Trash2 size={12} /></button>
                   </div>
                   <div style={{ height: 4, margin: "10px 0 6px", borderRadius: 8, background: "var(--bg-sunken)", overflow: "hidden" }}><div style={{ width: "100%", height: "100%", borderRadius: 8, background: "var(--accent)", transformOrigin: "left", transform: `scaleX(${item.progress / 100})`, transition: "transform .3s ease" }} /></div>
                   <small style={{ color: "var(--fm)", fontSize: 10 }}>{item.progress}% · {item.taskCount} tasks</small>
@@ -703,7 +777,7 @@ export default function CompanyHome() {
           {home.squads.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>No squads formed yet.</p>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} deleting={deletingId === squad.id} onDelete={() => void handleDeleteSquad(squad.id)} onOpenWorkbench={() => setWorkbenchSquadId(squad.id)} />)}</div>
+            <div style={{ display: "grid", gap: 8 }}>{home.squads.map(squad => <SquadCard key={squad.id} squad={squad} deleting={deletingIds.has(squad.id)} onDelete={() => void handleDeleteSquad(squad.id)} onOpenWorkbench={() => setWorkbenchSquadId(squad.id)} />)}</div>
           )}
         </section>
 
@@ -752,13 +826,13 @@ export default function CompanyHome() {
                   <FileText size={13} color="var(--accent)" />
                   <span style={{ minWidth: 0 }}><b style={{ display: "block", color: "var(--fg)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</b><small style={{ color: "var(--fm)", fontSize: 9.5 }}>{item.source}</small></span>
                 </button>
-                <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingId === item.id} onClick={(event) => void handleDeleteArtifact(item.id, event)} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 22, height: 22, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingId === item.id ? 0.5 : undefined }}><Trash2 size={11} /></button>
+                <button type="button" aria-label={`Delete ${item.title}`} disabled={deletingIds.has(item.id)} onClick={(event) => void handleDeleteArtifact(item.id, event)} className="company-home-initiative-delete" style={{ flexShrink: 0, width: 24, height: 24, display: "grid", placeItems: "center", border: 0, borderRadius: 5, background: "transparent", color: "var(--fm)", cursor: "pointer", opacity: deletingIds.has(item.id) ? 0.35 : undefined }}><Trash2 size={12} /></button>
               </article>
             ))}</div>
           )}
         </section>
       </aside>
-    )}
+    </>}
 
     {workbenchSquad && <SquadWorkbench squad={workbenchSquad} onClose={() => setWorkbenchSquadId("")} onRetryTask={(taskId) => void handleRetryTask(taskId)} retryingTaskId={retryingTaskId} />}
     {workspaceInitiative && <InitiativeWorkspace key={workspaceInitiative.id} initiative={workspaceInitiative} squads={home.squads.filter(squad => squad.initiativeId === workspaceInitiative.id)} artifacts={home.brain.artifacts} saving={savingInitiative} onSave={(update) => void handleSaveInitiative(workspaceInitiative.id, update)} onClose={() => setWorkspaceInitiativeId("")} onOpenSquad={(id) => { setWorkspaceInitiativeId(""); setWorkbenchSquadId(id); }} onOpenArtifact={(id) => { setWorkspaceInitiativeId(""); openArtifact(id); }} />}
