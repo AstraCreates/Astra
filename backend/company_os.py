@@ -259,11 +259,15 @@ def update_initiative(company_id: str, initiative_id: str, *, root: str | Path |
     return _update(company_id, "initiative", "initiative_id", initiative_id, changes, root)
 
 
-def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) -> dict[str, dict[str, Any]]:
+def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) -> dict[str, Any]:
     """Persist derived initiative rollups without treating an empty task list as done.
 
     This is deliberately callable after asynchronous task transitions and at
     recovery boundaries. Founder-authored archive state always wins.
+
+    Returns the freshly materialized company state (with any derived changes
+    already applied in-place) so callers don't need a second full replay just
+    to read back what they already computed here.
     """
     company = get_company_os(company_id, root=root) or {}
     changes: dict[str, dict[str, Any]] = {}
@@ -293,8 +297,9 @@ def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) ->
         derived = {"state": state, "progress": progress, "squad_count": len({item.get("squad_id") for item in missions}), "pending_approval_count": len(approvals)}
         if any(initiative.get(key) != value for key, value in derived.items()):
             update_initiative(company_id, initiative_id, root=root, **derived)
+            initiative.update(derived)
             changes[initiative_id] = derived
-    return changes
+    return company
 
 
 def update_task(company_id: str, task_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:

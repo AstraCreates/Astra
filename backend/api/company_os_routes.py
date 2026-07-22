@@ -156,8 +156,7 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
     _company(request, company_id, founder_id)
-    reconcile_initiatives(company_id)
-    return get_company_os(company_id)
+    return reconcile_initiatives(company_id)
 
 
 @router.patch("/companies/{company_id}/os/initiatives/{initiative_id}")
@@ -174,8 +173,7 @@ async def edit_company_os_initiative(company_id: str, initiative_id: str, body: 
         if changes["state"] == "done":
             changes.setdefault("acceptance_confirmed", True)
     update_initiative(company_id, initiative_id, **changes)
-    reconcile_initiatives(company_id)
-    return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
+    return {"ok": True, "initiative_id": initiative_id, "company": reconcile_initiatives(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/initiatives/{initiative_id}")
@@ -245,8 +243,7 @@ async def control_company_os_squad(company_id: str, squad_id: str, body: SquadCo
                 update_task(company_id, task["task_id"], state="pending", blocked_reason=None)
         for mission in missions:
             launch_mission(company_id, str(mission["mission_id"]))
-    reconcile_initiatives(company_id)
-    return {"ok": True, "action": body.action, "company": get_company_os(company_id)}
+    return {"ok": True, "action": body.action, "company": reconcile_initiatives(company_id)}
 
 
 @router.delete("/companies/{company_id}/os/artifacts/{artifact_id}")
@@ -377,8 +374,7 @@ async def retry_company_os_task(company_id: str, task_id: str, founder_id: str, 
     mission_id = task.get("mission_id")
     if mission_id:
         launch_mission(company_id, str(mission_id))
-    reconcile_initiatives(company_id)
-    return {"ok": True, "task_id": task_id, "company": get_company_os(company_id)}
+    return {"ok": True, "task_id": task_id, "company": reconcile_initiatives(company_id)}
 
 
 @router.post("/companies/{company_id}/os/approvals/{approval_id}")
@@ -401,5 +397,4 @@ async def decide_company_os_approval(company_id: str, approval_id: str, body: Ap
             # live execution agree on the same durable state.
             update_mission(company_id, str(task["mission_id"]), state="active", blocked_reason=None)
             launch_mission(company_id, str(task["mission_id"]))
-    reconcile_initiatives(company_id)
-    return {"ok": True, "approval_id": approval_id, "approved": body.approved, "company": get_company_os(company_id)}
+    return {"ok": True, "approval_id": approval_id, "approved": body.approved, "company": reconcile_initiatives(company_id)}
