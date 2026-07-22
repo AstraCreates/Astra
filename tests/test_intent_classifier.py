@@ -104,6 +104,20 @@ def test_malformed_merged_response_with_dangling_quote_is_rejected_and_retried(m
     assert [s.department for s in result.steps] == ["research", "product_technical"]
 
 
+def test_merged_research_response_is_repaired_when_website_clause_is_explicit(monkeypatch):
+    """If the provider keeps only a research line but the founder explicitly
+    asked to create/build a website, preserve the Product Delivery step."""
+    monkeypatch.setattr("backend.core.llm_client.get_or_client", lambda *_a, **_k: _fake_client(
+        "what is the difference between blackstone and blackrock and create a website highlighting the differences :: research"
+    ))
+
+    result = classify_intent("what is the difference between blackstone and blackrock and create a website highlighting the differences")
+
+    assert result.kind == "work"
+    assert [s.department for s in result.steps] == ["research", "product_technical"]
+    assert "website" in result.steps[1].text.lower()
+
+
 def test_hallucinated_echo_of_an_unrelated_example_is_rejected_and_retried(monkeypatch):
     """Confirmed live: for "what is the difference between blackrock and
     blackstone" (and, separately, the exact phrase "what is Blackstone the

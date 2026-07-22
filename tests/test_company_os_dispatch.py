@@ -168,7 +168,7 @@ def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
     # No length-noisy "... with no specifics" smearing in the titles.
     assert titles == [
         "Market Analyst: gather validated evidence",
-        "Scientific Analyst: gather validated evidence",
+        "Evidence Analyst: gather validated evidence",
         "Review evidence and resolve conflicts",
         "Produce a decision brief",
     ]

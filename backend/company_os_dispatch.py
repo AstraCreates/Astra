@@ -39,7 +39,7 @@ SQUAD_ROLE_REGISTRY: dict[str, list[dict[str, Any]]] = {
     "research": [
         {"role_key": "research_lead", "title": "Research Lead", "capabilities": {"research", "synthesis"}, "keywords": set()},
         {"role_key": "market_analyst", "title": "Market Analyst", "capabilities": {"compare", "competitive analysis", "market analysis"}, "keywords": {"market", "competitor", "compare"}},
-        {"role_key": "scientific_analyst", "title": "Scientific Analyst", "capabilities": {"evidence research"}, "keywords": {"evidence", "scientific", "technical"}},
+        {"role_key": "scientific_analyst", "title": "Evidence Analyst", "capabilities": {"evidence research"}, "keywords": {"evidence", "scientific", "technical"}},
         {"role_key": "customer_regulatory_analyst", "title": "Customer & Regulatory Analyst", "capabilities": set(), "keywords": {"customer", "regulatory", "compliance"}},
     ],
     "product_technical": [
@@ -156,6 +156,24 @@ def _initiative_matches_request(initiative: Mapping[str, Any], request: Mapping[
         return True
     intent_words = _content_words(intent)
     return bool(intent_words and initiative_words and len(intent_words & initiative_words) / min(len(intent_words), len(initiative_words)) >= _CONTINUATION_OVERLAP_THRESHOLD)
+
+
+def _request_matches_text(request: Mapping[str, Any], text: str) -> bool:
+    """Guard reuse against stale same-role squads from another outcome."""
+    request_text = " ".join([
+        str(request.get("outcome") or request.get("objective") or ""),
+        *(str(value) for value in request.get("deliverables") or []),
+        *(str(value) for value in request.get("entities") or []),
+    ])
+    request_words = _content_words(request_text)
+    text_words = _content_words(text)
+    entities = _content_words(" ".join(str(value) for value in request.get("entities") or []))
+    if entities and entities.issubset(text_words):
+        return True
+    if len(request_words) < 2 or len(text_words) < 2:
+        return False
+    overlap = len(request_words & text_words) / min(len(request_words), len(text_words))
+    return overlap >= _CONTINUATION_OVERLAP_THRESHOLD
 
 
 def _tokens(value: str) -> set[str]:
@@ -279,6 +297,18 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
     profile = CAPABILITY_REGISTRY[department]
     triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
+    # Preserve the founder's ordered multi-step intent. If a message says
+    # "compare X and create a website", the website is a real downstream
+    # Product Delivery mission, not extra wording inside the research subject.
+    ordered_departments = []
+    for step in request.get("steps") or []:
+        step_department = str(step.get("department") or "")
+        if step_department in CAPABILITY_REGISTRY and step_department not in ordered_departments:
+            ordered_departments.append(step_department)
+    if ordered_departments:
+        department = ordered_departments[0]
+        profile = CAPABILITY_REGISTRY[department]
+        handoffs = [item for item in ordered_departments[1:] if item != department]
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
             "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
 
@@ -562,6 +592,50 @@ def _compatible_squad(company: Mapping[str, Any], squad: Mapping[str, Any], prof
             and _squad_roles(company, squad) == list(profile["role_keys"]))
 
 
+def _compatible_squad_for_request(company: Mapping[str, Any], squad: Mapping[str, Any], profile: Mapping[str, Any],
+                                  request: Mapping[str, Any]) -> bool:
+    if not _compatible_squad(company, squad, profile):
+        return False
+    charter = squad.get("squad_charter") or squad.get("charter") or {}
+    charter_text = " ".join(str(value) for value in (
+        charter.get("objective") if isinstance(charter, Mapping) else "",
+        squad.get("mission_summary") or "",
+        squad.get("name") or "",
+    ))
+    return _request_matches_text(request, charter_text)
+
+
+def _department_request(request: Mapping[str, Any], department: str, fallback_intent: str) -> dict[str, Any]:
+    """Scope a multi-department request to the department's own deliverable."""
+    steps = [step for step in request.get("steps") or [] if step.get("department") == department]
+    capabilities = set(request.get("required_capabilities") or [])
+    department_capabilities = set(CAPABILITY_REGISTRY[department]["capabilities"])
+    scoped_capabilities = sorted(capabilities & department_capabilities)
+    if not scoped_capabilities:
+        representative = {
+            "research": ["research", "compare"],
+            "product_technical": ["website", "local preview"],
+            "design": ["visual design"],
+            "marketing": ["positioning"],
+            "sales": ["pipeline strategy"],
+            "finance": ["financial analysis"],
+            "legal": ["legal analysis"],
+            "operations": ["process design"],
+        }[department]
+        scoped_capabilities = [cap for cap in representative if cap in department_capabilities]
+    deliverables = [str(step.get("text")) for step in steps if str(step.get("text") or "").strip()]
+    objective = deliverables[0] if deliverables else str(request.get("outcome") or request.get("objective") or fallback_intent)
+    return {
+        **dict(request),
+        "objective": objective,
+        "outcome": objective,
+        "deliverables": deliverables or list(request.get("deliverables") or []),
+        "required_capabilities": scoped_capabilities,
+        "primary_capability": scoped_capabilities[0] if scoped_capabilities else request.get("primary_capability"),
+        "steps": steps,
+    }
+
+
 def _create_squad_profile_records(company_id: str, company: Mapping[str, Any], squad_id: str, initiative_id: str, intent: str,
                                   request: Mapping[str, Any], profile: Mapping[str, Any]) -> dict[str, str]:
     """Persist the charter and role records before tasks reference their role IDs."""
@@ -603,8 +677,9 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if work_request.get("requires_clarification"):
         return {"needs_clarification": True, "work_request": work_request}
     route = route_work_request(company, work_request)
-    profile = select_squad_profile(work_request, route["department"])
-    research_request = bool(set(work_request.get("required_capabilities") or []) & {"research", "evidence research", "competitive analysis", "compare"})
+    primary_request = _department_request(work_request, route["department"], intent)
+    profile = select_squad_profile(primary_request, route["department"])
+    research_request = bool(set(primary_request.get("required_capabilities") or []) & {"research", "evidence research", "competitive analysis", "compare"})
     reuse = None
     if forced_initiative_id:
         reuse = next((item for item in company.get("initiatives", [])
@@ -629,7 +704,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if reuse:
         initiative = reuse
         initiative_id = _entity_id(initiative, "initiative_id")
-        candidates = [item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("department") == department and item.get("state") != "archived" and _compatible_squad(company, item, profile)]
+        candidates = [item for item in company.get("squads", []) if item.get("initiative_id") == initiative_id and item.get("department") == department and item.get("state") != "archived" and _compatible_squad_for_request(company, item, profile, primary_request)]
         active = [item for item in candidates if item.get("state") in {"active", "working", "review"}]
         capacity = CAPABILITY_REGISTRY[department]["capacity"]
         squad = next((item for item in active if sum(1 for mission in company.get("missions", []) if mission.get("squad_id") == item.get("squad_id") and mission.get("state") in {"active", "working", "review"}) < capacity), None)
@@ -643,7 +718,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         if squad is None:
             squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
                           capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=profile["lead_role"], lifecycle="formed",
-                          profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": work_request["outcome"]})
+                          profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": primary_request["outcome"]})
         squad_id = _entity_id(squad, "squad_id")
     else:
         initiative = _call("create_initiative", company_id=company_id, name=intent, department=department, director=route["director"],
@@ -651,10 +726,11 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         initiative_id = _entity_id(initiative, "initiative_id")
         squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id, name=squad_name, department=department,
                       capabilities=sorted(CAPABILITY_REGISTRY[department]["capabilities"]), lead=profile["lead_role"], lifecycle="formed",
-                      profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": work_request["outcome"]})
+                      profile_version=profile["version"], role_composition=profile["role_keys"], squad_charter={"objective": primary_request["outcome"]})
         squad_id = _entity_id(squad, "squad_id")
-    role_ids = _create_squad_profile_records(company_id, company, squad_id, initiative_id, intent, work_request, profile)
-    mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=intent,
+    role_ids = _create_squad_profile_records(company_id, company, squad_id, initiative_id, intent, primary_request, profile)
+    mission_name = str(primary_request.get("outcome") or intent)
+    mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, name=mission_name,
                     department=department, state="active", initiative_director=route["director"], handoff_requests=route.get("handoffs", []))
     mission_id = _entity_id(mission, "mission_id")
     _call("append_event", company_id=company_id, event_type="dispatch.routed", payload={
@@ -666,7 +742,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     })
     created_tasks = []
     task_ids: dict[str, str] = {}
-    for spec in squad_task_dag(intent, work_request, profile):
+    for spec in squad_task_dag(mission_name, primary_request, profile):
         policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
         dependency_ids = [task_ids[key] for key in spec["dependencies"] if key in task_ids]
         task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=squad_id, mission_id=mission_id,
@@ -687,19 +763,24 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     # Departments do not become pseudo-roles in the lead squad. Each matching
     # department receives its own bounded profile and a clear handoff mission.
     for handoff_department in route.get("handoffs", []):
-        handoff_profile = select_squad_profile(work_request, handoff_department)
+        handoff_request = _department_request(work_request, handoff_department, intent)
+        handoff_profile = select_squad_profile(handoff_request, handoff_department)
         handoff_squad = _call("create_squad", company_id=company_id, initiative_id=initiative_id,
                               name=CAPABILITY_REGISTRY[handoff_department]["squad"], department=handoff_department,
                               capabilities=sorted(CAPABILITY_REGISTRY[handoff_department]["capabilities"]),
                               lead=handoff_profile["lead_role"], lifecycle="formed",
-                              profile_version=handoff_profile["version"], role_composition=handoff_profile["role_keys"])
+                              profile_version=handoff_profile["version"], role_composition=handoff_profile["role_keys"],
+                              squad_charter={"objective": handoff_request["outcome"]})
         handoff_squad_id = _entity_id(handoff_squad, "squad_id")
-        handoff_role_ids = _create_squad_profile_records(company_id, company, handoff_squad_id, initiative_id, intent, work_request, handoff_profile)
+        handoff_role_ids = _create_squad_profile_records(company_id, company, handoff_squad_id, initiative_id, intent, handoff_request, handoff_profile)
+        handoff_mission_name = str(handoff_request.get("outcome") or f"{CAPABILITY_REGISTRY[handoff_department]['squad']} support: {intent}")
+        dependencies = [mission_id] if department == "research" and handoff_department == "product_technical" else []
         handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,
-                                name=f"{CAPABILITY_REGISTRY[handoff_department]['squad']} support: {intent}", department=handoff_department,
-                                state="active", initiative_director=route["director"], handoff_for=mission_id)
+                                name=handoff_mission_name, department=handoff_department,
+                                state="active", initiative_director=route["director"], handoff_for=mission_id,
+                                depends_on_mission_ids=dependencies)
         handoff_task_ids: dict[str, str] = {}
-        for spec in squad_task_dag(intent, work_request, handoff_profile):
+        for spec in squad_task_dag(handoff_mission_name, handoff_request, handoff_profile):
             policy = enforce_dispatch_policy(spec, company=company, proposed_spend=proposed_spend)
             dependencies = [handoff_task_ids[key] for key in spec["dependencies"] if key in handoff_task_ids]
             task = _call("create_task", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,

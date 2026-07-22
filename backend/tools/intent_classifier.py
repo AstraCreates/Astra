@@ -20,6 +20,7 @@ replaced by it.
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -71,6 +72,7 @@ class IntentClassification:
             "deliverables": deliverables, "acceptance_criteria": [], "constraints": [],
             "entities": [], "dependencies": [], "risk": "internal",
             "required_capabilities": capabilities, "primary_capability": primary,
+            "steps": [{"text": step.text, "department": step.department} for step in self.steps],
             "confidence": 1.0, "requires_clarification": False,
             "clarification_question": None, "clarification_options": None,
             "triage_reason": "intent_classifier",
@@ -289,6 +291,7 @@ def classify_intent(message: str, *, max_attempts: int = 2) -> IntentClassificat
                 budget *= 2
                 continue
             parsed = _parse(content, message, time.perf_counter() - started)
+            parsed = _repair_missing_website_step(parsed, message)
             if parsed.kind == "work" and not parsed.steps:
                 # Every line either failed to parse or was rejected as a
                 # hallucinated echo of an unrelated few-shot example (real
@@ -302,6 +305,34 @@ def classify_intent(message: str, *, max_attempts: int = 2) -> IntentClassificat
             continue
     return IntentClassification(kind="work", steps=[IntentStep(text=message, department="")],
                                 elapsed=time.perf_counter() - started)
+
+
+def _repair_missing_website_step(classification: IntentClassification, message: str) -> IntentClassification:
+    """Provider fallback for the exact live failure mode: the model keeps the
+    research step but swallows an explicit website/build clause into that
+    research text. This is a deterministic guard on direct imperatives, not
+    the primary router."""
+    if classification.kind != "work" or not classification.steps or any(step.department == "product_technical" for step in classification.steps):
+        return classification
+    lowered = message.lower()
+    website_requested = any(term in lowered for term in ("website", "site", "landing page", "web page"))
+    build_requested = any(term in lowered for term in ("create", "build", "make", "host", "publish", "deploy"))
+    if not (website_requested and build_requested):
+        return classification
+    split = _extract_website_clause(message)
+    steps = list(classification.steps)
+    steps.append(IntentStep(text=split, department="product_technical"))
+    return IntentClassification(kind="work", steps=steps, elapsed=classification.elapsed)
+
+
+def _extract_website_clause(message: str) -> str:
+    match = re.search(r"\b(?:and then|then|and|,|;)\s*((?:create|build|make|host|publish|deploy)\b.{0,220}?\b(?:website|site|landing page|web page)\b.{0,160})", message, re.IGNORECASE)
+    if match:
+        return " ".join(match.group(1).strip(" .").split())
+    match = re.search(r"\b((?:create|build|make|host|publish|deploy)\b.{0,220}?\b(?:website|site|landing page|web page)\b.{0,160})", message, re.IGNORECASE)
+    if match:
+        return " ".join(match.group(1).strip(" .").split())
+    return "create a website"
 
 
 _MIN_OVERLAP_WITH_MESSAGE = 0.25
