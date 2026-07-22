@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { Brain, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileText, LayoutDashboard, Link2, Loader2, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
+import { Brain, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileText, LayoutDashboard, Link2, Loader2, MessageCircle, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
+import { useDevUser } from "@/lib/use-dev-user";
 import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 import { ingestAttachment } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
@@ -145,6 +146,7 @@ function InitiativeWorkspace({ initiative, squads, artifacts, saving, onSave, on
 
 export default function CompanyHome() {
   const { founderId, companyId, activeCompany } = useCompany();
+  const { user } = useDevUser();
   const [home, setHome] = useState(EMPTY);
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
@@ -368,6 +370,10 @@ export default function CompanyHome() {
   const tasks = home.squads.flatMap(squad => squad.tasks);
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
+  const firstName = user?.fullName?.trim().split(/\s+/)[0] || "there";
+  const doneTasks = tasks.filter(task => task.status === "complete").length;
+  const launchPct = tasks.length ? Math.round((doneTasks / tasks.length) * 100) : 0;
+  const primarySquad = home.squads[0] ?? null;
   const chatTurns = home.conversation.filter(turn => turn.kind !== "status");
   // @mention insertion writes this id as literal visible text into the
   // composer (AstraCopilotComposer.selectAgent) -- it must be a readable
@@ -406,23 +412,55 @@ export default function CompanyHome() {
         all remaining height, composer is pinned to the bottom like ChatGPT/
         Claude/Gemini instead of floating in a small box mid-page. */}
     <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "16px 24px", borderBottom: "1px solid var(--bd)" }}>
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{ margin: 0, color: "var(--fg)", fontSize: 17, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{companyName}</h1>
-          <p style={{ margin: "2px 0 0", color: "var(--fm)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{home.northStar}</p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <span className="pill green" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><span className="live-dot" style={{ background: "var(--green)", boxShadow: "0 0 6px var(--gb)" }} /> Connected</span>
-          {chatTurns.length > 0 && (
-            <button type="button" className="btn sm" disabled={messageBusyId === "clear-chat"} onClick={() => void handleClearChat()}>
-              {messageBusyId === "clear-chat" ? "Clearing…" : "Clear chat"}
+      {/* Hero banner: greeting over the ASTRA convergence artwork, with the
+          live-connection pill and rail toggle floated to the right. */}
+      <header style={{ flexShrink: 0, position: "relative", height: 132, overflow: "hidden", background: "#0a1b6b" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "url('/dash-hero.jpg')", backgroundSize: "cover", backgroundPosition: "50% 20%" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(5,7,14,.86) 0%, rgba(5,7,14,.5) 46%, rgba(5,7,14,.7) 100%)" }} />
+        <div style={{ position: "relative", zIndex: 2, height: "100%", padding: "24px 32px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 700, letterSpacing: "-.02em", color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Let&apos;s get to work, {firstName}.</h1>
+            <div style={{ fontSize: 13.5, color: "rgba(237,241,251,.68)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{home.northStar}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 12px", background: "rgba(70,220,150,.12)", border: "1px solid rgba(90,230,160,.35)", borderRadius: 7 }}>
+              <span className="live-dot" style={{ width: 6, height: 6, borderRadius: 2, background: "#4ADE93" }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".04em", color: "#7CFFC6" }}>Connected</span>
+            </span>
+            <button type="button" aria-label={railOpen ? "Hide company status panel" : "Show company status panel"} onClick={() => setRailOpen(!railOpen)} className="company-home-rail-toggle" style={{ width: 34, height: 34, flexShrink: 0, display: "grid", placeItems: "center", background: "transparent", border: "1px solid rgba(255,255,255,.16)", borderRadius: 8, color: "#c3cbe0", cursor: "pointer" }}>
+              {railOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
             </button>
-          )}
-          <button type="button" aria-label={railOpen ? "Hide company status panel" : "Show company status panel"} onClick={() => setRailOpen(!railOpen)} className="company-home-rail-toggle btn sm" style={{ width: 32, height: 32, padding: 0, display: "grid", placeItems: "center" }}>
-            {railOpen ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
-          </button>
+          </div>
         </div>
       </header>
+
+      {/* Company chat toolbar. */}
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 30px", borderBottom: "1px solid var(--bd)" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--bg-surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "8px 12px", color: "var(--fg)", fontSize: 12.5, fontWeight: 600 }}>
+          <MessageCircle size={14} color="var(--fm)" /> Company chat
+        </span>
+        <button type="button" className="btn sm" disabled={!chatTurns.length || messageBusyId === "clear-chat"} onClick={() => void handleClearChat()} style={{ flexShrink: 0 }}>
+          {messageBusyId === "clear-chat" ? "Clearing…" : "+ New chat"}
+        </button>
+      </div>
+
+      {/* Progress to launch + active squad chip. */}
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 14, padding: "16px 30px", borderBottom: "1px solid var(--bd)" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 14, background: "var(--bg-sunken)", border: "1px solid var(--bd)", borderRadius: 10, padding: "10px 14px" }}>
+          <span className="sec-label" style={{ margin: 0, whiteSpace: "nowrap" }}>Progress to launch</span>
+          <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--bd)", overflow: "hidden" }}><div style={{ width: "100%", height: "100%", background: "var(--accent)", transformOrigin: "left", transform: `scaleX(${launchPct / 100})`, transition: "transform .3s ease" }} /></div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>{launchPct}%</span>
+          <span style={{ fontSize: 11, color: "var(--fm)", whiteSpace: "nowrap" }}>{doneTasks} / {tasks.length} tasks</span>
+        </div>
+        {primarySquad && (
+          <button type="button" onClick={() => setWorkbenchSquadId(primarySquad.id)} title={`Open ${primarySquad.name} workbench`} style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: "var(--bg-sunken)", border: "1px solid var(--bd)", borderRadius: 20, padding: "6px 12px 6px 6px", color: "var(--fg)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            <span style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--bdim)", display: "grid", placeItems: "center", flexShrink: 0, color: "var(--accent)" }}><Users size={11} /></span>
+            <span style={{ whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{primarySquad.name}</span>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }} />
+          </button>
+        )}
+        <button type="button" onClick={() => setMessage("Form a new squad to ")} style={{ flexShrink: 0, whiteSpace: "nowrap", background: "transparent", border: "1px dashed var(--bd)", borderRadius: 20, padding: "7px 14px", color: "var(--fm)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ New squad</button>
+      </div>
 
       <div ref={threadRef} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 20px 12px" }}>
