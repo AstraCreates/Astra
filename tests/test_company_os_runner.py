@@ -196,6 +196,42 @@ def test_decision_brief_falls_back_to_synthesis_when_supervisor_report_is_thin(m
     assert "Synthesized instead" in content
 
 
+def test_website_preview_uses_llm_copy_specific_to_the_request(monkeypatch):
+    """Real incident: every local website preview a founder generated was
+    textually identical except for the brand name -- _website_preview never
+    called an LLM at all, it was a fully static HTML template with only
+    brand/domain substitution."""
+    from backend.company_os_runner import _website_preview
+
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: (
+        '{"eyebrow": "Two asset managers, compared", "headline_plain": "Know the", '
+        '"headline_emphasis": "difference.", "lede": "A side-by-side look at how Blackrock and Blackstone actually make money.", '
+        '"section2_heading": "Same-sounding names, different businesses", '
+        '"section2_body": "Blackrock is the world\'s largest asset manager by AUM. Blackstone is a leading alternative investment firm.", '
+        '"cards": [{"label": "01 / Scale", "title": "Blackrock manages public assets.", "description": "ETFs and index funds at massive scale."}, '
+        '{"label": "02 / Strategy", "title": "Blackstone runs private markets.", "description": "Private equity, real estate, and credit."}, '
+        '{"label": "03 / Compare", "title": "See both, side by side.", "description": "One page, the real distinction."}]}'
+    ))
+
+    preview = _website_preview("build a website comparing blackrock and blackstone", [])
+
+    assert "Know the" in preview and "difference." in preview
+    assert "Blackrock is the world" in preview
+    assert "Bring the whole company into view" not in preview  # generic fallback copy must not leak through
+
+
+def test_website_preview_falls_back_to_generic_copy_when_llm_fails(monkeypatch):
+    from backend.company_os_runner import _website_preview
+
+    def broken_generate(*_a, **_k):
+        raise RuntimeError("model unavailable")
+    monkeypatch.setattr("backend.tools._llm.generate", broken_generate)
+
+    preview = _website_preview("build a website comparing blackrock and blackstone", [])
+
+    assert "Bring the whole company into view" in preview  # degrades to the old static copy, never blank/broken
+
+
 def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():
     preview = _website_preview("compare cofounder.co and astracreates.com and create a website for goon.com that has the best of both worlds", [{"title": "Source", "url": "https://example.com"}])
     assert "Goon" in preview

@@ -358,7 +358,9 @@ export async function retryTask(scope: CompanyScope, taskId: string, fetcher: ty
 }
 
 export async function decideCompanyApproval(scope: CompanyScope, approvalId: string, approved: boolean, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
-  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/approvals/${encodeURIComponent(approvalId)}`, scope), { method: "POST", body: JSON.stringify({ founder_id: scope.founderId, approved }) });
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/approvals/${encodeURIComponent(approvalId)}`, scope), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ founder_id: scope.founderId, approved }),
+  });
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());
   return normalizeCompanyOS(payload.company);

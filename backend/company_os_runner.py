@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import html
 import logging
 import re
@@ -568,12 +569,68 @@ def _website_brief(request: str) -> str:
     return f"## {brand} local website brief\n\n- **Destination:** `{domain}`\n- **Scope:** a local, reviewable website concept only\n- **Research dependency:** comparison evidence informs the preview before it is generated\n- **Publication:** no deployment or external change is included in this mission\n"
 
 
+_GENERIC_WEBSITE_COPY = {
+    "eyebrow": "A calmer way to build momentum",
+    "headline_plain": "Make the next move", "headline_emphasis": "obvious.",
+    "lede": "{brand} turns scattered company work into a focused, visible path from question to decision to execution.",
+    "section2_heading": "One place to understand the work. One clear next step.",
+    "section2_body": "This concept combines the strongest category-level expectations for founder software: a durable company context, clear ownership, and reviewable output. Specific competitor claims are deliberately withheld until the comparison evidence is complete.",
+    "cards": [
+        {"label": "01 / Orient", "title": "Bring the whole company into view.", "description": "Goals, evidence, decisions, and unfinished work stay connected."},
+        {"label": "02 / Decide", "title": "Turn uncertainty into a practical plan.", "description": "Work is scoped, owned, and made easy to review before anything external happens."},
+        {"label": "03 / Move", "title": "Ship with context, not chaos.", "description": "Specialist work happens in coordinated squads, with approvals where they matter."},
+    ],
+}
+
+
+def _website_copy(request: str, brand: str, sources: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """LLM-write copy specific to what was actually asked for, instead of the
+    same generic "bring the whole company into view" boilerplate every local
+    website preview used to ship with verbatim -- confirmed live, every
+    preview a founder generated was textually identical except for the brand
+    name. Falls back to that same generic copy (still usable, just not
+    differentiated) if the call fails, same defensive pattern as every other
+    LLM step in this file."""
+    try:
+        from backend.tools._llm import generate, parse_json_response
+        source_lines = "\n".join(f"- {s.get('title') or 'Source'}: {s.get('url') or ''}" for s in (sources or [])[:8] if isinstance(s, Mapping))
+        prompt = f"""Write landing-page copy for a local website preview.
+
+What the founder asked for: "{request}"
+Site name: "{brand}"
+Cited research sources available (may be empty):
+{source_lines or "(none)"}
+
+Write copy that is SPECIFIC to what was actually asked for -- name the real subject (a company, product, or comparison) instead of generic SaaS platitudes. If this is a comparison site, the copy should be about comparing those specific things. If sources are empty, do not invent specific facts/numbers -- keep claims general but still on-topic for the actual subject.
+
+Respond with ONLY this JSON object, no prose, no markdown fence:
+{{"eyebrow": "<3-6 word kicker line>", "headline_plain": "<short headline start, 2-5 words>", "headline_emphasis": "<the final emphasized word/phrase of the headline, ending in a period>", "lede": "<one sentence, specific to the subject>", "section2_heading": "<5-10 word heading>", "section2_body": "<2-3 sentences, specific to the subject>", "cards": [{{"label": "01 / <one word>", "title": "<short bold line>", "description": "<one sentence>"}}, {{"label": "02 / <one word>", "title": "<short bold line>", "description": "<one sentence>"}}, {{"label": "03 / <one word>", "title": "<short bold line>", "description": "<one sentence>"}}]}}"""
+        raw = generate(prompt, model="fast", json_mode=True, max_tokens=700, temperature=0.6)
+        parsed = parse_json_response(raw)
+        cards = parsed.get("cards")
+        if (isinstance(cards, list) and len(cards) == 3
+                and all(isinstance(c, Mapping) and c.get("label") and c.get("title") and c.get("description") for c in cards)
+                and parsed.get("headline_plain") and parsed.get("headline_emphasis") and parsed.get("lede")
+                and parsed.get("section2_heading") and parsed.get("section2_body") and parsed.get("eyebrow")):
+            return parsed
+    except Exception:
+        logger.warning("Website copy synthesis failed for request=%r, falling back to generic copy", request, exc_info=True)
+    generic = copy.deepcopy(_GENERIC_WEBSITE_COPY)
+    generic["lede"] = generic["lede"].format(brand=brand)
+    return generic
+
+
 def _website_preview(request: str, sources: list[Mapping[str, Any]] | None = None) -> str:
     domain, brand = _website_identity(request)
     evidence_count = len(sources or [])
     source_note = f"Informed by {evidence_count} cited research source{'s' if evidence_count != 1 else ''} gathered for this initiative." if evidence_count else "Built as a local concept; product claims remain pending verified comparison evidence."
+    copy_data = _website_copy(request, brand, sources)
+    cards_html = "".join(
+        f'<article class="card"><span class="number">{html.escape(str(c["label"]))}</span><b>{html.escape(str(c["title"]))}</b><span>{html.escape(str(c["description"]))}</span></article>'
+        for c in copy_data["cards"]
+    )
     return f"""<!doctype html>
-<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(brand)} | Local preview</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap\" rel=\"stylesheet\"><style>:root{{--ink:#10211e;--cream:#f4f0e8;--acid:#d8ff52}}*{{box-sizing:border-box}}body{{margin:0;background:var(--cream);color:var(--ink);font-family:Manrope,sans-serif}}.hero{{min-height:680px;padding:28px clamp(24px,6vw,88px);background:radial-gradient(circle at 85% 16%,#d8ff52 0 9%,transparent 30%),linear-gradient(124deg,#16342d,#0d201c 60%,#25443b);color:#f8f5ed;overflow:hidden}}nav{{display:flex;justify-content:space-between;align-items:center;font-weight:800}}.mark{{display:flex;gap:9px;align-items:center;font-size:20px}}.dot{{width:13px;height:13px;border-radius:50%;background:var(--acid);box-shadow:0 0 0 6px #d8ff5233}}.navlink,.eyebrow,.caption,.number,footer{{font:500 11px 'DM Mono';letter-spacing:.1em;text-transform:uppercase}}.navlink{{color:#d7e6dc}}.hero-copy{{max-width:870px;margin:120px 0 64px}}.eyebrow{{color:var(--acid);letter-spacing:.13em}}h1{{font:600 clamp(52px,8vw,112px)/.96 'Playfair Display',serif;letter-spacing:-.06em;margin:18px 0 28px}}h1 em{{color:var(--acid)}}.lede{{font-size:clamp(18px,2vw,24px);line-height:1.5;max-width:640px;color:#d8e5de}}.actions{{display:flex;gap:14px;align-items:center;margin-top:38px}}button{{border:0;border-radius:999px;padding:15px 22px;background:var(--acid);color:#10211e;font:800 14px Manrope}}.caption{{color:#b8cbc1;letter-spacing:0;text-transform:none}}section{{padding:88px clamp(24px,6vw,88px)}}.split{{display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:start}}h2{{font:600 clamp(36px,5vw,60px)/1 'Playfair Display',serif;letter-spacing:-.05em;margin:0}}.body{{font-size:18px;line-height:1.65;color:#40534d}}.cards{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:46px}}.card{{min-height:210px;padding:24px;border:1px solid #cfd8d1;border-radius:16px;background:#fbf9f4}}.card b{{display:block;margin:40px 0 8px;font-size:18px}}.number{{color:#788b83}}.evidence{{padding:24px 28px;border-radius:14px;background:#e0e8e2;font:500 13px/1.6 'DM Mono';color:#385048}}footer{{padding:28px clamp(24px,6vw,88px);display:flex;justify-content:space-between;border-top:1px solid #ced7d0;color:#667972}}@media(max-width:700px){{.hero{{min-height:560px}}.hero-copy{{margin-top:82px}}.split,.cards{{grid-template-columns:1fr}}section{{padding-top:60px;padding-bottom:60px}}}}</style></head><body><header class=\"hero\"><nav><div class=\"mark\"><span class=\"dot\"></span>{html.escape(brand)}</div><span class=\"navlink\">{html.escape(domain)} / local concept</span></nav><div class=\"hero-copy\"><div class=\"eyebrow\">A calmer way to build momentum</div><h1>Make the next move <em>obvious.</em></h1><p class=\"lede\">{html.escape(brand)} turns scattered company work into a focused, visible path from question to decision to execution.</p><div class=\"actions\"><button>See the operating system</button><span class=\"caption\">Preview only. Nothing has been published.</span></div></div></header><main><section class=\"split\"><h2>One place to understand the work. One clear next step.</h2><div class=\"body\">This concept combines the strongest category-level expectations for founder software: a durable company context, clear ownership, and reviewable output. Specific competitor claims are deliberately withheld until the comparison evidence is complete.</div></section><section><div class=\"eyebrow\" style=\"color:#466c5e\">How it works</div><div class=\"cards\"><article class=\"card\"><span class=\"number\">01 / Orient</span><b>Bring the whole company into view.</b><span>Goals, evidence, decisions, and unfinished work stay connected.</span></article><article class=\"card\"><span class=\"number\">02 / Decide</span><b>Turn uncertainty into a practical plan.</b><span>Work is scoped, owned, and made easy to review before anything external happens.</span></article><article class=\"card\"><span class=\"number\">03 / Move</span><b>Ship with context, not chaos.</b><span>Specialist work happens in coordinated squads, with approvals where they matter.</span></article></div></section><section><div class=\"evidence\">RESEARCH STATUS / {html.escape(source_note)}</div></section></main><footer><span>{html.escape(brand)} / {html.escape(domain)}</span><span>LOCAL WEBSITE PREVIEW</span></footer></body></html>"""
+<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(brand)} | Local preview</title><link rel=\"preconnect\" href=\"https://fonts.googleapis.com\"><link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin><link href=\"https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap\" rel=\"stylesheet\"><style>:root{{--ink:#10211e;--cream:#f4f0e8;--acid:#d8ff52}}*{{box-sizing:border-box}}body{{margin:0;background:var(--cream);color:var(--ink);font-family:Manrope,sans-serif}}.hero{{min-height:680px;padding:28px clamp(24px,6vw,88px);background:radial-gradient(circle at 85% 16%,#d8ff52 0 9%,transparent 30%),linear-gradient(124deg,#16342d,#0d201c 60%,#25443b);color:#f8f5ed;overflow:hidden}}nav{{display:flex;justify-content:space-between;align-items:center;font-weight:800}}.mark{{display:flex;gap:9px;align-items:center;font-size:20px}}.dot{{width:13px;height:13px;border-radius:50%;background:var(--acid);box-shadow:0 0 0 6px #d8ff5233}}.navlink,.eyebrow,.caption,.number,footer{{font:500 11px 'DM Mono';letter-spacing:.1em;text-transform:uppercase}}.navlink{{color:#d7e6dc}}.hero-copy{{max-width:870px;margin:120px 0 64px}}.eyebrow{{color:var(--acid);letter-spacing:.13em}}h1{{font:600 clamp(52px,8vw,112px)/.96 'Playfair Display',serif;letter-spacing:-.06em;margin:18px 0 28px}}h1 em{{color:var(--acid)}}.lede{{font-size:clamp(18px,2vw,24px);line-height:1.5;max-width:640px;color:#d8e5de}}.actions{{display:flex;gap:14px;align-items:center;margin-top:38px}}button{{border:0;border-radius:999px;padding:15px 22px;background:var(--acid);color:#10211e;font:800 14px Manrope}}.caption{{color:#b8cbc1;letter-spacing:0;text-transform:none}}section{{padding:88px clamp(24px,6vw,88px)}}.split{{display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:start}}h2{{font:600 clamp(36px,5vw,60px)/1 'Playfair Display',serif;letter-spacing:-.05em;margin:0}}.body{{font-size:18px;line-height:1.65;color:#40534d}}.cards{{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:46px}}.card{{min-height:210px;padding:24px;border:1px solid #cfd8d1;border-radius:16px;background:#fbf9f4}}.card b{{display:block;margin:40px 0 8px;font-size:18px}}.number{{color:#788b83}}.evidence{{padding:24px 28px;border-radius:14px;background:#e0e8e2;font:500 13px/1.6 'DM Mono';color:#385048}}footer{{padding:28px clamp(24px,6vw,88px);display:flex;justify-content:space-between;border-top:1px solid #ced7d0;color:#667972}}@media(max-width:700px){{.hero{{min-height:560px}}.hero-copy{{margin-top:82px}}.split,.cards{{grid-template-columns:1fr}}section{{padding-top:60px;padding-bottom:60px}}}}</style></head><body><header class=\"hero\"><nav><div class=\"mark\"><span class=\"dot\"></span>{html.escape(brand)}</div><span class=\"navlink\">{html.escape(domain)} / local concept</span></nav><div class=\"hero-copy\"><div class=\"eyebrow\">{html.escape(str(copy_data["eyebrow"]))}</div><h1>{html.escape(str(copy_data["headline_plain"]))} <em>{html.escape(str(copy_data["headline_emphasis"]))}</em></h1><p class=\"lede\">{html.escape(str(copy_data["lede"]))}</p><div class=\"actions\"><button>See the operating system</button><span class=\"caption\">Preview only. Nothing has been published.</span></div></div></header><main><section class=\"split\"><h2>{html.escape(str(copy_data["section2_heading"]))}</h2><div class=\"body\">{html.escape(str(copy_data["section2_body"]))}</div></section><section><div class=\"eyebrow\" style=\"color:#466c5e\">How it works</div><div class=\"cards\">{cards_html}</div></section><section><div class=\"evidence\">RESEARCH STATUS / {html.escape(source_note)}</div></section></main><footer><span>{html.escape(brand)} / {html.escape(domain)}</span><span>LOCAL WEBSITE PREVIEW</span></footer></body></html>"""
 
 
 def _website_identity(request: str) -> tuple[str, str]:

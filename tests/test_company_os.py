@@ -235,6 +235,42 @@ async def test_retry_route_unblocks_a_task_and_relaunches_its_mission(tmp_path, 
 
 
 @pytest.mark.asyncio
+async def test_approval_decision_route_actually_persists_instead_of_500ing(tmp_path, monkeypatch):
+    """Real incident: EVERY approve/reject click 500'd unconditionally.
+    _apply_event's "updated" whitelist (company_os.py:424) listed every
+    other entity kind (initiative/squad/mission/task/task_attempt/artifact/
+    message) but never "approval" -- even though create_approval's own
+    "created" event worked fine (a different, separately-whitelisted code
+    path), so cards appeared normally but every single decision on them
+    raised "unsupported Company OS event: approval.updated" with no
+    working recovery path in the UI."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.create_initiative("acme", "Website", initiative_id="i1")
+    company_os.create_squad("acme", "i1", "Product Delivery", squad_id="s1")
+    task = company_os.create_task("acme", "i1", "s1", "Publish to Vercel", task_id="t1", state="awaiting_approval")
+    approval = company_os.create_approval("acme", "Approval required: Publish to Vercel", approval_id="a1",
+                                          task_id="t1", detail="Review the policy-gated action before execution.")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/companies/acme/os/approvals/a1",
+            json={"founder_id": "founder", "approved": True},
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    updated_approval = next(item for item in body["company"]["approvals"] if item["approval_id"] == "a1")
+    assert updated_approval["state"] == "approved"
+
+
+@pytest.mark.asyncio
 async def test_retry_route_rejects_a_task_that_is_not_blocked(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
