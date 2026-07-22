@@ -39,6 +39,16 @@ _DIRECT_WORK_REQUEST = re.compile(
     r"^(build|create|make|design|develop|draft|write|compare|research|redesign|update|revise|launch|deploy|publish)\b",
     re.IGNORECASE,
 )
+# A compound message chains a lookup and a deliverable in one turn ("what is
+# X ... then create a site to display the results") -- confirmed live, the
+# classifier answered only the first clause and silently dropped "then
+# create a site" entirely, since the verb never appears at message start.
+# Check each "then"-chained clause, not just the whole message's prefix.
+_CHAIN_SPLIT = re.compile(r"\b(?:and then|then|after that|afterward)\b", re.IGNORECASE)
+
+
+def _is_direct_work_request(message: str) -> bool:
+    return any(_DIRECT_WORK_REQUEST.match(clause.strip()) for clause in _CHAIN_SPLIT.split(message.strip()))
 
 
 def _pending_clarification(company: dict[str, Any]) -> dict[str, Any] | None:
@@ -73,7 +83,7 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     pending = _pending_clarification(company)
     if pending:
         plan: dict[str, Any] = {"action": "new", "initiative_id": None, "reply": ""}
-    elif _DIRECT_WORK_REQUEST.match(message.strip()):
+    elif _is_direct_work_request(message):
         plan = {"action": "new", "initiative_id": None, "reply": ""}
     else:
         plan = await asyncio.to_thread(_classify_turn, company, message)

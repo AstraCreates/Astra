@@ -199,6 +199,36 @@ async def test_direct_work_request_dispatches_without_calling_the_turn_classifie
 
 
 @pytest.mark.asyncio
+async def test_compound_lookup_then_deliverable_dispatches_both_parts(tmp_path, monkeypatch):
+    """Confirmed live: "what is Blackstone ... then create a site to display
+    the results" got classified "answer" and answered only the lookup half --
+    "then create a site" was silently dropped, since the direct-work-request
+    bypass only checked the message's start and the build verb was buried in
+    a second, "then"-chained clause."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    _no_launch(monkeypatch)
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    def fake_generate(prompt, *, model=None, **_kwargs):
+        if model == "fast":
+            raise AssertionError("the turn classifier must not run for a chained direct work request")
+        return json.dumps({
+            "objective": "Research Blackstone and build a site displaying the results", "deliverables": [],
+            "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
+            "primary_capability": "research", "required_capabilities": ["research", "website delivery"],
+            "risk": "internal", "clarification_question": None, "clarification_options": None, "confidence": 0.9,
+        })
+    monkeypatch.setattr("backend.tools._llm.generate", fake_generate)
+
+    result = await coordinate_turn("acme", "what is Blackstone the company and how do they make money "
+                                            "then create a site to display the results of the research")
+
+    assert result["dispatch"] is not None
+    assert result["dispatch"]["handoff_missions"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_reply_carries_the_squad_id_for_the_inline_plan_card(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
