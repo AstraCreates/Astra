@@ -131,7 +131,7 @@ def _build_prompt(company: dict[str, Any], message: str, classification: IntentC
 {steps_block}
 
 Your only two jobs:
-1. Does this continue one of the active initiatives listed below (same real-world subject, compatible department), or is it new work? Set initiative_id to that initiative's id, or null if new.
+1. Does this continue one of the active initiatives listed below (same real-world subject), or is it new work? A follow-up may need another department and therefore add a new squad under the same initiative. Set initiative_id to that initiative's id, or null if new.
 2. Write a natural, first-person reply (2-4 sentences) describing what you're about to do, reflecting the ACTUAL steps above in order (e.g. mention research first, then the build, if there's more than one step) -- not generic boilerplate, never "I formed the X Squad for Y", don't invent details beyond the steps."""
     else:
         kind_hint = {

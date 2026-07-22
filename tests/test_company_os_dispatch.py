@@ -333,6 +333,35 @@ def test_dispatch_persists_charter_role_records_and_task_contract(monkeypatch):
     assert next(task for task in store.company["tasks"] if task["mcp_tool"] == "astra_company_research")["role_key"] == "market_analyst"
 
 
+def test_same_subject_product_followup_reuses_research_initiative(tmp_path, monkeypatch):
+    from backend import company_os
+    import backend.company_os_dispatch as dispatch
+
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("acme", "founder", "Acme")
+    research_request = {
+        "version": 1, "outcome": "Compare BlackRock and Blackstone", "deliverables": ["comparison"],
+        "constraints": [], "entities": ["BlackRock", "Blackstone"], "risk": "internal",
+        "primary_capability": "research", "required_capabilities": ["research", "compare", "evidence research"],
+        "confidence": 0.95, "requires_clarification": False,
+    }
+    research = dispatch.dispatch_intent("acme", "what is the difference between BlackRock and Blackstone", work_request=research_request)
+    product_request = {
+        "version": 1, "outcome": "Build a website comparing BlackRock and Blackstone", "deliverables": ["local website"],
+        "constraints": [], "entities": ["BlackRock", "Blackstone"], "risk": "internal",
+        "primary_capability": "website", "required_capabilities": ["website", "local preview"],
+        "confidence": 0.95, "requires_clarification": False,
+    }
+
+    product = dispatch.dispatch_intent("acme", "build a website comparing BlackRock and Blackstone",
+                                       forced_initiative_id=research["initiative"]["initiative_id"], work_request=product_request)
+
+    assert product["initiative"]["initiative_id"] == research["initiative"]["initiative_id"]
+    state = company_os.get_company_os("acme")
+    assert {squad["department"] for squad in state["squads"]} == {"research", "product_technical"}
+
+
 def test_restart_duplicate_protection_reads_durable_attempts(monkeypatch):
     dispatch, store = _dispatch(monkeypatch)
     task = {"id": "research-1", "title": "Research competitors"}

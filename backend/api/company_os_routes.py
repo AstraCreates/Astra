@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_squad, update_task
 from backend.company_os_copilot import coordinate_turn
@@ -65,6 +65,20 @@ class ApprovalDecisionBody(BaseModel):
     approved: bool = True
     note: str | None = Field(default=None, max_length=2_000)
 
+    @model_validator(mode="before")
+    @classmethod
+    def accept_json_string_envelope(cls, value: Any) -> Any:
+        """Tolerate proxy layers that forward a JSON body as a JSON string."""
+        if isinstance(value, str):
+            try:
+                import json
+                decoded = json.loads(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Approval body must be a JSON object") from exc
+            if isinstance(decoded, dict):
+                return decoded
+        return value
+
 
 class SquadControlBody(BaseModel):
     founder_id: str
@@ -100,6 +114,20 @@ def _artifact(company_id: str, artifact_id: str) -> dict[str, Any]:
     if not artifact:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return artifact
+
+
+def _dismiss_pending_approvals(company_id: str, company: dict[str, Any], *, reason: str) -> None:
+    """Invalidate approval cards whose originating chat context was discarded."""
+    task_ids = set()
+    for approval in company.get("approvals", []):
+        if approval.get("state") != "pending":
+            continue
+        update_approval(company_id, approval["approval_id"], state="dismissed", note=reason)
+        if approval.get("task_id"):
+            task_ids.add(str(approval["task_id"]))
+    for task in company.get("tasks", []):
+        if str(task.get("task_id")) in task_ids and task.get("state") == "awaiting_approval":
+            update_task(company_id, task["task_id"], state="blocked", blocked_reason=reason)
 
 
 def _company(request: Request, company_id: str, founder_id: str, *, operator: bool = False) -> dict[str, Any]:
@@ -293,6 +321,7 @@ async def edit_company_os_message(company_id: str, message_id: str, body: Messag
     edited_index = next(i for i, item in enumerate(conversation) if item.get("message_id") == message_id)
     for later in conversation[edited_index + 1:]:
         update_message(company_id, later["message_id"], archived=True)
+    _dismiss_pending_approvals(company_id, company, reason="Dismissed because the originating chat message was edited")
     update_message(company_id, message_id, message=body.message, edited=True)
     result = await coordinate_turn(company_id, body.message)
     return {"ok": True, "message_id": message_id, "message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
@@ -317,6 +346,7 @@ async def clear_company_os_messages(company_id: str, founder_id: str, request: R
     for item in company.get("conversation", []):
         if not item.get("archived"):
             update_message(company_id, item["message_id"], archived=True)
+    _dismiss_pending_approvals(company_id, company, reason="Dismissed because the chat was cleared")
     return {"ok": True, "company": get_company_os(company_id)}
 
 

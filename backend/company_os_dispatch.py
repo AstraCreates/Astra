@@ -141,6 +141,23 @@ def _find_continuation(intent: str, candidates: list[dict[str, Any]]) -> dict[st
     return best[1] if best else None
 
 
+def _initiative_matches_request(initiative: Mapping[str, Any], request: Mapping[str, Any], intent: str) -> bool:
+    """Allow a new specialist squad to join an initiative for the same outcome.
+
+    Initiative ownership is intentionally broader than a department. A founder
+    often researches a subject first, then asks Product to turn that same
+    research into a site. Entity overlap is the strongest signal; lexical
+    overlap is the conservative fallback when extraction did not name entities.
+    """
+    initiative_text = " ".join(str(initiative.get(key) or "") for key in ("name", "objective"))
+    initiative_words = _content_words(initiative_text)
+    entities = _content_words(" ".join(str(value) for value in request.get("entities") or []))
+    if entities and entities.issubset(initiative_words):
+        return True
+    intent_words = _content_words(intent)
+    return bool(intent_words and initiative_words and len(intent_words & initiative_words) / min(len(intent_words), len(initiative_words)) >= _CONTINUATION_OVERLAP_THRESHOLD)
+
+
 def _tokens(value: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", value.lower()))
 
@@ -594,9 +611,12 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
                       if _entity_id(item, "initiative_id") == forced_initiative_id and item.get("state") != "archived"
                       and not (research_request and item.get("system_key") == "company_operations")), None)
     if reuse is not None:
-        # A continuation target is only a reuse hint. Its department must be
-        # compatible with the newly extracted work request.
-        compatible = reuse.get("department") == route["department"] or reuse.get("director") == route["department"]
+        # A director can coordinate multiple specialized squads. Keep the
+        # initiative when Copilot identified the same real-world outcome even
+        # if the follow-up needs another department (research -> product).
+        compatible = (reuse.get("department") == route["department"]
+                      or reuse.get("director") == route["department"]
+                      or _initiative_matches_request(reuse, work_request, intent))
         if not compatible:
             reuse = None
         department = route["department"]
@@ -604,7 +624,6 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if reuse is None:
         department, squad_name = route["department"], route["squad_name"]
         candidates = [item for item in company.get("initiatives", []) if item.get("state") != "archived"
-                      and item.get("department") == department and item.get("director") == route["director"]
                       and not (research_request and item.get("system_key") == "company_operations")]
         reuse = _find_continuation(intent, candidates)
     if reuse:

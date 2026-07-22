@@ -271,6 +271,31 @@ async def test_approval_decision_route_actually_persists_instead_of_500ing(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_approval_route_accepts_a_proxy_json_string_envelope(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.create_initiative("acme", "Website", initiative_id="i1")
+    company_os.create_squad("acme", "i1", "Product Delivery", squad_id="s1")
+    company_os.create_task("acme", "i1", "s1", "Publish", task_id="t1", state="awaiting_approval")
+    company_os.create_approval("acme", "Approval required", approval_id="a1", task_id="t1")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/companies/acme/os/approvals/a1",
+            content=json.dumps(json.dumps({"founder_id": "founder", "approved": True})),
+            headers={"content-type": "application/json", "x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    assert next(item for item in response.json()["company"]["approvals"] if item["approval_id"] == "a1")["state"] == "approved"
+
+
+@pytest.mark.asyncio
 async def test_retry_route_rejects_a_task_that_is_not_blocked(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
@@ -342,6 +367,10 @@ async def test_edit_message_archives_everything_after_it_and_resubmits(tmp_path,
     company_os.append_message("acme", "Blackstone is an asset manager.", author="copilot", role="assistant", kind="chat", message_id="m2")
     company_os.append_message("acme", "and how do they make money", author="founder", role="user", message_id="m3")
     company_os.append_message("acme", "Management fees and carried interest.", author="copilot", role="assistant", kind="chat", message_id="m4")
+    company_os.create_initiative("acme", "Old website", initiative_id="i1")
+    company_os.create_squad("acme", "i1", "Product", squad_id="s1")
+    company_os.create_task("acme", "i1", "s1", "Publish", task_id="t1", state="awaiting_approval")
+    company_os.create_approval("acme", "Publish old website", approval_id="a1", task_id="t1")
 
     seen_messages = []
 
@@ -370,3 +399,29 @@ async def test_edit_message_archives_everything_after_it_and_resubmits(tmp_path,
     for stale_id in ("m2", "m3", "m4"):
         stale = next(m for m in state["conversation"] if m["message_id"] == stale_id)
         assert stale.get("archived") is True
+    assert next(item for item in state["approvals"] if item["approval_id"] == "a1")["state"] == "dismissed"
+    assert next(item for item in state["tasks"] if item["task_id"] == "t1")["state"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_clear_chat_dismisses_pending_approvals(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.append_message("acme", "Build a site", author="founder", role="user")
+    company_os.create_initiative("acme", "Website", initiative_id="i1")
+    company_os.create_squad("acme", "i1", "Product", squad_id="s1")
+    company_os.create_task("acme", "i1", "s1", "Publish", task_id="t1", state="awaiting_approval")
+    company_os.create_approval("acme", "Publish", approval_id="a1", task_id="t1")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/companies/acme/os/messages/clear", params={"founder_id": "founder"}, headers={"x-astra-user-id": "founder"})
+
+    assert response.status_code == 200
+    state = company_os.get_company_os("acme")
+    assert all(message.get("archived") for message in state["conversation"])
+    assert next(item for item in state["approvals"] if item["approval_id"] == "a1")["state"] == "dismissed"
