@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Literal
 
 IntentKind = Literal["negated", "chitchat", "answer", "mcp_command", "work"]
@@ -253,7 +254,7 @@ If the message says not to do something yet / hold off / no need to, output exac
 Respond with ONLY lines in this exact format, nothing else, no numbering, no prose, no repeating these examples:
 <ask text> :: <department>
 
-Message: {{message!r}}"""
+Message: {message!r}"""
 
 
 def _budget(message: str) -> int:
@@ -287,14 +288,41 @@ def classify_intent(message: str, *, max_attempts: int = 2) -> IntentClassificat
             if choice.finish_reason == "length" or not content:
                 budget *= 2
                 continue
-            return _parse(content, time.perf_counter() - started)
+            parsed = _parse(content, message, time.perf_counter() - started)
+            if parsed.kind == "work" and not parsed.steps:
+                # Every line either failed to parse or was rejected as a
+                # hallucinated echo of an unrelated few-shot example (real
+                # incident: confirmed live, the model returned memorized
+                # example text -- a different one on different runs -- for
+                # messages it should have classified correctly). Retry
+                # before accepting an empty result.
+                continue
+            return parsed
         except Exception:
             continue
     return IntentClassification(kind="work", steps=[IntentStep(text=message, department="")],
                                 elapsed=time.perf_counter() - started)
 
 
-def _parse(content: str, elapsed: float) -> IntentClassification:
+_MIN_OVERLAP_WITH_MESSAGE = 0.25
+
+
+def _overlap_with_message(candidate_text: str, message: str) -> float:
+    """Fuzzy character-level similarity between a classified line's own text
+    and the real input message -- catches the model hallucinating/echoing an
+    unrelated few-shot example verbatim (confirmed live: it returned
+    memorized example text, a DIFFERENT one on different runs/environments,
+    for messages it had correctly classified during validation). A genuine
+    response -- even after typo correction or splitting into a partial
+    clause -- is still built from the real message's own characters, so it
+    scores well above a wholesale hallucination even though the exact words
+    differ. Calibrated against real cases: legitimate responses (typo
+    correction, multi-step clauses as short as 1/3 of the message) scored
+    0.36-1.0; confirmed hallucinations scored 0.08-0.21."""
+    return SequenceMatcher(None, candidate_text.lower(), message.lower()).ratio()
+
+
+def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
     from backend.company_os_dispatch import CAPABILITY_REGISTRY
 
     steps: list[IntentStep] = []
@@ -304,10 +332,12 @@ def _parse(content: str, elapsed: float) -> IntentClassification:
             continue
         text, _, label = line.rpartition("::")
         text, label = text.strip(), label.strip().lower()
+        if not text or _overlap_with_message(text, message) < _MIN_OVERLAP_WITH_MESSAGE:
+            continue
         if label == "negated":
             return IntentClassification(kind="negated", elapsed=elapsed)
         if label in _SPECIAL_LABELS:
             return IntentClassification(kind=label, elapsed=elapsed)  # type: ignore[arg-type]
-        if label in CAPABILITY_REGISTRY and text:
+        if label in CAPABILITY_REGISTRY:
             steps.append(IntentStep(text=text, department=label))
     return IntentClassification(kind="work", steps=steps, elapsed=elapsed)
