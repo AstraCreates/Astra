@@ -322,6 +322,20 @@ def _overlap_with_message(candidate_text: str, message: str) -> float:
     return SequenceMatcher(None, candidate_text.lower(), message.lower()).ratio()
 
 
+def _is_malformed(text: str) -> bool:
+    """Confirmed live: a single call returned "is difference between
+    blackstone blackrock create website highlighting differences'" for a
+    genuinely two-step message -- articles and conjunctions the prompt
+    explicitly says to preserve ("Fix only spelling/typo errors, keep
+    wording... identical") were silently stripped, both asks were merged
+    into one, and it ends in a dangling quote character. A TRAILING quote is
+    never legitimate output; it's unambiguous evidence of a truncated/
+    mangled generation. Checking only the trailing position (not any
+    apostrophe anywhere) matters -- ordinary contractions like "don't" or
+    "it's" contain a real, legitimate mid-text apostrophe."""
+    return text.endswith("'") or text.endswith('"')
+
+
 def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
     from backend.company_os_dispatch import CAPABILITY_REGISTRY
 
@@ -332,7 +346,7 @@ def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
             continue
         text, _, label = line.rpartition("::")
         text, label = text.strip(), label.strip().lower()
-        if not text or _overlap_with_message(text, message) < _MIN_OVERLAP_WITH_MESSAGE:
+        if not text or _is_malformed(text) or _overlap_with_message(text, message) < _MIN_OVERLAP_WITH_MESSAGE:
             continue
         if label == "negated":
             return IntentClassification(kind="negated", elapsed=elapsed)

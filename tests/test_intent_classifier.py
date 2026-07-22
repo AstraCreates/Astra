@@ -71,6 +71,39 @@ def test_truncated_response_escalates_budget_and_retries(monkeypatch):
     assert calls[1] > calls[0]  # escalated on the retry
 
 
+def test_malformed_merged_response_with_dangling_quote_is_rejected_and_retried(monkeypatch):
+    """Confirmed live: for "what is the difference between blackstone and
+    blackrock and create a website highlighting the differences" (a message
+    that should split into a research step + a product_technical step,
+    exactly like the other validated compound-message tests), one call
+    instead merged both asks into a single, stopword-mangled line ending in
+    a stray unbalanced quote: "is difference between blackstone blackrock
+    create website highlighting differences'" -- dropping the website
+    capability entirely and producing a garbled task title downstream. A
+    dangling quote is never legitimate output and must be rejected/retried."""
+    calls = []
+
+    class _MangledThenCleanClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+        def _create(self, **_kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                content = "is difference between blackstone blackrock create website highlighting differences' :: research"
+            else:
+                content = ("what is the difference between blackstone and blackrock :: research\n"
+                           "create a website highlighting the differences :: product_technical")
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content), finish_reason="stop")])
+    monkeypatch.setattr("backend.core.llm_client.get_or_client", lambda *_a, **_k: _MangledThenCleanClient())
+
+    result = classify_intent("what is the difference between blackstone and blackrock and create a website highlighting the differences")
+
+    assert len(calls) == 2  # the malformed first attempt was rejected and retried
+    assert result.kind == "work"
+    assert [s.department for s in result.steps] == ["research", "product_technical"]
+
+
 def test_hallucinated_echo_of_an_unrelated_example_is_rejected_and_retried(monkeypatch):
     """Confirmed live: for "what is the difference between blackrock and
     blackstone" (and, separately, the exact phrase "what is Blackstone the
