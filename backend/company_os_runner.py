@@ -301,7 +301,15 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             return _store_artifact(company_id, task, f"Website preview — {_short_title(mission_name)}",
                                    {"content": _website_preview(mission_name, sources), "sources": sources}, source="local website", internal=False)
         if "publication decision" in title.lower() or "publish approval" in title.lower():
-            return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Local preview ready\n\nThe local website preview is available in the Library. No publication or deployment has been requested. If you later choose to publish it, that separate external action will require approval."}, source="internal analysis")
+            # specialist_task_plan always queues a Vercel publish task directly
+            # after this one (company_os_dispatch.py:359-360) -- it is never a
+            # separate, not-yet-requested follow-up. Claiming "no publication
+            # or deployment has been requested" was flatly contradicted by the
+            # very next task in the same mission, which immediately does
+            # request one (real incident: the founder saw this text and, in
+            # the same breath, a "waiting on your approval" status for that
+            # exact publish request).
+            return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Local preview ready\n\nThe local website preview is available in the Library. Publishing to Vercel has been queued and is waiting on your approval -- check Approvals in the sidebar when you're ready to make it public."}, source="internal analysis")
         return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}", {"content": _website_brief(mission_name)}, source="internal analysis", internal=True)
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))

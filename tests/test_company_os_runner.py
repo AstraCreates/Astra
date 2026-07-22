@@ -8,7 +8,7 @@ from backend import company_os
 from backend.company_os_dispatch import dispatch_intent
 from backend.company_os_dispatch import _existing_attempt
 from backend.company_os_runner import recover_pending_missions, run_mission
-from backend.company_os_runner import _comparison_document, _complete_chat_reply, _decision_brief, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
+from backend.company_os_runner import _comparison_document, _complete_chat_reply, _decision_brief, _execute_internal_work, _fallback_summary, _is_comparison_request, _synthesize_comparison_document, _website_preview
 
 
 def _fake_llm_generate(prompt, *, model="large", json_mode=False, max_tokens=None, temperature=0.7):
@@ -202,6 +202,32 @@ def test_website_preview_is_domain_specific_and_never_echoes_the_raw_request():
     assert "goon.com" in preview
     assert "Informed by 1 cited research source" in preview
     assert "compare cofounder.co and astracreates.com" not in preview
+
+
+def test_publication_decision_artifact_reflects_that_publish_is_already_queued(tmp_path, monkeypatch):
+    """Real incident: this artifact used to unconditionally say "No
+    publication or deployment has been requested" -- but
+    specialist_task_plan (company_os_dispatch.py:359-360) ALWAYS queues a
+    Vercel publish task directly after this one in the same mission, so the
+    founder saw this claim in the same breath as a "waiting on your
+    approval" status for that exact publish request it just said didn't
+    exist."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_id = "acme"
+    company_os.create_company_os(company_id, "founder", "Acme")
+    company_os.create_initiative(company_id, "Website", initiative_id="i1")
+    company_os.create_squad(company_id, "i1", "Product Delivery", squad_id="s1")
+    mission = {"department": "product_technical", "name": "build a website comparing Blackrock and Blackstone",
+               "mission_id": "m1", "initiative_id": "i1"}
+    task = company_os.create_task(company_id, "i1", "s1", "Prepare the publication decision for the site", task_id="t1")
+
+    result = _execute_internal_work(company_id, mission, task)
+
+    artifact = next(a for a in company_os.get_company_os(company_id)["artifacts"] if a["artifact_id"] == result["artifact_id"])
+    assert "No publication or deployment has been requested" not in artifact["content"]
+    assert "queued" in artifact["content"].lower()
+    assert "approval" in artifact["content"].lower()
 
 
 @pytest.mark.asyncio
