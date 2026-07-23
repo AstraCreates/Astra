@@ -202,6 +202,7 @@ async def startup_background_jobs():
         asyncio.create_task(_budget_reservation_reaper_loop()),
         asyncio.create_task(_control_plane_outbox_loop()),
         asyncio.create_task(_control_plane_rollout_loop()),
+        asyncio.create_task(_company_os_recovery_loop()),
     ]
 
 
@@ -238,6 +239,29 @@ async def _budget_reservation_reaper_loop() -> None:
         except Exception as exc:
             logger.warning("Budget reservation reaper failed: %s", exc)
         await asyncio.sleep(120)
+
+
+async def _company_os_recovery_loop() -> None:
+    """Recover Company OS missions that became orphaned while the process stayed up.
+
+    Startup recovery handles crash/restart orphans, but a task can also be left
+    stale if an in-process worker is cancelled or loses its final state update.
+    Use the existing locked recovery path so periodic healing and startup
+    recovery share the same safety checks.
+    """
+    await asyncio.sleep(120)
+    while True:
+        try:
+            from backend.company_os_runner import recover_pending_missions
+
+            recovered = await recover_pending_missions()
+            if recovered:
+                logger.info("Company OS recovery loop: resumed %d pending mission(s)", recovered)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Company OS recovery loop failed: %s", exc)
+        await asyncio.sleep(300)
 
 
 async def _platform_alert_loop() -> None:
