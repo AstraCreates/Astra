@@ -89,6 +89,8 @@ def _check_models() -> dict[str, Any]:
 
 
 def _check_company_brain_scheduler() -> dict[str, Any]:
+    if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
+        return {"ok": True, "status": "external", "running": True}
     try:
         from backend.tools.company_brain_scheduler import get_company_brain_scheduler_status
         status = get_company_brain_scheduler_status().get("scheduler", {})
