@@ -397,12 +397,20 @@ services:
         cp /etc/letsencrypt/live/app.astracreates.com/fullchain.pem /etc/nginx/certs/app.tls.crt;
         cp /etc/letsencrypt/live/app.astracreates.com/privkey.pem /etc/nginx/certs/app.tls.key;
       fi;
+      if [ -f /etc/letsencrypt/live/api.astracreates.com/fullchain.pem ]; then
+        cp /etc/letsencrypt/live/api.astracreates.com/fullchain.pem /etc/nginx/certs/api.tls.crt;
+        cp /etc/letsencrypt/live/api.astracreates.com/privkey.pem /etc/nginx/certs/api.tls.key;
+      fi;
       if [ ! -s /etc/nginx/certs/tls.crt ] || [ ! -s /etc/nginx/certs/tls.key ]; then
         openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=bootstrap.invalid -keyout /etc/nginx/certs/tls.key -out /etc/nginx/certs/tls.crt;
       fi;
       if [ ! -s /etc/nginx/certs/app.tls.crt ] || [ ! -s /etc/nginx/certs/app.tls.key ]; then
         cp /etc/nginx/certs/tls.crt /etc/nginx/certs/app.tls.crt;
         cp /etc/nginx/certs/tls.key /etc/nginx/certs/app.tls.key;
+      fi;
+      if [ ! -s /etc/nginx/certs/api.tls.crt ] || [ ! -s /etc/nginx/certs/api.tls.key ]; then
+        cp /etc/nginx/certs/tls.crt /etc/nginx/certs/api.tls.crt;
+        cp /etc/nginx/certs/tls.key /etc/nginx/certs/api.tls.key;
       fi;
       exec nginx -g "daemon off;"'
     healthcheck:
