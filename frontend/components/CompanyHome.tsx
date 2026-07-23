@@ -725,6 +725,7 @@ export default function CompanyHome() {
             agents={agentOptions}
             contextLabel={sending ? "Copilot is coordinating your squad" : "Grounded in Company Brain"}
             placeholder="Ask Astra to coordinate your company"
+            founderId={founderId}
             onAttach={() => attachInputRef.current?.click()}
             attachmentCount={attachments.length}
           />

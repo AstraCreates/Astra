@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ArrowUp, AtSign, Paperclip } from "lucide-react";
+import { ArrowUp, AtSign, LoaderCircle, Mic, MicOff, Paperclip } from "lucide-react";
+import { transcribeAudio } from "@/lib/api";
 
 export type CopilotAgentOption = {
   id: string;
@@ -26,6 +27,7 @@ export default function AstraCopilotComposer({
   onAttach,
   attachmentCount = 0,
   autoFocus = false,
+  founderId,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -37,11 +39,17 @@ export default function AstraCopilotComposer({
   onAttach?: () => void;
   attachmentCount?: number;
   autoFocus?: boolean;
+  founderId?: string;
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(-1);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
 
   const filteredAgents = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -86,6 +94,69 @@ export default function AstraCopilotComposer({
     if (!clean || disabled) return;
     void onSubmit(clean, extractAgentMentions(clean, agents));
     setMentionQuery(null);
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!founderId) {
+      setVoiceError("Voice is unavailable until your workspace is signed in.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceError("This browser does not support microphone recording.");
+      return;
+    }
+    setVoiceError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingChunksRef.current = [];
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        setVoiceError("Microphone recording failed. Please try again.");
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        recordingChunksRef.current = [];
+        if (!blob.size) {
+          setVoiceError("No audio was captured.");
+          return;
+        }
+        setTranscribing(true);
+        try {
+          const extension = blob.type.includes("mp4") ? "m4a" : "webm";
+          const result = await transcribeAudio(founderId, new File([blob], `speech.${extension}`, { type: blob.type }));
+          if (!result.ok || !result.text.trim()) {
+            setVoiceError(result.error || "No speech was detected.");
+            return;
+          }
+          const separator = value.trim() ? " " : "";
+          onChange(`${value}${separator}${result.text.trim()}`);
+          requestAnimationFrame(() => inputRef.current?.focus());
+        } catch {
+          setVoiceError("Could not transcribe that recording.");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      recorder.start();
+      setRecording(true);
+    } catch {
+      setVoiceError("Microphone access was blocked. Check your browser permission and try again.");
+    }
   }
 
   return (
@@ -173,6 +244,11 @@ export default function AstraCopilotComposer({
               {attachmentCount > 0 && <span>{attachmentCount}</span>}
             </button>
           )}
+          {founderId && (
+            <button type="button" onClick={() => void toggleRecording()} disabled={disabled || transcribing} aria-label={recording ? "Stop recording" : "Record voice message"} title={recording ? "Stop recording" : "Record voice message"} className={recording ? "is-recording" : undefined}>
+              {transcribing ? <LoaderCircle size={16} className="astra-composer-spin" /> : recording ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+          )}
           <span><AtSign size={13} /> mention an agent</span>
           {contextLabel && <small>{contextLabel}</small>}
         </div>
@@ -180,6 +256,7 @@ export default function AstraCopilotComposer({
           <ArrowUp size={17} strokeWidth={2.4} />
         </button>
       </div>
+      {(recording || transcribing || voiceError) && <div className={`astra-composer-voice-status${voiceError ? " is-error" : ""}`} role="status">{voiceError || (transcribing ? "Transcribing recording…" : "Recording… click the microphone to stop")}</div>}
     </div>
   );
 }

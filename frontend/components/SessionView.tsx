@@ -1682,6 +1682,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           copilot={copilot}
           copilotBusy={copilotBusy || copilotUploading}
           copilotProgress={copilotProgress}
+          founderId={founderId}
           input={copilotInput}
           onInput={setCopilotInput}
           onSubmit={sendCopilot}
@@ -2403,6 +2404,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           onChange={setCopilotInput}
           onSubmit={sendCopilot}
           agents={copilotAgents}
+          founderId={founderId}
           disabled={copilotBusy || copilotUploading}
           placeholder="Ask Astra anything or @mention a specific agent"
           contextLabel={workbenchOpen ? "Workbench open" : `${run} working · ${done} done`}
