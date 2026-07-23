@@ -25,6 +25,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3644250649570397"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body suppressHydrationWarning>
         <SessionWrapper>
           <ApiAuthBridge />

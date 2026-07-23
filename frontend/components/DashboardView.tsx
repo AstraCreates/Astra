@@ -8,6 +8,7 @@ import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
 import AstraCopilotComposer, { extractAgentMentions, type CopilotAgentOption } from "./AstraCopilotComposer";
 import { getRunSnapshot } from "@/lib/control-plane-api";
+import AdSenseSlot from "./AdSenseSlot";
 
 function sessionStatusFromRunStatus(status: string): SessionIndexEntry["status"] {
   const map: Record<string, SessionIndexEntry["status"]> = {
@@ -575,6 +576,8 @@ export default function DashboardView() {
               )}
             </div>
           </div>
+
+          <AdSenseSlot slot={process.env.NEXT_PUBLIC_ADSENSE_DASHBOARD_SLOT} minHeight={90} />
 
           {/* Automations — exact from reference */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>
