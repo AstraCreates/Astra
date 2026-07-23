@@ -1610,6 +1610,48 @@ export async function ingestAttachment(
   return res.json();
 }
 
+async function fileToBase64(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < buf.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + CHUNK)));
+  }
+  return btoa(binary);
+}
+
+export async function transcribeAudio(
+  founderId: string,
+  file: File,
+  opts: { language?: string; prompt?: string; model?: string } = {},
+): Promise<{ ok: boolean; filename: string; mime: string; model: string; text: string; size_bytes: number; error?: string }> {
+  const b64 = await fileToBase64(file);
+  const res = await apiFetch(`${BASE}/voice/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      founder_id: founderId,
+      filename: file.name || "speech.webm",
+      mime: file.type || "audio/webm",
+      data_base64: b64,
+      ...opts,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    return {
+      ok: false,
+      filename: file.name || "speech.webm",
+      mime: file.type || "audio/webm",
+      model: opts.model || "whisper-1",
+      text: "",
+      size_bytes: file.size,
+      error: t || `Transcription failed (HTTP ${res.status})`,
+    };
+  }
+  return res.json();
+}
+
 /** Immediately stop a running session (kill switch). */
 export async function killSession(sessionId: string): Promise<boolean> {
   try {

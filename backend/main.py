@@ -24,6 +24,7 @@ from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
 from backend.api.company_os_routes import router as company_os_router
+from backend.api.voice_routes import router as voice_router
 
 logger = logging.getLogger(__name__)
 _background_tasks: list[asyncio.Task] = []
@@ -68,6 +69,7 @@ app.include_router(dashboard_router)
 app.include_router(custom_agents_router)
 app.include_router(insights_router)
 app.include_router(funding_router)
+app.include_router(voice_router)
 app.include_router(preview_proxy_router)
 
 
@@ -409,6 +411,10 @@ async def mcp_http(request: Request):
                 "astra_approve",
                 "astra_approve_next_goal",
                 "astra_run_cycle",
+                "astra_library_create",
+                "astra_library_update",
+                "astra_library_append",
+                "astra_library_delete",
             }
             # Require authenticated identity for configured auth, and always for mutations.
             if (_cfg.astra_require_auth or name in mutating_tools) and not _caller_id:

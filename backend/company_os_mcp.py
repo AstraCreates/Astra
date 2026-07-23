@@ -46,12 +46,18 @@ def available_tools(*, include_external: bool = True) -> list[dict[str, Any]]:
         except Exception:
             pass
 
+    astra_mutability = {
+        "astra_library_create": "write",
+        "astra_library_update": "write",
+        "astra_library_append": "write",
+        "astra_library_delete": "delete",
+    }
     tools: dict[str, dict[str, Any]] = {
         item["name"]: {
             "name": item["name"],
             "schema": item.get("inputSchema") or {},
             "toolset": "astra",
-            "mutability": "read",
+            "mutability": astra_mutability.get(item["name"], "read"),
             "available": True,
             "source": "astra_mcp",
         }

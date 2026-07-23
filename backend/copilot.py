@@ -527,6 +527,12 @@ def _company_for_session(session_id: str, founder_id: str) -> str:
         return founder_id
 
 
+def _tool_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 async def _tool_ask_brain(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.tools.company_brain import ask_company_brain
     import asyncio
@@ -1389,6 +1395,97 @@ async def _tool_read_library_item(founder_id: str, session_id: str, args: dict) 
         return {"ok": False, "error": str(e)}
 
 
+async def _tool_create_library_item(founder_id: str, session_id: str, args: dict) -> Any:
+    """Create a new Library document. args: {filename, content, department?, is_canonical?}"""
+    import asyncio
+    filename = str(args.get("filename") or args.get("title") or "").strip()
+    content = str(args.get("content") or args.get("text") or "")
+    department = str(args.get("department") or "copilot").strip() or "copilot"
+    if not filename:
+        return {"ok": False, "error": "filename required"}
+    try:
+        from backend.library.store import create_file
+        record = await asyncio.to_thread(
+            create_file,
+            founder_id,
+            department,
+            filename,
+            content,
+            _tool_bool(args.get("is_canonical", False)),
+            "",
+            "copilot",
+            session_id,
+        )
+        return {"ok": True, "file": record}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_update_library_item(founder_id: str, session_id: str, args: dict) -> Any:
+    """Update a Library document by replacing content or metadata. args: {file_id, content?, filename?, department?, is_canonical?}"""
+    import asyncio
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    fields: dict[str, Any] = {}
+    for key in ("content", "filename", "department", "is_canonical"):
+        if key in args:
+            fields[key] = args[key]
+    if "text" in args and "content" not in fields:
+        fields["content"] = args["text"]
+    if "is_canonical" in fields:
+        fields["is_canonical"] = _tool_bool(fields["is_canonical"])
+    if not fields:
+        return {"ok": False, "error": "provide content, filename, department, or is_canonical"}
+    try:
+        from backend.library.store import update_file
+        record = await asyncio.to_thread(update_file, founder_id, file_id, **fields)
+        if record is None:
+            return {"ok": False, "error": "not found"}
+        return {"ok": True, "file": record}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_append_library_item(founder_id: str, session_id: str, args: dict) -> Any:
+    """Append text to a Library document. args: {file_id, text, heading?}"""
+    import asyncio
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    text = str(args.get("text") or args.get("content") or "")
+    heading = str(args.get("heading") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    if not text.strip():
+        return {"ok": False, "error": "text required"}
+    try:
+        from backend.library.store import get_file, update_file
+        record = await asyncio.to_thread(get_file, founder_id, file_id)
+        if record is None:
+            return {"ok": False, "error": "not found"}
+        current = str(record.get("content") or "")
+        addition = f"\n\n## {heading}\n{text}" if heading else f"\n\n{text}"
+        updated = await asyncio.to_thread(update_file, founder_id, file_id, content=current.rstrip() + addition)
+        return {"ok": True, "file": updated}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_delete_library_item(founder_id: str, session_id: str, args: dict) -> Any:
+    """Delete a Library document. args: {file_id, confirm_delete:true}"""
+    import asyncio
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    if args.get("confirm_delete") is not True:
+        return {"ok": False, "error": "confirm_delete must be true"}
+    try:
+        from backend.library.store import delete_file
+        deleted = await asyncio.to_thread(delete_file, founder_id, file_id)
+        return {"ok": deleted, "file_id": file_id, "deleted": deleted, **({} if deleted else {"error": "not found"})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def _tool_get_dashboard(founder_id: str, session_id: str, args: dict) -> Any:
     """Read all dashboard tiles. args: {}"""
     from backend.tools.dashboard_tools import dashboard_get
@@ -1673,6 +1770,10 @@ _TOOLS = {
     # ── Library / artifacts ────────────────────────────────────────────────────
     "get_library": ("list all library/artifact files produced by agents. args: {limit?}", _tool_get_library),
     "read_library_item": ("read content of a specific library file. args: {file_id}", _tool_read_library_item),
+    "create_library_item": ("create a new Library document and sync it to Company Brain. args: {filename, content, department?, is_canonical?}", _tool_create_library_item),
+    "update_library_item": ("replace content or metadata for a Library document. args: {file_id, content?, filename?, department?, is_canonical?}", _tool_update_library_item),
+    "append_library_item": ("append text to a Library document. args: {file_id, text, heading?}", _tool_append_library_item),
+    "delete_library_item": ("delete a Library document; requires explicit confirm_delete=true. args: {file_id, confirm_delete}", _tool_delete_library_item),
     # ── Dashboard ─────────────────────────────────────────────────────────────
     "get_dashboard": ("read all current dashboard tiles. args: {}", _tool_get_dashboard),
     "add_dashboard_tile": ("add a tile to the founder dashboard. args: {title, type, size, config}. type: metric|chart|table|markdown|list|progress|status_board", _tool_add_dashboard_tile),
@@ -1840,6 +1941,18 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
         label = "Reviewed session outputs"
         detail = str(payload.get("goal") or payload.get("session_id") or "Latest artifacts loaded")
         tone = "info"
+    elif tool == "create_library_item":
+        label = "Created Library document"
+        detail = str(((payload.get("file") or {}).get("filename")) or ((payload.get("file") or {}).get("id")) or "Document created")
+    elif tool == "update_library_item":
+        label = "Updated Library document"
+        detail = str(((payload.get("file") or {}).get("filename")) or ((payload.get("file") or {}).get("id")) or "Document updated")
+    elif tool == "append_library_item":
+        label = "Appended to Library document"
+        detail = str(((payload.get("file") or {}).get("filename")) or ((payload.get("file") or {}).get("id")) or "Document updated")
+    elif tool == "delete_library_item":
+        label = "Deleted Library document"
+        detail = str(payload.get("file_id") or "Document deleted")
     elif tool in {"ask_brain", "read_brain", "read_vault", "get_library", "read_library_item", "get_outreach", "get_integrations", "company_goal", "list_goals", "list_sessions", "list_agents", "get_cost", "get_subteam_report"}:
         label = tool.replace("_", " ").strip().title() or "Checked context"
         detail = "Context refreshed"

@@ -42,7 +42,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-SERVER_INFO = {"name": "astra", "version": "1.1.0"}
+SERVER_INFO = {"name": "astra", "version": "1.2.0"}
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -304,6 +304,67 @@ TOOLS: list[dict[str, Any]] = [
         "name": "astra_brain_graph",
         "description": "Get the GraphRAG entity map of the company brain — nodes (entities), edges (relationships), and communities — for visualization or structural inspection.",
         "inputSchema": _schema({"founder_id": {"type": "string"}}),
+    },
+    # ── Library documents ──
+    {
+        "name": "astra_library_list",
+        "description": "List the founder's Astra Library documents and agent artifacts. Returns metadata only, not full content.",
+        "inputSchema": _schema({
+            "department": {"type": "string", "description": "Optional department filter, e.g. research, legal, copilot."},
+            "limit": {"type": "integer", "description": "Max files to return. Defaults to 50.", "default": 50},
+            "founder_id": {"type": "string"},
+        }),
+    },
+    {
+        "name": "astra_library_read",
+        "description": "Read one Astra Library document, including content, by file_id.",
+        "inputSchema": _schema({
+            "file_id": {"type": "string", "description": "Library file id."},
+            "founder_id": {"type": "string"},
+        }, ["file_id"]),
+    },
+    {
+        "name": "astra_library_create",
+        "description": "Create a new Astra Library document and mirror its content into Company Brain.",
+        "inputSchema": _schema({
+            "filename": {"type": "string", "description": "Document filename or title, e.g. investor-brief.md."},
+            "content": {"type": "string", "description": "Full document content."},
+            "department": {"type": "string", "description": "Owning department. Defaults to copilot.", "default": "copilot"},
+            "is_canonical": {"type": "boolean", "description": "Whether agents should treat this as canonical context.", "default": False},
+            "source_session_id": {"type": "string", "description": "Optional session/run id that produced this document."},
+            "founder_id": {"type": "string"},
+        }, ["filename", "content"]),
+    },
+    {
+        "name": "astra_library_update",
+        "description": "Update an Astra Library document by replacing content and/or metadata. Content edits mirror to Company Brain.",
+        "inputSchema": _schema({
+            "file_id": {"type": "string", "description": "Library file id."},
+            "content": {"type": "string", "description": "Replacement full content."},
+            "filename": {"type": "string", "description": "Optional new filename."},
+            "department": {"type": "string", "description": "Optional new department."},
+            "is_canonical": {"type": "boolean", "description": "Optional canonical flag."},
+            "founder_id": {"type": "string"},
+        }, ["file_id"]),
+    },
+    {
+        "name": "astra_library_append",
+        "description": "Append text to an Astra Library document. Use this for lightweight document edits without replacing the whole file.",
+        "inputSchema": _schema({
+            "file_id": {"type": "string", "description": "Library file id."},
+            "text": {"type": "string", "description": "Text to append."},
+            "heading": {"type": "string", "description": "Optional markdown heading for the appended section."},
+            "founder_id": {"type": "string"},
+        }, ["file_id", "text"]),
+    },
+    {
+        "name": "astra_library_delete",
+        "description": "Delete an Astra Library document. Requires confirm_delete=true to avoid accidental destructive calls.",
+        "inputSchema": _schema({
+            "file_id": {"type": "string", "description": "Library file id."},
+            "confirm_delete": {"type": "boolean", "description": "Must be true."},
+            "founder_id": {"type": "string"},
+        }, ["file_id", "confirm_delete"]),
     },
     # ── Company goals (the operating loop) ──
     {
@@ -572,6 +633,145 @@ def _brain_graph(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _bool_arg(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+def _library_record_summary(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "filename": record.get("filename"),
+        "department": record.get("department"),
+        "is_canonical": bool(record.get("is_canonical")),
+        "size_bytes": record.get("size_bytes"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "source_tag": record.get("source_tag"),
+        "source_session_id": record.get("source_session_id"),
+        "brain_record_id": record.get("brain_record_id"),
+    }
+
+def _library_list(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    department = str(args.get("department") or "").strip() or None
+    limit = max(1, min(int(args.get("limit") or 50), 200))
+    try:
+        from backend.library.store import list_files
+        files = list_files(founder_id, department=department)[:limit]
+        return {"ok": True, "files": [_library_record_summary(item) for item in files], "count": len(files)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _library_read(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    try:
+        from backend.library.store import get_file
+        record = get_file(founder_id, file_id)
+        if record is None:
+            return {"ok": False, "error": "not found"}
+        return {"ok": True, "file": record}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _library_create(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    filename = str(args.get("filename") or args.get("title") or "").strip()
+    content = str(args.get("content") or args.get("text") or "")
+    department = str(args.get("department") or "copilot").strip() or "copilot"
+    if not filename:
+        return {"ok": False, "error": "filename required"}
+    try:
+        from backend.library.store import create_file
+        record = create_file(
+            founder_id=founder_id,
+            department=department,
+            filename=filename,
+            content=content,
+            is_canonical=_bool_arg(args.get("is_canonical", False)),
+            source_tag=str(args.get("source_tag") or "mcp"),
+            source_session_id=str(args.get("source_session_id") or ""),
+        )
+        return {"ok": True, "file": record}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _library_update(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    fields: dict[str, Any] = {}
+    for key in ("content", "filename", "department", "is_canonical"):
+        if key in args:
+            fields[key] = args[key]
+    if "text" in args and "content" not in fields:
+        fields["content"] = args["text"]
+    if "is_canonical" in fields:
+        fields["is_canonical"] = _bool_arg(fields["is_canonical"])
+    if not fields:
+        return {"ok": False, "error": "provide content, filename, department, or is_canonical"}
+    try:
+        from backend.library.store import update_file
+        record = update_file(founder_id, file_id, **fields)
+        if record is None:
+            return {"ok": False, "error": "not found"}
+        return {"ok": True, "file": record}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _library_append(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    text = str(args.get("text") or args.get("content") or "")
+    heading = str(args.get("heading") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    if not text.strip():
+        return {"ok": False, "error": "text required"}
+    try:
+        from backend.library.store import get_file, update_file
+        record = get_file(founder_id, file_id)
+        if record is None:
+            return {"ok": False, "error": "not found"}
+        current = str(record.get("content") or "")
+        addition = f"\n\n## {heading}\n{text}" if heading else f"\n\n{text}"
+        updated = update_file(founder_id, file_id, content=current.rstrip() + addition)
+        return {"ok": True, "file": updated}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _cascade_library_delete_to_company_os(founder_id: str, file_id: str) -> int:
+    archived = 0
+    try:
+        from backend.company_os import list_company_os, update_artifact
+        for company in list_company_os(founder_id):
+            for artifact in company.get("artifacts", []):
+                if artifact.get("library_file_id") == file_id and artifact.get("state") != "archived":
+                    update_artifact(company["company_id"], artifact["artifact_id"], state="archived")
+                    archived += 1
+    except Exception:
+        pass
+    return archived
+
+def _library_delete(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required"}
+    if args.get("confirm_delete") is not True:
+        return {"ok": False, "error": "confirm_delete must be true"}
+    try:
+        from backend.library.store import delete_file
+        deleted = delete_file(founder_id, file_id)
+        archived = _cascade_library_delete_to_company_os(founder_id, file_id) if deleted else 0
+        return {"ok": deleted, "file_id": file_id, "deleted": deleted, "archived_company_os_artifacts": archived, **({} if deleted else {"error": "not found"})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 def _company_goal(args: dict) -> dict:
     founder_id = args.get("founder_id") or _founder_id()
     try:
@@ -752,6 +952,12 @@ _DISPATCH: dict[str, Any] = {
     "astra_ask_brain": _ask_brain,
     "astra_search_brain": _search_brain,
     "astra_brain_graph": _brain_graph,
+    "astra_library_list": _library_list,
+    "astra_library_read": _library_read,
+    "astra_library_create": _library_create,
+    "astra_library_update": _library_update,
+    "astra_library_append": _library_append,
+    "astra_library_delete": _library_delete,
     "astra_company_goal": _company_goal,
     "astra_approve_next_goal": _approve_next_goal,
     "astra_run_cycle": _run_cycle,
