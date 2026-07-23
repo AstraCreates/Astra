@@ -132,6 +132,7 @@ services:
       - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
       - ASTRA_COMPRESSION_THRESHOLD=${ASTRA_COMPRESSION_THRESHOLD:-64000}
       - ASTRA_THREAD_POOL=${ASTRA_THREAD_POOL:-32}
+      - WEB_CONCURRENCY=1
     depends_on:
       redis:
         condition: service_healthy
