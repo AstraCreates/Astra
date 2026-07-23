@@ -123,6 +123,12 @@ async def startup_background_jobs():
         _settings.tooluse_model_name,
         _settings.chat_model_name,
     )
+    # Uvicorn starts this hook once per worker. Durable recovery scans and
+    # schedulers are owned by the dedicated Temporal worker in production;
+    # running them in every web worker races on shared JSON stores.
+    if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
+        logger.info("Skipping in-process recovery and schedulers in multi-worker web mode")
+        return
     # Reconcile sessions left "running"/"queued" by a prior process crash/restart.
     # This is a durable-store sweep and must not block readiness on a large store.
     async def _reconcile_sessions_in_background() -> None:
