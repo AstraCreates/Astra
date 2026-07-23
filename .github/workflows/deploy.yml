@@ -22,6 +22,8 @@ jobs:
             cd /opt/astra/repo
             git fetch origin main
             git reset --hard origin/main
+            export ASTRA_RELEASE_SHA="$(git rev-parse HEAD)"
+            echo "Deploying ASTRA_RELEASE_SHA=${ASTRA_RELEASE_SHA}"
 
             # Rebuild images and restart all services
             docker compose build backend frontend
