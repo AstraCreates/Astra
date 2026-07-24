@@ -30,16 +30,10 @@ function initials(id: string) {
   return (id || "?").replace(/^(user_|google_)/, "").slice(0, 2).toUpperCase();
 }
 
-function shortGithubSha(sha: string) {
-  if (!sha || sha === "development") return sha || "unknown";
-  return sha.slice(0, 7);
-}
-
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
   const [credits, setCredits] = useState<number | null>(null);
-  const [githubSha, setGithubSha] = useState<string>("");
   const [hydrated, setHydrated] = useState(false);
   const [customName, setCustomName] = useState("");
 
@@ -64,31 +58,8 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     return () => window.clearTimeout(hydrationTimer);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadGithubSha = () => {
-      fetch("/api/release", { cache: "no-store" })
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => {
-          if (!cancelled && typeof d?.sha === "string") setGithubSha(d.sha);
-        })
-        .catch(() => {
-          if (!cancelled) setGithubSha("unknown");
-        });
-    };
-
-    loadGithubSha();
-    const interval = window.setInterval(loadGithubSha, 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
-
   const displayName = hydrated ? (customName.split(" ")[0] || user?.fullName?.split(" ")[0] || initials(userId)) : "…";
   const accentColor = "#7d8fff";
-  const githubShaLabel = githubSha ? shortGithubSha(githubSha) : "checking";
 
   const sidebarStyle: React.CSSProperties = mobile
     ? { width: 214, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
@@ -111,9 +82,6 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           <span style={{ fontSize: 10, letterSpacing: ".08em", color: "#8A93AD", marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: accentColor, animation: "pulseDot 2.6s infinite" }} />
             Ready
-          </span>
-          <span title={githubSha ? `GitHub commit ${githubSha}` : "Checking deployed GitHub commit"} style={{ fontSize: 9.5, letterSpacing: ".05em", color: "#6f7b98", marginTop: 5, fontWeight: 700, textTransform: "uppercase" }}>
-            GitHub {githubShaLabel}
           </span>
         </div>
       </div>
