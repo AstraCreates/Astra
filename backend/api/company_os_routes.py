@@ -159,9 +159,22 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 # Hot read ─ multiple panels poll this 5-30s. The 2-second TTL is the
 # cheapest way to collapse the stampeding herd without making the UI feel
 # stale.
+#
+# policy_decisions/mcp_audit/dispatch_audit/task_attempts are write-only
+# backend audit trails -- confirmed zero references anywhere in frontend/,
+# and nothing else in backend/ ever reads them back either. On the busiest
+# real company these four collections alone were ~4.3MB of an 11MB snapshot
+# (policy_decisions was 15k+ entries, 3.6MB by itself), fully re-serialized
+# to the browser on every single poll for data nothing ever displays.
+# Dropped from this response only -- they stay intact in the underlying
+# event-sourced state for any future internal/debugging use.
+_DASHBOARD_EXCLUDED_COLLECTIONS = ("policy_decisions", "mcp_audit", "dispatch_audit", "task_attempts")
+
+
 @ttl_cache(ttl_seconds=2)
 def _read_company_os_state(company_id: str) -> dict[str, Any]:
-    return reconcile_initiatives(company_id)
+    state = reconcile_initiatives(company_id)
+    return {key: value for key, value in state.items() if key not in _DASHBOARD_EXCLUDED_COLLECTIONS}
 
 
 # Every durable mutation -- not just approvals -- must invalidate this cache,
