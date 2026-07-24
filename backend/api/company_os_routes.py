@@ -213,10 +213,33 @@ def _read_company_os_state(company_id: str) -> dict[str, Any]:
 on_mutation(lambda company_id: cache_bump(_read_company_os_state, company_id))
 
 
+def _read_company_os_state_for_thread(company_id: str, thread_id: str) -> dict[str, Any]:
+    """Scope the hot-poll response's conversation to one thread.
+
+    ChatGPT/Claude never ship every conversation's full history on every
+    poll tick -- only the one you're looking at. This app's conversation
+    collection is company-wide across every chat thread (confirmed on the
+    busiest real company: 8,342 messages, 2.4MB, second only to the audit
+    collections already excluded above), so without this every poll was
+    shipping and re-parsing every OTHER thread's messages too, for content
+    nothing on screen was rendering. Reuses the same 2s-cached full state
+    (the expensive reconcile_initiatives() work happens once regardless of
+    which thread is active) and just slices conversation down before it
+    goes over the wire.
+    """
+    state = _read_company_os_state(company_id)
+    result = dict(state)
+    result["conversation"] = [
+        message for message in state.get("conversation", [])
+        if message.get("thread_id", "default") == thread_id
+    ]
+    return result
+
+
 @router.get("/companies/{company_id}/os")
-async def get_company_os_route(company_id: str, founder_id: str, request: Request):
+async def get_company_os_route(company_id: str, founder_id: str, request: Request, thread_id: str = "default"):
     _company(request, company_id, founder_id)
-    return await asyncio.to_thread(_read_company_os_state, company_id)
+    return await asyncio.to_thread(_read_company_os_state_for_thread, company_id, thread_id)
 
 
 @router.patch("/companies/{company_id}/os/initiatives/{initiative_id}")

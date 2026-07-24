@@ -432,6 +432,29 @@ async def test_clear_chat_dismisses_pending_approvals(tmp_path, monkeypatch):
     assert next(item for item in state["approvals"] if item["approval_id"] == "a1")["state"] == "dismissed"
 
 
+@pytest.mark.asyncio
+async def test_get_os_route_only_returns_the_requested_threads_messages(tmp_path, monkeypatch):
+    """GET /os must not ship every thread's conversation on every poll --
+    only the caller's ?thread_id one, so a company with many chats doesn't
+    re-send and re-parse content nothing on screen is showing."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.append_message("acme", "in default", author="founder", message_id="d1", thread_id="default")
+    company_os.append_message("acme", "in research", author="founder", message_id="r1", thread_id="research")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        default_view = await client.get("/companies/acme/os", params={"founder_id": "founder", "thread_id": "default"}, headers={"x-astra-user-id": "founder"})
+        research_view = await client.get("/companies/acme/os", params={"founder_id": "founder", "thread_id": "research"}, headers={"x-astra-user-id": "founder"})
+
+    assert [m["message_id"] for m in default_view.json()["conversation"]] == ["d1"]
+    assert [m["message_id"] for m in research_view.json()["conversation"]] == ["r1"]
+
+
 def test_chat_thread_crud_round_trip(tmp_path):
     root = tmp_path / "workspace" / "company"
     company_os.create_company_os("acme", "founder", "Acme", root=root)

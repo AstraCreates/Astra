@@ -269,7 +269,7 @@ export default function CompanyHome() {
     let timer = 0;
     let consecutiveFailures = 0;
     const refresh = () => {
-      void getCompanyHomeData({ founderId, companyId })
+      void getCompanyHomeData({ founderId, companyId }, activeThreadId)
         .then((data) => {
           if (!live) return;
           setHome(applyPendingDeletes(data));
@@ -288,7 +288,12 @@ export default function CompanyHome() {
     const schedule = (delay: number) => { if (live) timer = window.setTimeout(refresh, delay); };
     refresh();
     return () => { live = false; window.clearTimeout(timer); };
-  }, [founderId, companyId]);
+    // activeThreadId is intentionally in the deps: the backend now scopes
+    // conversation to one thread per request (see
+    // _read_company_os_state_for_thread), so switching threads has to
+    // restart the poll with the new thread_id, same as ChatGPT/Claude
+    // fetching a different conversation's history when you switch to it.
+  }, [founderId, companyId, activeThreadId]);
 
   // Autoscroll to the newest message, like every real chat product does.
   useEffect(() => {
@@ -296,7 +301,7 @@ export default function CompanyHome() {
   }, [home.conversation.length]);
 
   const reconcileAfterFailedDelete = () => {
-    void getCompanyHomeData({ founderId, companyId }).then(data => setHome(applyPendingDeletes(data))).catch(() => undefined);
+    void getCompanyHomeData({ founderId, companyId }, activeThreadId).then(data => setHome(applyPendingDeletes(data))).catch(() => undefined);
   };
 
   const handleDeleteInitiative = async (initiativeId: string) => {

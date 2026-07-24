@@ -315,8 +315,13 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
   };
 }
 
-export async function getCompanyHomeData(scope: CompanyScope, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
-  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os`, scope));
+export async function getCompanyHomeData(scope: CompanyScope, threadId = "default", fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  // companyScopedUrl can return a relative path (BASE="/api" in some deploys),
+  // and `new URL()` throws on a relative string with no base -- string-append
+  // the extra param instead. companyScopedUrl always includes founder_id and
+  // company_id already, so `&thread_id=...` is always safe to append.
+  const url = `${companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os`, scope)}&thread_id=${encodeURIComponent(threadId)}`;
+  const response = await fetcher(url);
   if (!response.ok) throw new Error(await response.text());
   return normalizeCompanyOS(await response.json());
 }
