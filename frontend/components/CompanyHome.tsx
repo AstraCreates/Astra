@@ -5,11 +5,12 @@ import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard,
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
-import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { createChatThread, decideCompanyApproval, deleteArtifact, deleteChatThread, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import ChatThreadList from "@/components/ChatThreadList";
 import { ingestAttachment } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
 
-const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [] };
+const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [], chats: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_BACKOFF_MS = 60000;
@@ -222,6 +223,7 @@ export default function CompanyHome() {
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState("default");
   const threadRef = useRef<HTMLDivElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const pendingDeleteIdsRef = useRef(new Set<string>());
@@ -250,6 +252,26 @@ export default function CompanyHome() {
   useEffect(() => {
     window.localStorage.setItem("astra-company-rail-width", String(railWidth));
   }, [railWidth]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    const saved = window.localStorage.getItem(`astra-active-thread-${companyId}`);
+    if (saved) setActiveThreadId(saved);
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    window.localStorage.setItem(`astra-active-thread-${companyId}`, activeThreadId);
+  }, [companyId, activeThreadId]);
+
+  // If the active thread was deleted (by this tab or another), fall back to
+  // the default thread rather than showing an empty feed for a chat that no
+  // longer exists in the sidebar.
+  useEffect(() => {
+    if (home.chats.length && !home.chats.some(chat => chat.id === activeThreadId)) {
+      setActiveThreadId("default");
+    }
+  }, [home.chats, activeThreadId]);
 
   // Exponential backoff on repeated failures instead of a fixed 3s interval
   // forever. Confirmed production incident: a corrupted Company OS event log
@@ -413,17 +435,28 @@ export default function CompanyHome() {
     }
   };
 
-  const handleClearChat = async () => {
-    if (!home.conversation.length) return;
-    if (typeof window !== "undefined" && !window.confirm("Clear the whole conversation? This can't be undone from here.")) return;
-    setMessageBusyId("clear-chat");
+  const handleNewChat = async () => {
+    setMessageBusyId("new-chat");
     try {
-      const data = await clearMessages({ founderId, companyId });
-      setHome(data);
+      const result = await createChatThread({ founderId, companyId });
+      setHome(result.data);
+      setActiveThreadId(result.threadId);
     } catch (error) {
-      setNotice(friendlyErrorMessage(error, "Could not clear the chat — try again."));
+      setNotice(friendlyErrorMessage(error, "Could not start a new chat — try again."));
     } finally {
       setMessageBusyId("");
+    }
+  };
+
+  const handleSelectThread = (threadId: string) => setActiveThreadId(threadId);
+
+  const handleDeleteThread = async (threadId: string) => {
+    try {
+      const data = await deleteChatThread({ founderId, companyId }, threadId);
+      setHome(data);
+      if (activeThreadId === threadId) setActiveThreadId("default");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that chat — try again."));
     }
   };
 
@@ -437,9 +470,9 @@ export default function CompanyHome() {
     // dispatch) is a multi-second round trip, and without this the message
     // only appeared once that whole thing finished, making sending feel stuck.
     const echoId = `optimistic-${Date.now()}`;
-    setHome(prev => ({ ...prev, conversation: [...prev.conversation, { id: echoId, author: "founder", message: value, kind: "chat", edited: false }] }));
+    setHome(prev => ({ ...prev, conversation: [...prev.conversation, { id: echoId, author: "founder", message: value, kind: "chat", edited: false, threadId: activeThreadId }] }));
     try {
-      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })));
+      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), activeThreadId);
       setHome(result.data);
       setNotice(result.message);
     } catch (error) {
@@ -475,7 +508,8 @@ export default function CompanyHome() {
   const doneTasks = tasks.filter(task => task.status === "complete").length;
   const launchPct = tasks.length ? Math.round((doneTasks / tasks.length) * 100) : 0;
   const primarySquad = home.squads[0] ?? null;
-  const chatTurns = home.conversation.filter(turn => turn.kind !== "status");
+  const chatTurns = home.conversation.filter(turn => turn.kind !== "status"
+    && (turn.threadId === activeThreadId || (!turn.threadId && activeThreadId === "default")));
   // @mention insertion writes this id as literal visible text into the
   // composer (AstraCopilotComposer.selectAgent) -- it must be a readable
   // slug of the squad's name, never the raw internal squad_id. A founder
@@ -513,6 +547,8 @@ export default function CompanyHome() {
       @media (hover: none) { .company-home-chat-actions { opacity: 1; } }
     `}</style>
 
+    <ChatThreadList chats={home.chats} activeThreadId={activeThreadId} onSelect={handleSelectThread} onCreate={() => void handleNewChat()} onDelete={(threadId) => void handleDeleteThread(threadId)} />
+
     {/* Chat column -- the primary surface. Header stays minimal, thread fills
         all remaining height, composer is pinned to the bottom like ChatGPT/
         Claude/Gemini instead of floating in a small box mid-page. */}
@@ -544,8 +580,8 @@ export default function CompanyHome() {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--bg-surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "8px 12px", color: "var(--fg)", fontSize: 12.5, fontWeight: 600 }}>
           <MessageCircle size={14} color="var(--fm)" /> Company chat
         </span>
-        <button type="button" className="btn sm" disabled={!chatTurns.length || messageBusyId === "clear-chat"} onClick={() => void handleClearChat()} style={{ flexShrink: 0 }}>
-          {messageBusyId === "clear-chat" ? "Clearing…" : "+ New chat"}
+        <button type="button" className="btn sm" disabled={messageBusyId === "new-chat"} onClick={() => void handleNewChat()} style={{ flexShrink: 0 }}>
+          {messageBusyId === "new-chat" ? "Starting…" : "+ New chat"}
         </button>
       </div>
 

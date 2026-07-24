@@ -335,7 +335,7 @@ async def test_copilot_route_keeps_the_founder_bubble_clean_but_feeds_attachment
 
     seen_messages = []
 
-    async def fake_coordinate_turn(company_id, message, *, proposed_spend=0.0):
+    async def fake_coordinate_turn(company_id, message, *, thread_id="default", proposed_spend=0.0):
         seen_messages.append(message)
         return {"message": "On it.", "dispatch": None}
     monkeypatch.setattr("backend.api.company_os_routes.coordinate_turn", fake_coordinate_turn)
@@ -379,7 +379,7 @@ async def test_edit_message_archives_everything_after_it_and_resubmits(tmp_path,
 
     seen_messages = []
 
-    async def fake_coordinate_turn(company_id, message, *, proposed_spend=0.0):
+    async def fake_coordinate_turn(company_id, message, *, thread_id="default", proposed_spend=0.0):
         seen_messages.append(message)
         return {"message": "Looking into Apple instead.", "dispatch": None}
     monkeypatch.setattr("backend.api.company_os_routes.coordinate_turn", fake_coordinate_turn)
@@ -430,3 +430,76 @@ async def test_clear_chat_dismisses_pending_approvals(tmp_path, monkeypatch):
     state = company_os.get_company_os("acme")
     assert all(message.get("archived") for message in state["conversation"])
     assert next(item for item in state["approvals"] if item["approval_id"] == "a1")["state"] == "dismissed"
+
+
+def test_chat_thread_crud_round_trip(tmp_path):
+    root = tmp_path / "workspace" / "company"
+    company_os.create_company_os("acme", "founder", "Acme", root=root)
+
+    default = company_os.ensure_default_chat_thread("acme", root=root)
+    assert default["thread_id"] == "default"
+    # Idempotent: calling again must not create a duplicate.
+    again = company_os.ensure_default_chat_thread("acme", root=root)
+    assert again["thread_id"] == "default"
+    assert len(company_os.get_company_os("acme", root=root)["chat_threads"]) == 1
+
+    thread = company_os.create_thread("acme", "Research thread", root=root)
+    assert thread["title"] == "Research thread"
+    state = company_os.get_company_os("acme", root=root)
+    assert {t["thread_id"] for t in state["chat_threads"]} == {"default", thread["thread_id"]}
+
+    company_os.update_thread("acme", thread["thread_id"], title="Renamed", root=root)
+    state = company_os.get_company_os("acme", root=root)
+    renamed = next(t for t in state["chat_threads"] if t["thread_id"] == thread["thread_id"])
+    assert renamed["title"] == "Renamed"
+
+    company_os.update_thread("acme", thread["thread_id"], archived=True, root=root)
+    state = company_os.get_company_os("acme", root=root)
+    assert next(t for t in state["chat_threads"] if t["thread_id"] == thread["thread_id"])["archived"] is True
+
+
+def test_pre_existing_messages_backfill_onto_default_thread(tmp_path):
+    """Messages written before chat threads existed must not vanish -- they
+    become visible in the default thread instead."""
+    root = tmp_path / "workspace" / "company"
+    company_os.create_company_os("acme", "founder", "Acme", root=root)
+    company_os.append_message("acme", "legacy message, no thread_id", author="founder", root=root)
+
+    state = company_os.get_company_os("acme", root=root)
+    assert state["conversation"][0]["thread_id"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_only_archives_later_messages_in_the_same_thread(tmp_path, monkeypatch):
+    """Threading regression guard: editing a message in one thread must not
+    archive later messages that belong to a DIFFERENT thread, even though
+    they interleave positionally in the same conversation list."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+    company_os.append_message("acme", "thread A msg 1", author="founder", role="user", message_id="a1", thread_id="thread-a")
+    company_os.append_message("acme", "thread B msg 1", author="founder", role="user", message_id="b1", thread_id="thread-b")
+    company_os.append_message("acme", "thread A msg 2", author="copilot", role="assistant", kind="chat", message_id="a2", thread_id="thread-a")
+    company_os.append_message("acme", "thread B msg 2", author="copilot", role="assistant", kind="chat", message_id="b2", thread_id="thread-b")
+
+    async def fake_coordinate_turn(company_id, message, *, thread_id="default", proposed_spend=0.0):
+        return {"message": "ok", "dispatch": None}
+    monkeypatch.setattr("backend.api.company_os_routes.coordinate_turn", fake_coordinate_turn)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.patch(
+            "/companies/acme/os/messages/a1",
+            json={"founder_id": "founder", "message": "thread A msg 1 edited"},
+            headers={"x-astra-user-id": "founder"},
+        )
+
+    assert response.status_code == 200
+    state = company_os.get_company_os("acme")
+    assert next(m for m in state["conversation"] if m["message_id"] == "a2")["archived"] is True
+    for untouched_id in ("b1", "b2"):
+        message = next(m for m in state["conversation"] if m["message_id"] == untouched_id)
+        assert not message.get("archived"), f"{untouched_id} belongs to a different thread and must be untouched"

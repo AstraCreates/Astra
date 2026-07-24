@@ -218,3 +218,26 @@ def test_grounded_prompt_injects_the_classifier_steps_and_forbids_cross_subject_
     answer_classification = IntentClassification(kind="answer")
     answer_prompt = _build_prompt(company, "what were the results", answer_classification)
     assert "never use a different initiative's finding just because one exists" in answer_prompt
+
+
+def test_build_prompt_only_includes_conversation_from_the_given_thread():
+    """Chat threads must be conversationally isolated: thread B's reply
+    should never be grounded in thread A's history, even though both threads'
+    messages live in the same company-wide conversation list."""
+    company = {
+        "initiatives": [], "squads": [], "tasks": [], "artifacts": [],
+        "conversation": [
+            {"author": "founder", "message": "tell me about Northrop Grumman", "kind": "chat", "thread_id": "thread-a"},
+            {"author": "copilot", "message": "Northrop Grumman is a defense contractor.", "kind": "chat", "thread_id": "thread-a"},
+            {"author": "founder", "message": "tell me about Palantir", "kind": "chat", "thread_id": "thread-b"},
+        ],
+    }
+    classification = IntentClassification(kind="answer")
+
+    prompt_b = _build_prompt(company, "what did I just ask", classification, "thread-b")
+    assert "Palantir" in prompt_b
+    assert "Northrop Grumman" not in prompt_b
+
+    prompt_a = _build_prompt(company, "what did I just ask", classification, "thread-a")
+    assert "Northrop Grumman" in prompt_a
+    assert "Palantir" not in prompt_a

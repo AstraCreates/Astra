@@ -20,7 +20,7 @@ from backend.core.json_store import cross_process_file_lock, read_json, write_js
 _COLLECTIONS = (
     "initiatives", "squads", "squad_roles", "squad_meetings", "missions", "tasks", "task_attempts",
     "artifacts", "approvals", "conversation", "context_records", "policy_decisions", "mcp_audit",
-    "dispatch_audit",
+    "dispatch_audit", "chat_threads",
 )
 _SEGMENT_LIMIT = 250
 _SNAPSHOT_INTERVAL = 50
@@ -75,6 +75,26 @@ def ensure_company_operations(company_id: str, *, root: str | Path | None = None
                              department="operations", system_key="company_operations")
     _ensure_operations_tasks(company_id, initiative["initiative_id"], root=root, mission=mission, squad=squad)
     return initiative
+
+
+_DEFAULT_THREAD_ID = "default"
+
+
+def ensure_default_chat_thread(company_id: str, *, root: str | Path | None = None) -> dict[str, Any]:
+    """Create the standing default chat thread once, without duplicating it.
+
+    Every pre-existing conversation message backfills onto this thread id via
+    _normalize_state's setdefault pass -- but the thread record itself (title,
+    created_at) must come from a real event, not be fabricated during a read,
+    so this mirrors ensure_company_operations exactly rather than conjuring
+    the record inside _normalize_state."""
+    company = get_company_os(company_id, root=root)
+    if company is None:
+        raise KeyError(f"unknown company: {company_id}")
+    existing = next((item for item in company["chat_threads"] if item.get("thread_id") == _DEFAULT_THREAD_ID), None)
+    if existing:
+        return existing
+    return create_thread(company_id, "General", thread_id=_DEFAULT_THREAD_ID, root=root)
 
 
 def _ensure_operations_tasks(company_id: str, initiative_id: str, *, root: str | Path | None,
@@ -202,6 +222,18 @@ def create_squad(company_id: str, initiative_id: str, name: str, *, squad_id: st
                  state: str = "active", root: str | Path | None = None, **data: Any) -> dict[str, Any]:
     defaults = {"role_ids": [], "meeting_ids": []}
     return _create(company_id, "squad", {"squad_id": squad_id or _id("squad"), "initiative_id": initiative_id, "name": name, "state": state, **defaults, **data}, root)
+
+
+def create_thread(company_id: str, title: str = "New chat", *, thread_id: str | None = None,
+                  root: str | Path | None = None, **data: Any) -> dict[str, Any]:
+    """Create a chat thread -- a separate, independently-switchable message
+    history. Company work (initiatives/squads/tasks) is never scoped to a
+    thread; only ``conversation`` messages carry a ``thread_id``."""
+    return _create(company_id, "chat_thread", {"thread_id": thread_id or _id("thread"), "title": title, **data}, root)
+
+
+def update_thread(company_id: str, thread_id: str, *, root: str | Path | None = None, **changes: Any) -> dict[str, Any]:
+    return _update(company_id, "chat_thread", "thread_id", thread_id, changes, root)
 
 
 def create_squad_role(company_id: str, squad_id: str, name: str, *, role_id: str | None = None,
@@ -433,7 +465,7 @@ def _update(company_id: str, kind: str, key: str, entity_id: str, changes: dict[
 
 def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
     kind, separator, action = event["type"].partition(".")
-    allowed = {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "message", "context_record", "artifact", "approval"}
+    allowed = {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "message", "context_record", "artifact", "approval", "chat_thread"}
     if separator != "." or kind not in allowed | {"policy", "mcp", "dispatch"}:
         raise ValueError(f"unsupported Company OS event: {event['type']}")
     if kind == "mcp" and action in {"tool_called", "tool_completed", "tool_failed"}:
@@ -456,14 +488,14 @@ def _apply_event(state: dict[str, Any], event: dict[str, Any]) -> None:
         })
         state["updated_at"] = event["at"]
         return
-    if action == "updated" and kind in {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "artifact", "message", "approval"}:
+    if action == "updated" and kind in {"initiative", "squad", "squad_role", "squad_meeting", "mission", "task", "task_attempt", "artifact", "message", "approval", "chat_thread"}:
         # A durable event log is append-only forever: even after the message
         # edit/delete API routes were pulled back (pending an audit-safe
         # design), any message.updated events already written by that code
         # still have to replay. Rejecting a historical event type here 500s
         # every read for any company whose log contains one -- not just the
         # new API surface, the entire company becomes unreadable.
-        key = {"initiative": "initiative_id", "squad": "squad_id", "squad_role": "role_id", "squad_meeting": "meeting_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id", "approval": "approval_id"}[kind]
+        key = {"initiative": "initiative_id", "squad": "squad_id", "squad_role": "role_id", "squad_meeting": "meeting_id", "mission": "mission_id", "task": "task_id", "task_attempt": "attempt_id", "artifact": "artifact_id", "message": "message_id", "approval": "approval_id", "chat_thread": "thread_id"}[kind]
         collection = {"message": "conversation", "squad_role": "squad_roles", "squad_meeting": "squad_meetings"}.get(kind, f"{kind}s")
         entity = _must_find(state, collection, key, event["payload"][key])
         candidate = {**entity, **copy.deepcopy(event["payload"].get("changes") or {})}
@@ -714,6 +746,10 @@ def _normalize_state(state: dict[str, Any]) -> None:
         task.setdefault("role_id", None)
         task.setdefault("meeting_id", None)
         task.setdefault("depends_on_task_ids", [])
+    for message in state["conversation"]:
+        # Messages written before chat threads existed backfill onto the
+        # default thread so old history stays visible instead of vanishing.
+        message.setdefault("thread_id", _DEFAULT_THREAD_ID)
 
     # Older snapshots do not have the denormalized graph indexes. Rebuild them
     # from the authoritative collections so migrations remain idempotent.

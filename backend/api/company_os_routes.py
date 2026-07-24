@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task
+from backend.company_os import append_message, create_company_os, create_thread, ensure_company_operations, ensure_default_chat_thread, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task, update_thread
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.core.lt_cache import ttl_cache, bump as cache_bump
@@ -38,8 +38,19 @@ class CopilotAttachmentBody(BaseModel):
 class CopilotMessageBody(BaseModel):
     founder_id: str
     message: str = Field(min_length=1, max_length=20_000)
+    thread_id: str = Field(default="default", max_length=64)
     proposed_spend: float = Field(default=0, ge=0)
     attachments: list[CopilotAttachmentBody] = Field(default_factory=list)
+
+
+class ChatThreadCreateBody(BaseModel):
+    founder_id: str
+    title: str = Field(default="New chat", min_length=1, max_length=160)
+
+
+class ChatThreadRenameBody(BaseModel):
+    founder_id: str
+    title: str = Field(min_length=1, max_length=160)
 
 
 class MessageEditBody(BaseModel):
@@ -141,9 +152,11 @@ def _company(request: Request, company_id: str, founder_id: str, *, operator: bo
         if company["founder_id"] != founder_id:
             raise HTTPException(status_code=404, detail="Company not found")
         ensure_company_operations(company_id)
+        ensure_default_chat_thread(company_id)
         return company
     created = create_company_os(company_id, founder_id, "Company")
     ensure_company_operations(company_id)
+    ensure_default_chat_thread(company_id)
     return created
 
 
@@ -329,11 +342,27 @@ def _attachment_context(attachments: list[CopilotAttachmentBody]) -> str:
 
 @router.post("/companies/{company_id}/os/copilot")
 async def copilot_message_route(company_id: str, body: CopilotMessageBody, request: Request):
-    _company(request, company_id, body.founder_id, operator=True)
-    append_message(company_id, body.message, author="founder", role="user")
+    company = _company(request, company_id, body.founder_id, operator=True)
+    _maybe_auto_title_thread(company_id, company, body.thread_id, body.message)
+    append_message(company_id, body.message, author="founder", role="user", thread_id=body.thread_id)
     augmented_message = body.message + _attachment_context(body.attachments)
-    result = await coordinate_turn(company_id, augmented_message, proposed_spend=body.proposed_spend)
+    result = await coordinate_turn(company_id, augmented_message, thread_id=body.thread_id, proposed_spend=body.proposed_spend)
     return {"message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
+
+
+def _maybe_auto_title_thread(company_id: str, company: dict[str, Any], thread_id: str, message: str) -> None:
+    """First message in a still-default-titled thread renames it -- cheap
+    (~40 chars of the founder's own text, no LLM call) parity with ChatGPT/
+    Claude's auto-title, without new infra. Never overwrites a manual rename."""
+    thread = next((item for item in company.get("chat_threads", []) if item.get("thread_id") == thread_id), None)
+    if not thread or thread.get("title") not in ("New chat", "General"):
+        return
+    has_prior_message = any(item.get("thread_id") == thread_id for item in company.get("conversation", []))
+    if has_prior_message:
+        return
+    snippet = message.strip().replace("\n", " ")[:40]
+    if snippet:
+        update_thread(company_id, thread_id, title=snippet)
 
 
 @router.patch("/companies/{company_id}/os/messages/{message_id}")
@@ -351,13 +380,19 @@ async def edit_company_os_message(company_id: str, message_id: str, body: Messag
     message = _message(company_id, message_id)
     if message.get("author") != "founder":
         raise HTTPException(status_code=400, detail="Only your own messages can be edited")
+    thread_id = message.get("thread_id", "default")
     conversation = company.get("conversation", [])
     edited_index = next(i for i, item in enumerate(conversation) if item.get("message_id") == message_id)
+    # Only archive later messages in the SAME thread -- "everything after" is
+    # positional within the whole conversation list, but threads interleave
+    # in that list, so an unscoped archive would wrongly wipe other threads'
+    # later messages too.
     for later in conversation[edited_index + 1:]:
-        update_message(company_id, later["message_id"], archived=True)
+        if later.get("thread_id", "default") == thread_id:
+            update_message(company_id, later["message_id"], archived=True)
     _dismiss_pending_approvals(company_id, company, reason="Dismissed because the originating chat message was edited")
     update_message(company_id, message_id, message=body.message, edited=True)
-    result = await coordinate_turn(company_id, body.message)
+    result = await coordinate_turn(company_id, body.message, thread_id=thread_id)
     return {"ok": True, "message_id": message_id, "message": result["message"], "dispatch": result["dispatch"], "company": get_company_os(company_id)}
 
 
@@ -382,6 +417,35 @@ async def clear_company_os_messages(company_id: str, founder_id: str, request: R
             update_message(company_id, item["message_id"], archived=True)
     _dismiss_pending_approvals(company_id, company, reason="Dismissed because the chat was cleared")
     return {"ok": True, "company": get_company_os(company_id)}
+
+
+@router.post("/companies/{company_id}/os/chats")
+async def create_chat_thread_route(company_id: str, body: ChatThreadCreateBody, request: Request):
+    _company(request, company_id, body.founder_id, operator=True)
+    thread = create_thread(company_id, body.title)
+    return {"ok": True, "thread_id": thread["thread_id"], "company": get_company_os(company_id)}
+
+
+@router.patch("/companies/{company_id}/os/chats/{thread_id}")
+async def rename_chat_thread_route(company_id: str, thread_id: str, body: ChatThreadRenameBody, request: Request):
+    company = _company(request, company_id, body.founder_id, operator=True)
+    if not any(item.get("thread_id") == thread_id for item in company.get("chat_threads", [])):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    update_thread(company_id, thread_id, title=body.title)
+    return {"ok": True, "thread_id": thread_id, "company": get_company_os(company_id)}
+
+
+@router.delete("/companies/{company_id}/os/chats/{thread_id}")
+async def delete_chat_thread_route(company_id: str, thread_id: str, founder_id: str, request: Request):
+    """Soft-delete a chat thread, same convention as initiatives/squads --
+    messages stay intact in the durable log, the thread just stops listing."""
+    company = _company(request, company_id, founder_id, operator=True)
+    if not any(item.get("thread_id") == thread_id for item in company.get("chat_threads", [])):
+        raise HTTPException(status_code=404, detail="Chat not found")
+    if thread_id == "default":
+        raise HTTPException(status_code=400, detail="The default chat can't be deleted")
+    update_thread(company_id, thread_id, archived=True)
+    return {"ok": True, "thread_id": thread_id, "company": get_company_os(company_id)}
 
 
 @router.post("/companies/{company_id}/os/operations/tick")

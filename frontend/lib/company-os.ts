@@ -48,7 +48,8 @@ export type CompanyHomeApproval = { id: string; title: string; squad: string; de
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; initiativeId?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string };
+export type CompanyChatThread = { id: string; title: string; updatedAt: string };
 
 export type CompanyHomeData = {
   companyName: string;
@@ -58,6 +59,7 @@ export type CompanyHomeData = {
   approvals: CompanyHomeApproval[];
   brain: CompanyHomeBrain;
   conversation: CompanyHomeMessage[];
+  chats: CompanyChatThread[];
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -179,7 +181,18 @@ function conversation(value: unknown): CompanyHomeMessage[] {
     const kindRaw = text(message.kind, "chat");
     const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
     const options = list(message.options).map(option => text(option)).filter(Boolean);
-    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
+    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), threadId: text(message.thread_id, "default"), ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
+  });
+}
+
+function chatThreads(value: unknown): CompanyChatThread[] {
+  return list(value).filter(item => !record(item).archived).map((item, index) => {
+    const thread = record(item);
+    return {
+      id: text(thread.thread_id ?? thread.id, `thread-${index}`),
+      title: text(thread.title, "New chat"),
+      updatedAt: text(thread.updated_at ?? thread.created_at),
+    };
   });
 }
 
@@ -298,6 +311,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       artifacts,
     },
     conversation: conversation(root.conversation),
+    chats: chatThreads(root.chat_threads),
   };
 }
 
@@ -307,14 +321,41 @@ export async function getCompanyHomeData(scope: CompanyScope, fetcher: typeof ap
   return normalizeCompanyOS(await response.json());
 }
 
-export async function sendCopilotMessage(scope: CompanyScope, message: string, attachments: { name: string; content: string }[] = [], fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
+export async function sendCopilotMessage(scope: CompanyScope, message: string, attachments: { name: string; content: string }[] = [], threadId = "default", fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
   const response = await fetcher(`${BASE}/companies/${encodeURIComponent(scope.companyId)}/os/copilot`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: scope.founderId, message, attachments }),
+    body: JSON.stringify({ founder_id: scope.founderId, message, attachments, thread_id: threadId }),
   });
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());
   return { message: text(payload.message), data: normalizeCompanyOS(payload.company) };
+}
+
+export async function createChatThread(scope: CompanyScope, title = "New chat", fetcher: typeof apiFetch = apiFetch): Promise<{ threadId: string; data: CompanyHomeData }> {
+  const response = await fetcher(`${BASE}/companies/${encodeURIComponent(scope.companyId)}/os/chats`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: scope.founderId, title }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return { threadId: text(payload.thread_id), data: normalizeCompanyOS(payload.company) };
+}
+
+export async function renameChatThread(scope: CompanyScope, threadId: string, title: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/chats/${encodeURIComponent(threadId)}`, scope), {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: scope.founderId, title }),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
+}
+
+export async function deleteChatThread(scope: CompanyScope, threadId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
+  const response = await fetcher(companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os/chats/${encodeURIComponent(threadId)}`, scope), { method: "DELETE" });
+  if (!response.ok) throw new Error(await response.text());
+  const payload = record(await response.json());
+  return normalizeCompanyOS(payload.company);
 }
 
 export async function deleteInitiative(scope: CompanyScope, initiativeId: string, fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData> {
@@ -432,5 +473,6 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
     brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
     conversation: conversation(root.conversation),
+    chats: chatThreads(root.chat_threads),
   };
 }

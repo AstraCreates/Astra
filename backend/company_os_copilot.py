@@ -33,7 +33,7 @@ _MAX_CONVERSATION_TURNS = 8
 _ARTIFACT_EXCERPT_CHARS = 2500
 
 
-async def coordinate_turn(company_id: str, message: str, *, proposed_spend: float = 0.0) -> dict[str, Any]:
+async def coordinate_turn(company_id: str, message: str, *, thread_id: str = "default", proposed_spend: float = 0.0) -> dict[str, Any]:
     """Run one permanent Copilot turn: classify department/steps, then
     ground-and-reply, then dispatch if it's real work.
 
@@ -44,23 +44,27 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     There is deliberately no clarification-round-trip machinery here: that
     was the exact interrogation-loop failure mode this architecture
     replaces, not a case to keep handling.
+
+    ``thread_id`` scopes which chat thread the reply lands in and which
+    thread's conversation history grounds the reply -- initiatives/tasks/
+    squads context stays company-wide regardless of thread.
     """
     company = get_company_os(company_id) or {}
     classification = await asyncio.to_thread(classify_intent, message)
 
     if classification.kind == "negated":
         reply = "Got it — holding off on that for now. Let me know when you want me to pick it up."
-        append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
+        append_message(company_id, reply, author="copilot", role="assistant", kind="chat", thread_id=thread_id)
         return {"message": reply, "dispatch": None}
 
     if classification.kind in ("chitchat", "answer", "mcp_command"):
-        ground = await asyncio.to_thread(_ground_and_reply, company, message, classification)
+        ground = await asyncio.to_thread(_ground_and_reply, company, message, classification, thread_id)
         reply = ground["reply"]
-        append_message(company_id, reply, author="copilot", role="assistant", kind="chat")
+        append_message(company_id, reply, author="copilot", role="assistant", kind="chat", thread_id=thread_id)
         return {"message": reply, "dispatch": None}
 
     # kind == "work"
-    ground = await asyncio.to_thread(_ground_and_reply, company, message, classification)
+    ground = await asyncio.to_thread(_ground_and_reply, company, message, classification, thread_id)
     request = classification.work_request(message)
     dispatch = await asyncio.to_thread(dispatch_intent, company_id, message,
                                         proposed_spend=proposed_spend, forced_initiative_id=ground.get("initiative_id"),
@@ -68,14 +72,14 @@ async def coordinate_turn(company_id: str, message: str, *, proposed_spend: floa
     reply = ground.get("reply") or _fallback_reply(dispatch)
     append_message(company_id, reply, author="copilot", role="assistant",
                    scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="plan",
-                   squad_id=dispatch["squad"]["squad_id"])
+                   squad_id=dispatch["squad"]["squad_id"], thread_id=thread_id)
     launch_mission(company_id, dispatch["mission"]["mission_id"])
     for handoff in dispatch.get("handoff_missions", []):
         launch_mission(company_id, handoff["mission_id"])
     return {"message": reply, "dispatch": dispatch}
 
 
-def _ground_and_reply(company: dict[str, Any], message: str, classification: IntentClassification) -> dict[str, Any]:
+def _ground_and_reply(company: dict[str, Any], message: str, classification: IntentClassification, thread_id: str = "default") -> dict[str, Any]:
     """One cheap LLM call, narrowly scoped: given the classifier's already-
     reliable finding (injected as trusted context, not re-derived), decide
     whether this continues an active initiative and write copilot's natural
@@ -83,7 +87,7 @@ def _ground_and_reply(company: dict[str, Any], message: str, classification: Int
     (caller supplies a safe fallback reply) -- never blocks the founder."""
     try:
         from backend.tools._llm import generate, parse_json_response
-        raw = generate(_build_prompt(company, message, classification), model="fast", json_mode=True, max_tokens=900, temperature=0.4)
+        raw = generate(_build_prompt(company, message, classification, thread_id), model="fast", json_mode=True, max_tokens=900, temperature=0.4)
         plan = parse_json_response(raw)
         return {
             "initiative_id": plan.get("initiative_id") if isinstance(plan.get("initiative_id"), str) else None,
@@ -94,7 +98,7 @@ def _ground_and_reply(company: dict[str, Any], message: str, classification: Int
         return {"initiative_id": None, "reply": ""}
 
 
-def _build_prompt(company: dict[str, Any], message: str, classification: IntentClassification) -> str:
+def _build_prompt(company: dict[str, Any], message: str, classification: IntentClassification, thread_id: str = "default") -> str:
     initiatives = [item for item in company.get("initiatives", []) if item.get("state") != "archived"]
     tasks = company.get("tasks") or []
     squads = company.get("squads") or []
@@ -121,7 +125,9 @@ def _build_prompt(company: dict[str, Any], message: str, classification: IntentC
         )
     initiatives_block = "\n".join(lines) if lines else "(none yet)"
 
-    conversation = [m for m in (company.get("conversation") or []) if m.get("kind") != "status" and not m.get("archived")]
+    conversation = [m for m in (company.get("conversation") or [])
+                    if m.get("kind") != "status" and not m.get("archived")
+                    and m.get("thread_id", "default") == thread_id]
     convo_lines = [f'{m.get("author", "?")}: {str(m.get("message", ""))[:220]}' for m in conversation[-_MAX_CONVERSATION_TURNS:]]
     convo_block = "\n".join(convo_lines) if convo_lines else "(no prior messages)"
 
