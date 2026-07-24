@@ -191,10 +191,11 @@
 .astra-composer-tools > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; color: var(--text-3); }
 .astra-composer-tools > small { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-3); }
 .astra-composer-submit {
-  width: 36px;
   height: 36px;
-  display: grid;
-  place-items: center;
+  padding: 0 6px 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
   border: 0;
   border-radius: 999px;
@@ -207,6 +208,13 @@
               background .25s var(--apple-ease-smooth),
               opacity .25s var(--apple-ease-smooth);
 }
+.astra-composer-submit-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.astra-composer-submit > svg { flex-shrink: 0; }
 .astra-composer-submit:hover:not(:disabled) {
   background: linear-gradient(180deg, #7d95ff 0%, #3859e0 100%);
   transform: translateY(-1px) scale(1.06);

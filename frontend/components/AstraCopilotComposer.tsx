@@ -253,6 +253,7 @@ export default function AstraCopilotComposer({
           {contextLabel && <small>{contextLabel}</small>}
         </div>
         <button type="button" className="astra-composer-submit" onClick={submit} disabled={disabled || !value.trim()} aria-label="Send message">
+          <span className="astra-composer-submit-label">Ask Astra</span>
           <ArrowUp size={17} strokeWidth={2.4} />
         </button>
       </div>
