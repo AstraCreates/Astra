@@ -683,7 +683,12 @@ def _events_after(directory: Path, sequence: int) -> Iterable[dict[str, Any]]:
 
 
 def _replay(directory: Path, loaded: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    state = copy.deepcopy(loaded["state"])
+    # `loaded` always comes straight from a fresh read_json() call (see every
+    # caller of _load_snapshot) -- nothing else holds a reference to it, so
+    # mutating loaded["state"] in place is safe. Skipping the deepcopy matters:
+    # on a large company (multi-MB snapshot) this was a full recursive copy
+    # of the entire state on every cache-miss read, dominating request time.
+    state = loaded["state"]
     _normalize_state(state)
     sequence = int(loaded["last_sequence"])
     for event in _events_after(directory, sequence):
