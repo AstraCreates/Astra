@@ -1,11 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 import { desktopDownloadHref } from "@/lib/desktop-download";
+
+function chatRelativeTime(iso: string): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 const LINKS: { href: string; label: string; match: (p: string) => boolean; svg: string }[] = [
   { href: "/dashboard",    label: "Dashboard",     match: p => p.startsWith("/dashboard"),
@@ -32,10 +47,24 @@ function initials(id: string) {
 
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
+  const router = useRouter();
   const { userId, isSignedIn, user } = useDevUser();
+  const { chats, activeThreadId, setActiveThreadId, createChat, deleteChat } = useCompany();
   const [credits, setCredits] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [customName, setCustomName] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState("");
+
+  useEffect(() => {
+    if (!pendingDeleteId) return;
+    const timer = window.setTimeout(() => setPendingDeleteId(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [pendingDeleteId]);
+
+  const selectChat = (threadId: string) => {
+    setActiveThreadId(threadId);
+    if (!pathname.startsWith("/dashboard")) router.push("/dashboard");
+  };
 
   useEffect(() => {
     const sync = () => setCustomName(localStorage.getItem("astra_onboarding_name") || "");
@@ -95,7 +124,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       </div>
 
       {/* Nav */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px", flex: 1, overflowY: "auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 8px", flexShrink: 0 }}>
         {LINKS.map(l => {
           const active = l.match(pathname);
           const handleClick = l.href === "/dashboard" ? (e: React.MouseEvent) => { e.preventDefault(); window.location.assign("/dashboard"); } : undefined;
@@ -111,6 +140,46 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             </Link>
           );
         })}
+      </div>
+
+      {/* Chats -- own scroll region so a long list never pushes the nav
+          links or the bottom user/credits block off screen. */}
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginTop: 14, padding: "8px 8px 0", borderTop: "1px solid rgba(255,255,255,.07)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 4px" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "#6f7b98" }}>Chats</span>
+          <button type="button" onClick={() => void createChat()} title="New chat"
+            style={{ width: 20, height: 20, display: "grid", placeItems: "center", background: "transparent", border: "1px solid rgba(255,255,255,.13)", borderRadius: 5, color: "#c3cbe0", cursor: "pointer" }}>
+            <Plus size={12} />
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1, paddingBottom: 8 }}>
+          {chats.length === 0 ? (
+            <div style={{ padding: "6px 8px", fontSize: 11.5, color: "#6f7b98" }}>No chats yet</div>
+          ) : chats.map(chat => (
+            <div key={chat.id}
+              onClick={() => selectChat(chat.id)}
+              className={`sb-link${chat.id === activeThreadId ? " active" : ""}`}
+              style={{ cursor: "pointer", justifyContent: "space-between" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.title}</div>
+                {chat.updatedAt && <div style={{ fontSize: 9.5, color: "#6f7b98", marginTop: 1 }}>{chatRelativeTime(chat.updatedAt)}</div>}
+              </div>
+              {chat.id !== "default" && (
+                <button type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (pendingDeleteId !== chat.id) { setPendingDeleteId(chat.id); return; }
+                    setPendingDeleteId("");
+                    void deleteChat(chat.id);
+                  }}
+                  title={pendingDeleteId === chat.id ? "Click again to confirm" : "Delete chat"}
+                  style={{ flexShrink: 0, width: 18, height: 18, display: "grid", placeItems: "center", background: "transparent", border: 0, borderRadius: 4, color: pendingDeleteId === chat.id ? "#ef4444" : "#6f7b98", cursor: "pointer", fontSize: 8.5, fontWeight: 700 }}>
+                  {pendingDeleteId === chat.id ? "DEL?" : "✕"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Bottom */}

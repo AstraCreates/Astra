@@ -144,6 +144,16 @@ def _dismiss_pending_approvals(company_id: str, company: dict[str, Any], *, reas
             update_task(company_id, task["task_id"], state="blocked", blocked_reason=reason)
 
 
+def _ensure_default_chat_thread_reflected(company: dict[str, Any], company_id: str) -> None:
+    """ensure_default_chat_thread() may just have created the record via a
+    fresh append_event -- but `company` here was fetched before that call
+    ran, so its own chat_threads list is stale on a brand-new company. Patch
+    the known result in rather than paying for another get_company_os()."""
+    thread = ensure_default_chat_thread(company_id)
+    if not any(item.get("thread_id") == thread["thread_id"] for item in company.get("chat_threads", [])):
+        company["chat_threads"] = company.get("chat_threads", []) + [thread]
+
+
 def _company(request: Request, company_id: str, founder_id: str, *, operator: bool = False) -> dict[str, Any]:
     """Authorize access, then lazily create the local Company OS for a new company."""
     require_founder_access(request, founder_id, min_role="operator" if operator else "viewer")
@@ -152,11 +162,11 @@ def _company(request: Request, company_id: str, founder_id: str, *, operator: bo
         if company["founder_id"] != founder_id:
             raise HTTPException(status_code=404, detail="Company not found")
         ensure_company_operations(company_id)
-        ensure_default_chat_thread(company_id)
+        _ensure_default_chat_thread_reflected(company, company_id)
         return company
     created = create_company_os(company_id, founder_id, "Company")
     ensure_company_operations(company_id)
-    ensure_default_chat_thread(company_id)
+    _ensure_default_chat_thread_reflected(created, company_id)
     return created
 
 
@@ -421,9 +431,16 @@ async def clear_company_os_messages(company_id: str, founder_id: str, request: R
 
 @router.post("/companies/{company_id}/os/chats")
 async def create_chat_thread_route(company_id: str, body: ChatThreadCreateBody, request: Request):
-    _company(request, company_id, body.founder_id, operator=True)
+    company = _company(request, company_id, body.founder_id, operator=True)
     thread = create_thread(company_id, body.title)
-    return {"ok": True, "thread_id": thread["thread_id"], "company": get_company_os(company_id)}
+    # Append in place instead of a fresh get_company_os() -- _company()
+    # already paid for one read this request (plus its own internal
+    # ensure_company_operations/ensure_default_chat_thread reads); chat_threads
+    # isn't derived from anything else the way reconcile_initiatives'
+    # initiative rollups are, so appending the just-created record is exactly
+    # what a re-read would show.
+    company["chat_threads"] = company.get("chat_threads", []) + [thread]
+    return {"ok": True, "thread_id": thread["thread_id"], "company": company}
 
 
 @router.patch("/companies/{company_id}/os/chats/{thread_id}")
@@ -431,8 +448,11 @@ async def rename_chat_thread_route(company_id: str, thread_id: str, body: ChatTh
     company = _company(request, company_id, body.founder_id, operator=True)
     if not any(item.get("thread_id") == thread_id for item in company.get("chat_threads", [])):
         raise HTTPException(status_code=404, detail="Chat not found")
-    update_thread(company_id, thread_id, title=body.title)
-    return {"ok": True, "thread_id": thread_id, "company": get_company_os(company_id)}
+    updated = update_thread(company_id, thread_id, title=body.title)
+    for item in company["chat_threads"]:
+        if item.get("thread_id") == thread_id:
+            item.update(updated)
+    return {"ok": True, "thread_id": thread_id, "company": company}
 
 
 @router.delete("/companies/{company_id}/os/chats/{thread_id}")
@@ -444,8 +464,11 @@ async def delete_chat_thread_route(company_id: str, thread_id: str, founder_id: 
         raise HTTPException(status_code=404, detail="Chat not found")
     if thread_id == "default":
         raise HTTPException(status_code=400, detail="The default chat can't be deleted")
-    update_thread(company_id, thread_id, archived=True)
-    return {"ok": True, "thread_id": thread_id, "company": get_company_os(company_id)}
+    updated = update_thread(company_id, thread_id, archived=True)
+    for item in company["chat_threads"]:
+        if item.get("thread_id") == thread_id:
+            item.update(updated)
+    return {"ok": True, "thread_id": thread_id, "company": company}
 
 
 @router.post("/companies/{company_id}/os/operations/tick")

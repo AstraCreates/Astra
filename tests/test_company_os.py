@@ -503,3 +503,44 @@ async def test_edit_message_only_archives_later_messages_in_the_same_thread(tmp_
     for untouched_id in ("b1", "b2"):
         message = next(m for m in state["conversation"] if m["message_id"] == untouched_id)
         assert not message.get("archived"), f"{untouched_id} belongs to a different thread and must be untouched"
+
+
+@pytest.mark.asyncio
+async def test_chat_thread_routes_return_the_same_data_a_fresh_read_would(tmp_path, monkeypatch):
+    """create/rename/delete patch the already-fetched company dict in place
+    instead of re-reading -- guard that the patched response matches what a
+    fresh get_company_os() would actually show."""
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.main import app
+
+    company_os.create_company_os("acme", "founder", "Acme")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post(
+            "/companies/acme/os/chats",
+            json={"founder_id": "founder", "title": "Research"},
+            headers={"x-astra-user-id": "founder"},
+        )
+        assert created.status_code == 200
+        thread_id = created.json()["thread_id"]
+        assert {t["thread_id"] for t in created.json()["company"]["chat_threads"]} == {"default", thread_id}
+        assert company_os.get_company_os("acme")["chat_threads"] == created.json()["company"]["chat_threads"]
+
+        renamed = await client.patch(
+            f"/companies/acme/os/chats/{thread_id}",
+            json={"founder_id": "founder", "title": "Renamed"},
+            headers={"x-astra-user-id": "founder"},
+        )
+        assert renamed.status_code == 200
+        renamed_entry = next(t for t in renamed.json()["company"]["chat_threads"] if t["thread_id"] == thread_id)
+        assert renamed_entry["title"] == "Renamed"
+        assert company_os.get_company_os("acme")["chat_threads"] == renamed.json()["company"]["chat_threads"]
+
+        deleted = await client.delete(f"/companies/acme/os/chats/{thread_id}", params={"founder_id": "founder"}, headers={"x-astra-user-id": "founder"})
+        assert deleted.status_code == 200
+        deleted_entry = next(t for t in deleted.json()["company"]["chat_threads"] if t["thread_id"] == thread_id)
+        assert deleted_entry["archived"] is True
+        assert company_os.get_company_os("acme")["chat_threads"] == deleted.json()["company"]["chat_threads"]

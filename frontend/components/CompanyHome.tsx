@@ -5,8 +5,7 @@ import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard,
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
-import { createChatThread, decideCompanyApproval, deleteArtifact, deleteChatThread, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
-import ChatThreadList from "@/components/ChatThreadList";
+import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 import { ingestAttachment } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
 
@@ -202,7 +201,7 @@ function InitiativeWorkspace({ initiative, squads, artifacts, saving, onSave, on
 }
 
 export default function CompanyHome() {
-  const { founderId, companyId, activeCompany } = useCompany();
+  const { founderId, companyId, activeCompany, setChats, activeThreadId, createChat } = useCompany();
   const { user } = useDevUser();
   const [home, setHome] = useState(EMPTY);
   const [message, setMessage] = useState("");
@@ -223,7 +222,6 @@ export default function CompanyHome() {
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
-  const [activeThreadId, setActiveThreadId] = useState("default");
   const threadRef = useRef<HTMLDivElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const pendingDeleteIdsRef = useRef(new Set<string>());
@@ -253,25 +251,10 @@ export default function CompanyHome() {
     window.localStorage.setItem("astra-company-rail-width", String(railWidth));
   }, [railWidth]);
 
-  useEffect(() => {
-    if (!companyId) return;
-    const saved = window.localStorage.getItem(`astra-active-thread-${companyId}`);
-    if (saved) setActiveThreadId(saved);
-  }, [companyId]);
-
-  useEffect(() => {
-    if (!companyId) return;
-    window.localStorage.setItem(`astra-active-thread-${companyId}`, activeThreadId);
-  }, [companyId, activeThreadId]);
-
-  // If the active thread was deleted (by this tab or another), fall back to
-  // the default thread rather than showing an empty feed for a chat that no
-  // longer exists in the sidebar.
-  useEffect(() => {
-    if (home.chats.length && !home.chats.some(chat => chat.id === activeThreadId)) {
-      setActiveThreadId("default");
-    }
-  }, [home.chats, activeThreadId]);
+  // activeThreadId/chats persistence and the "active thread was deleted"
+  // fallback both live in CompanyProvider (frontend/lib/company-context.tsx)
+  // now -- RedesignSidebar needs the same chat list and can't reach state
+  // that lived only inside this component.
 
   // Exponential backoff on repeated failures instead of a fixed 3s interval
   // forever. Confirmed production incident: a corrupted Company OS event log
@@ -290,6 +273,7 @@ export default function CompanyHome() {
         .then((data) => {
           if (!live) return;
           setHome(applyPendingDeletes(data));
+          setChats(data.chats);
           setNotice("");
           consecutiveFailures = 0;
           schedule(POLL_INTERVAL_MS);
@@ -435,31 +419,6 @@ export default function CompanyHome() {
     }
   };
 
-  const handleNewChat = async () => {
-    setMessageBusyId("new-chat");
-    try {
-      const result = await createChatThread({ founderId, companyId });
-      setHome(result.data);
-      setActiveThreadId(result.threadId);
-    } catch (error) {
-      setNotice(friendlyErrorMessage(error, "Could not start a new chat — try again."));
-    } finally {
-      setMessageBusyId("");
-    }
-  };
-
-  const handleSelectThread = (threadId: string) => setActiveThreadId(threadId);
-
-  const handleDeleteThread = async (threadId: string) => {
-    try {
-      const data = await deleteChatThread({ founderId, companyId }, threadId);
-      setHome(data);
-      if (activeThreadId === threadId) setActiveThreadId("default");
-    } catch (error) {
-      setNotice(friendlyErrorMessage(error, "Could not delete that chat — try again."));
-    }
-  };
-
   const submitToCopilot = async (value: string) => {
     const pending = attachments;
     setMessage("");
@@ -547,8 +506,6 @@ export default function CompanyHome() {
       @media (hover: none) { .company-home-chat-actions { opacity: 1; } }
     `}</style>
 
-    <ChatThreadList chats={home.chats} activeThreadId={activeThreadId} onSelect={handleSelectThread} onCreate={() => void handleNewChat()} onDelete={(threadId) => void handleDeleteThread(threadId)} />
-
     {/* Chat column -- the primary surface. Header stays minimal, thread fills
         all remaining height, composer is pinned to the bottom like ChatGPT/
         Claude/Gemini instead of floating in a small box mid-page. */}
@@ -580,8 +537,8 @@ export default function CompanyHome() {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--bg-surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "8px 12px", color: "var(--fg)", fontSize: 12.5, fontWeight: 600 }}>
           <MessageCircle size={14} color="var(--fm)" /> Company chat
         </span>
-        <button type="button" className="btn sm" disabled={messageBusyId === "new-chat"} onClick={() => void handleNewChat()} style={{ flexShrink: 0 }}>
-          {messageBusyId === "new-chat" ? "Starting…" : "+ New chat"}
+        <button type="button" className="btn sm" onClick={() => void createChat()} style={{ flexShrink: 0 }}>
+          + New chat
         </button>
       </div>
 
