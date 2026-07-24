@@ -3,9 +3,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+import logging
 from typing import Any, Optional
 
+logger = logging.getLogger(__name__)
+
 from backend.tenant_auth import require_current_founder
+from backend.core.lt_cache import ttl_cache as _dashboard_ttl, bump as _dashboard_cache_bump
 from backend.tools.dashboard_tools import (
     dashboard_add_element,
     dashboard_clear,
@@ -29,16 +33,36 @@ class AddElementBody(BaseModel):
     data_source: Optional[dict[str, Any]] = None
 
 
+# A dashboard with N elements is one of the heaviest JSON payloads the app
+# serves (each element ships its full config + data_source). The sidebar and
+# dashboard panels both poll /dashboard/{founder_id} every 15-30s across
+# many tabs. 5 seconds is the sweet spot -- short enough that a manual edit
+# feels like it landed instantly, long enough that the herd collapses.
+@_dashboard_ttl(ttl_seconds=5)
+def _dashboard_get_cached(founder_id: str) -> dict:
+    return dashboard_get(founder_id)
+
+
 @router.get("/dashboard/{founder_id}")
 async def get_dashboard(founder_id: str, request: Request) -> dict:
     actor = require_current_founder(request, founder_id, min_role="viewer")
-    return dashboard_get(actor.founder_id)
+    import asyncio as _asyncio
+    return await _asyncio.to_thread(_dashboard_get_cached, actor.founder_id)
+
+
+# Invalidate cached dashboard reads whenever the founder mutates their
+# dashboard. Without this a tile edit would feel unresponsive for up to 5s.
+def _invalidate_dashboard_cache(founder_id: str) -> None:
+    _dashboard_cache_bump(_dashboard_get_cached, founder_id)
 
 
 @router.post("/dashboard/{founder_id}/elements")
 async def add_element(founder_id: str, body: AddElementBody, request: Request) -> dict:
     actor = require_current_founder(request, founder_id, min_role="operator")
-    return dashboard_add_element(
+    # Run the underlying mutation FIRST. Only bump the cache when it succeeded
+    # so a transient error doesn't wipe the cached shape for the next 5s and
+    # leave the FE looking at a missing-tile state.
+    result = dashboard_add_element(
         founder_id=actor.founder_id,
         title=body.title,
         type=body.type,
@@ -51,18 +75,38 @@ async def add_element(founder_id: str, body: AddElementBody, request: Request) -
         session_id=body.session_id,
         data_source=body.data_source,
     )
+    _invalidate_dashboard_cache(actor.founder_id)
+    return result
 
 
 @router.delete("/dashboard/{founder_id}/elements/{element_id}")
 async def remove_element(founder_id: str, element_id: str, request: Request) -> dict:
     actor = require_current_founder(request, founder_id, min_role="operator")
-    return dashboard_remove_element(actor.founder_id, element_id)
+    try:
+        result = dashboard_remove_element(actor.founder_id, element_id)
+    except Exception as exc:
+        logger.warning(
+            "dashboard remove_element failed founder=%s element_id=%s: %s corr_id=%s",
+            actor.founder_id, element_id, exc, getattr(request.state, "correlation_id", None),
+        )
+        raise
+    _invalidate_dashboard_cache(actor.founder_id)
+    return result
 
 
 @router.delete("/dashboard/{founder_id}/elements")
 async def clear_elements(founder_id: str, request: Request, section: str = "") -> dict:
     actor = require_current_founder(request, founder_id, min_role="operator")
-    return dashboard_clear(actor.founder_id, section)
+    try:
+        result = dashboard_clear(actor.founder_id, section)
+    except Exception as exc:
+        logger.warning(
+            "dashboard clear_elements failed founder=%s section=%s: %s corr_id=%s",
+            actor.founder_id, section, exc, getattr(request.state, "correlation_id", None),
+        )
+        raise
+    _invalidate_dashboard_cache(actor.founder_id)
+    return result
 
 
 # Explicit allowlist of read-only tools permitted in the refresh endpoint.

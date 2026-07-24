@@ -16,4 +16,12 @@ COPY backend /app/backend
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
+
+# Marks this process as the dedicated background worker. backend/main.py's
+# startup hook checks ASTRA_WORKER_ROLE and only runs recovery + schedulers
+# in this process; the FastAPI web containers set ASTRA_WORKER_ROLE=web
+# and skip everything that races on shared JSON stores. Without this env var
+# the old WEB_CONCURRENCY==1 inference would silently flip in local dev or
+# any deployment that started a single web process for budget reasons.
+ENV ASTRA_WORKER_ROLE=worker
 CMD ["python", "-m", "backend.control_plane.temporal.worker"]

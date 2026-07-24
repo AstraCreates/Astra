@@ -1,19 +1,22 @@
 """Company OS API: the permanent Copilot thread and its durable work graph."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
 
 from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
+from backend.core.lt_cache import ttl_cache, bump as cache_bump
 from backend.tenant_auth import require_founder_access
 
 logger = logging.getLogger(__name__)
@@ -153,10 +156,19 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
     return get_company_os(company_id) or company
 
 
+# Hot read ─ multiple panels poll this 5-30s. The 2-second TTL is the
+# cheapest way to collapse the stampeding herd without making the UI feel
+# stale: approvals and Squad control actions both invalidate explicitly, so
+# the worst-case staleness for a "decision just landed" view is 2s.
+@ttl_cache(ttl_seconds=2)
+def _read_company_os_state(company_id: str) -> dict[str, Any]:
+    return reconcile_initiatives(company_id)
+
+
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request):
     _company(request, company_id, founder_id)
-    return reconcile_initiatives(company_id)
+    return await asyncio.to_thread(_read_company_os_state, company_id)
 
 
 @router.patch("/companies/{company_id}/os/initiatives/{initiative_id}")
@@ -377,24 +389,264 @@ async def retry_company_os_task(company_id: str, task_id: str, founder_id: str, 
     return {"ok": True, "task_id": task_id, "company": reconcile_initiatives(company_id)}
 
 
+# ── Async Company OS approval flow ─────────────────────────────────
+# Why: a founder "Approve" click used to block on the SAME request while the
+# backend composed five sequential writes (approval ledger → task → mission
+# → launch_mission → reconcile_initiatives). On a large tenant each of those
+# scans a JSONL event log; the total request routinely took 2-4s, and any
+# one slowing down stalled the entire dashboard refresh cycle.
+#
+# What this does now:
+#   1. The approval endpoint writes the durable decision FIRST
+#      (single small file write; always succeeds if auth/payload checks pass).
+#   2. Returns 202 Accepted immediately with the persisted decision + the
+#      approval_id, so the UI can mark the card "Approved" synchronously.
+#   3. Spawns asyncio.create_task(...) to apply the heavier side-effects
+#      (update_task, update_mission, launch_mission, reconcile_initiatives)
+#      in the background.
+#   4. Exposes GET /companies/{c}/os/approvals/{a}/status for the FE to
+#      learn whether side-effects have flushed. The FE polls it briefly
+#      (≤3s) immediately after submit, then stops -- no recurring load.
+#   5. On startup, the worker runs ``resync_pending_async_approvals`` to
+#      pick up decisions ACK'd by a previous web process whose side-effects
+#      never landed (process restart, crash, etc.). Idempotent.
+#
+# Idempotency contract: every side-effect is keyed by its target's identity
+# (task_id / mission_id) and inspects current state before mutating, so a
+# retry of any one of them produces the same final state. A double-apply
+# is safe.
+#
+# Crash window: between ACK and side-effects, the durable approval ledger
+# holds the decision while task/mission state has NOT yet been updated.
+# The startup resync closes that window on next boot. Within a single
+# process, asyncio.create_task fires before the response is sent, and the
+# coroutine runs on the same loop, so an in-process crash mid-task is the
+# only path where side-effects don't land -- covered by resync.
+
+_ASYNC_APPROVAL_SIDE_EFFECT_TIMEOUT_SECONDS = float(
+    os.environ.get("ASTRA_ASYNC_APPROVAL_SIDE_EFFECT_TIMEOUT", "60")
+)
+
+
+def _apply_approval_side_effects(
+    company_id: str,
+    approval_id: str,
+    *,
+    approved: bool,
+    note: str | None,
+) -> None:
+    """Apply task/mission/launch updates after the durable decision is already
+    persisted. Idempotent: every branch inspects current state first."""
+    try:
+        from backend.company_os_runner import launch_mission
+
+        company = get_company_os(company_id) or {}
+        approval = next((item for item in company.get("approvals", []) if item.get("approval_id") == approval_id), None)
+        if not approval:
+            logger.warning("async approval: approval %s vanished before side-effects", approval_id)
+            cache_bump(_read_company_os_state, company_id)
+            return
+        # If the decision file says approved/rejected but append_event below
+        # didn't fire -- e.g. worker process restart -- we treat side-effects
+        # as already-applied and re-fire only what's still pending.
+        task_id = approval.get("task_id")
+        task = next((item for item in company.get("tasks", []) if item.get("task_id") == task_id), None) if task_id else None
+        target_state = "pending" if approved else "blocked"
+        approval_decision = "approved" if approved else "rejected"
+        if task and task.get("state") != target_state:
+            update_task(
+                company_id, task_id,
+                state=target_state,
+                approval_decision=approval_decision,
+                approval_note=note or "",
+            )
+        if approved and task:
+            mission_id = task.get("mission_id")
+            if mission_id:
+                mission = next((m for m in company.get("missions", []) if m.get("mission_id") == mission_id), None)
+                if mission and mission.get("state") != "active":
+                    update_mission(company_id, str(mission_id), state="active", blocked_reason=None)
+                launch_mission(company_id, str(mission_id))
+        # Force a fresh read on the next dashboard poll regardless of side-effect
+        # outcome -- if launch_mission raises, the next reconcile will surface
+        # that, and we don't want a stale 2-3s TTL hiding it.
+        cache_bump(_read_company_os_state, company_id)
+    except Exception:
+        logger.exception("async approval: side-effects failed company=%s approval=%s", company_id, approval_id)
+        cache_bump(_read_company_os_state, company_id)
+        # Don't re-raise -- we're a fire-and-forget task; the startup resync
+        # will retry on next boot if any branch above partially applied.
+
+
+def resync_pending_async_approvals() -> int:
+    """Walk every Company OS durable ledger, find approvals whose task has
+    not yet moved (state == awaiting_approval but approval.state in {
+    approved, rejected}), and apply their side-effects. Idempotent.
+
+    Called once at startup (only in worker role) so a process that accepted
+    an approval but crashed before asyncio.create_task finished -- or before
+    the background side-effects ran at all -- picks up where it left off.
+
+    Returns the number of side-effects applied. Zero on a clean restart."""
+    from backend.company_os_runner import launch_mission
+
+    base_root = Path(os.environ.get("ASTRA_WORKSPACE", "/data/astra-workspaces")) / "company"
+    if not base_root.exists():
+        return 0
+    applied = 0
+    try:
+        for company_dir in base_root.iterdir():
+            if not company_dir.is_dir():
+                continue
+            company_id = company_dir.name
+            try:
+                company = get_company_os(company_id) or {}
+            except Exception:
+                continue
+            for approval in company.get("approvals", []) or []:
+                state = approval.get("state")
+                if state not in {"approved", "rejected"}:
+                    continue
+                task_id = approval.get("task_id")
+                if not task_id:
+                    continue
+                task = next((t for t in company.get("tasks", []) if str(t.get("task_id")) == str(task_id)), None)
+                if not task:
+                    continue
+                needs_apply = False
+                if state == "approved" and task.get("state") not in {"pending", "in_progress"}:
+                    needs_apply = True
+                if state == "rejected" and task.get("state") != "blocked":
+                    needs_apply = True
+                if not needs_apply:
+                    continue
+                try:
+                    if state == "approved":
+                        update_task(company_id, task_id, state="pending", approval_decision="approved", approval_note=approval.get("note", ""))
+                        mission_id = task.get("mission_id")
+                        if mission_id:
+                            mission = next((m for m in company.get("missions", []) if str(m.get("mission_id")) == str(mission_id)), None)
+                            if mission and mission.get("state") != "active":
+                                update_mission(company_id, str(mission_id), state="active", blocked_reason=None)
+                            launch_mission(company_id, str(mission_id))
+                    else:
+                        update_task(company_id, task_id, state="blocked", approval_decision="rejected", approval_note=approval.get("note", ""))
+                    applied += 1
+                except Exception:
+                    logger.exception("resync: failed company=%s approval=%s", company_id, approval.get("approval_id"))
+            cache_bump(_read_company_os_state, company_id)
+    except Exception:
+        logger.exception("resync_pending_async_approvals: outer failure")
+    return applied
+
+
+class ApprovalStatusResponse(BaseModel):
+    """Compact summary of the post-ACK side-effect state. Used by the FE
+    to confirm the click landed (so it can refresh panels) and by tests."""
+
+    approval_id: str
+    state: str
+    task_state: str | None = None
+    mission_state: str | None = None
+    applied: bool
+    error: str | None = None
+    decided_at: str | None = None
+    completed_at: str | None = None
+
+
 @router.post("/companies/{company_id}/os/approvals/{approval_id}")
 async def decide_company_os_approval(company_id: str, approval_id: str, body: ApprovalDecisionBody, request: Request):
-    from backend.company_os_runner import launch_mission
+    """Persist the founder's approval decision and ACK immediately.
+
+    The endpoint does the durable write (always small + atomic) then
+    returns 202 with a status handle. Side-effects ``_apply_approval_side_effects``
+    are scheduled as a background task, with their completion observable
+    via ``GET /companies/{c}/os/approvals/{a}/status`` and reconciled by
+    ``resync_pending_async_approvals`` on next worker startup."""
     company = _company(request, company_id, body.founder_id, operator=True)
     approval = next((item for item in company.get("approvals", []) if item.get("approval_id") == approval_id), None)
     if not approval:
         raise HTTPException(status_code=404, detail="Approval not found")
     if approval.get("state") != "pending":
-        raise HTTPException(status_code=409, detail="Approval is no longer pending")
+        # Idempotent re-submit: same approval already decided → still return
+        # its current status so the FE doesn't see a confusing 409 every
+        # time the click is double-fired.
+        status = _approval_status_payload(company_id, approval_id)
+        return JSONResponse(
+            status_code=200,
+            content={"ok": True, "approval_id": approval_id, "approved": approval.get("state") == "approved", "idempotent": True, "status": status},
+        )
+    decided_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    new_state = "approved" if body.approved else "rejected"
+    update_approval(company_id, approval_id, state=new_state, note=body.note, decided_at=decided_at)
+    # Invalidate cached GET /companies/{c}/os so the dashboard reflects the
+    # decision right away.
+    cache_bump(_read_company_os_state, company_id)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(
+            asyncio.wait_for(
+                asyncio.to_thread(_apply_approval_side_effects, company_id, approval_id, approved=body.approved, note=body.note),
+                timeout=_ASYNC_APPROVAL_SIDE_EFFECT_TIMEOUT_SECONDS,
+            )
+        )
+    except RuntimeError:
+        # Fallback path: somehow called outside a running loop (only possible
+        # in tests/scripting). Run synchronously instead of dropping the work.
+        _apply_approval_side_effects(company_id, approval_id, approved=body.approved, note=body.note)
+    return JSONResponse(
+        status_code=202,
+        content={
+            "ok": True,
+            "approval_id": approval_id,
+            "approved": body.approved,
+            "state": new_state,
+            "decided_at": decided_at,
+            "applied": False,
+            "status_url": f"/companies/{company_id}/os/approvals/{approval_id}/status",
+            "company": _read_company_os_state(company_id),
+        },
+    )
+
+
+def _approval_status_payload(company_id: str, approval_id: str) -> ApprovalStatusResponse:
+    company = get_company_os(company_id) or {}
+    approval = next((item for item in company.get("approvals", []) if item.get("approval_id") == approval_id), None)
+    if not approval:
+        return ApprovalStatusResponse(approval_id=approval_id, state="missing", applied=False, error="approval not found")
+    state = approval.get("state", "pending")
+    task = None
+    mission = None
     task_id = approval.get("task_id")
-    task = next((item for item in company.get("tasks", []) if item.get("task_id") == task_id), None)
-    update_approval(company_id, approval_id, state="approved" if body.approved else "rejected", note=body.note)
-    if task:
-        update_task(company_id, task_id, state="pending" if body.approved else "blocked", approval_decision="approved" if body.approved else "rejected", approval_note=body.note)
-        if body.approved and task.get("mission_id"):
-            # A previous runner round deliberately marks the mission waiting.
-            # Move it back to active before scheduling so restart recovery and
-            # live execution agree on the same durable state.
-            update_mission(company_id, str(task["mission_id"]), state="active", blocked_reason=None)
-            launch_mission(company_id, str(task["mission_id"]))
-    return {"ok": True, "approval_id": approval_id, "approved": body.approved, "company": reconcile_initiatives(company_id)}
+    if task_id:
+        task = next((t for t in company.get("tasks", []) if str(t.get("task_id")) == str(task_id)), None)
+        if task and task.get("mission_id"):
+            mission = next((m for m in company.get("missions", []) if str(m.get("mission_id")) == str(task.get("mission_id"))), None)
+    applied = True
+    if state == "approved":
+        # Applied = task is in pending/in_progress AND (no mission OR mission active).
+        if task and task.get("state") not in {"pending", "in_progress", "done"}:
+            applied = False
+        if mission and mission.get("state") not in {"active", "done"}:
+            applied = False
+    elif state == "rejected":
+        applied = bool(task and task.get("state") == "blocked")
+    return ApprovalStatusResponse(
+        approval_id=approval_id,
+        state=state,
+        task_state=(task or {}).get("state"),
+        mission_state=(mission or {}).get("state"),
+        applied=applied,
+        decided_at=approval.get("decided_at") or approval.get("updated_at"),
+        completed_at=approval.get("decided_at") or approval.get("updated_at") if applied else None,
+    )
+
+
+@router.get("/companies/{company_id}/os/approvals/{approval_id}/status")
+async def approval_status_route(company_id: str, approval_id: str, founder_id: str, request: Request):
+    """Inspect whether a previously-ACK'd asynchronous approval decision has
+    had its side-effects applied. Returns ``applied: true/false`` so the FE
+    knows when to stop polling and refresh panels."""
+    _company(request, company_id, founder_id)
+    payload = await asyncio.to_thread(_approval_status_payload, company_id, approval_id)
+    return {"ok": True, **payload.model_dump()}
