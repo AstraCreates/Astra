@@ -49,7 +49,7 @@ def json_file_lock(path: str | Path) -> threading.RLock:
 
 
 @contextlib.contextmanager
-def cross_process_file_lock(path: str | Path) -> Iterator[None]:
+def cross_process_file_lock(path: str | Path, *, exclusive: bool = True) -> Iterator[None]:
     """True cross-process mutual exclusion via flock, for callers that need
     to serialize a read-modify-append sequence (not just one atomic op).
 
@@ -62,8 +62,34 @@ def cross_process_file_lock(path: str | Path) -> Iterator[None]:
     that company 500 forever ("Company OS event sequence is not
     contiguous"). flock is a real kernel-level lock shared by all processes
     on the same file, not just threads within one of them.
+
+    ``exclusive=False`` takes a shared/read lock (flock LOCK_SH) instead --
+    for pure-read call sites (get_company_os/replay_events) so concurrent
+    readers stop serializing against EACH OTHER, only against real writers.
+    Confirmed production impact: a company with several active missions
+    (each appending progress/audit events frequently) made GET /os take
+    6-10s per call even after replay itself was optimized to sub-second,
+    because every reader was queuing behind an exclusive lock same as a
+    writer would. This skips the json_file_lock in-process RLock fast path
+    deliberately -- RLock is exclusive-only (reentrant for one thread, not
+    shared across threads), so keeping it in the shared-lock path would
+    still serialize same-process concurrent reads even though flock(LOCK_SH)
+    itself correctly allows them; flock alone is safe for both same-process
+    multi-thread and cross-process readers.
     """
     p = Path(path)
+    if not exclusive:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_SH)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        return
     with json_file_lock(p):  # cheap same-process fast path first
         p.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o644)

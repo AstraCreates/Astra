@@ -119,7 +119,7 @@ def get_company_os(company_id: str, *, root: str | Path | None = None) -> dict[s
     directory = _company_dir(company_id, root)
     if not directory.exists():
         return None
-    with _writer_lock(directory):
+    with _reader_lock(directory):
         loaded = _load_snapshot(directory)
         if loaded is None:
             return None
@@ -176,7 +176,7 @@ def append_event(company_id: str, event_type: str | dict[str, Any], payload: dic
 def replay_events(company_id: str, *, root: str | Path | None = None) -> list[dict[str, Any]]:
     """Validate and return events newer than the persisted snapshot."""
     directory = _require_company(company_id, root)
-    with _writer_lock(directory):
+    with _reader_lock(directory):
         loaded = _load_snapshot(directory)
         assert loaded is not None
         return list(_events_after(directory, int(loaded["last_sequence"])))
@@ -663,6 +663,14 @@ def _mirror_artifact_to_library(company_id: str, artifact_id: str, name: str, da
 
 def _writer_lock(directory: Path):
     return cross_process_file_lock(directory / ".writer.lock")
+
+
+def _reader_lock(directory: Path):
+    """Shared lock for pure-read paths (get_company_os/replay_events) -- same
+    lock file as _writer_lock, so a real writer still excludes readers, but
+    readers no longer exclude each other. See cross_process_file_lock's
+    docstring for the production contention this fixes."""
+    return cross_process_file_lock(directory / ".writer.lock", exclusive=False)
 
 
 def _snapshot_path(directory: Path) -> Path:
