@@ -65,7 +65,11 @@ def client(captured_corr) -> TestClient:
     def _throw():
         raise RuntimeError("kaboom")
 
-    with TestClient(test_app) as c:
+    # raise_server_exceptions=False: TestClient's default re-raises the
+    # original exception instead of returning the 500 response, which would
+    # make test_middleware_does_not_mask_handler_exception unable to inspect
+    # r.status_code at all -- the actual behavior we're testing.
+    with TestClient(test_app, raise_server_exceptions=False) as c:
         yield c
 
 

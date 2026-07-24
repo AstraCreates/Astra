@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,30 @@ def temp_workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path))
     monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path / "obsidian"))
     yield tmp_path
+
+
+@pytest.fixture(autouse=True)
+def _background_loop():
+    """launch_mission() calls asyncio.create_task(), which needs a running
+    loop in the calling thread. In production that loop is captured once at
+    FastAPI startup (backend/main.py -> company_os_runner.set_main_loop) so
+    launch_mission still works when called from an asyncio.to_thread worker
+    (exactly what resync_pending_async_approvals and
+    _apply_approval_side_effects both are). These tests call those functions
+    directly from pytest's plain sync thread, so there is no app startup to
+    do that registration -- stand up the same kind of background loop here
+    and register it the same way."""
+    from backend import company_os_runner
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    company_os_runner.set_main_loop(loop)
+    yield
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=5)
+    loop.close()
+    company_os_runner.set_main_loop(None)
 def test_resync_picks_up_unflushed_decisions(temp_workspace: Path):
     """Simulate: the web worker ACK'd an approval (durable ledger write),
     then crashed before asyncio.create_task fired. On startup, the resync
@@ -41,7 +66,7 @@ def test_resync_picks_up_unflushed_decisions(temp_workspace: Path):
         create_mission,
         create_task,
         get_company_os,
-        update_approval,
+        create_approval,
     )
     from backend.api.company_os_routes import resync_pending_async_approvals
 
@@ -62,7 +87,7 @@ def test_resync_picks_up_unflushed_decisions(temp_workspace: Path):
     )
     # Pre-write the durable approved state without applying side-effects
     # (simulates a process that crashed between ACK and create_task).
-    update_approval(company_id, "ghost-approval", state="approved", task_id=task["task_id"], decided_at="2026-01-01T00:00:00Z")
+    create_approval(company_id, "Ghost approval", approval_id="ghost-approval", state="approved", task_id=task["task_id"], decided_at="2026-01-01T00:00:00Z")
     # Sanity: task is still awaiting_approval before resync.
     snapshot_before = get_company_os(company_id)
     matching_task = next(t for t in snapshot_before["tasks"] if t["task_id"] == task["task_id"])
@@ -100,7 +125,7 @@ def test_apply_side_effects_idempotent(temp_workspace: Path):
         create_mission,
         create_task,
         get_company_os,
-        update_approval,
+        create_approval,
     )
     from backend.api.company_os_routes import _apply_approval_side_effects
 
@@ -119,7 +144,7 @@ def test_apply_side_effects_idempotent(temp_workspace: Path):
         state="awaiting_approval",
         department="operations",
     )
-    update_approval(company_id, "approval-x", state="approved", task_id=task["task_id"])
+    create_approval(company_id, "Approval x", approval_id="approval-x", state="approved", task_id=task["task_id"])
 
     _apply_approval_side_effects(company_id, "approval-x", approved=True, note="")
     state1 = get_company_os(company_id)
@@ -144,7 +169,7 @@ def test_status_payload_reports_applied(temp_workspace: Path):
         create_squad,
         create_mission,
         create_task,
-        update_approval,
+        create_approval,
     )
     from backend.api.company_os_routes import _approval_status_payload
 
@@ -163,7 +188,7 @@ def test_status_payload_reports_applied(temp_workspace: Path):
         state="awaiting_approval",
         department="operations",
     )
-    update_approval(company_id, "status-approval", state="approved", task_id=task["task_id"])
+    create_approval(company_id, "Status approval", approval_id="status-approval", state="approved", task_id=task["task_id"])
     payload = _approval_status_payload(company_id, "status-approval")
     assert payload.state == "approved"
     # Before side-effects run, the task is still awaiting_approval.

@@ -28,8 +28,17 @@ from backend.company_os_mcp import invoke as invoke_mcp
 from backend.tools.research_evidence import validate_deep_research
 
 logger = logging.getLogger(__name__)
-_ACTIVE_MISSIONS: dict[str, asyncio.Task[None]] = {}
+_ACTIVE_MISSIONS: dict[str, "asyncio.Task[None] | asyncio.Future[None]"] = {}
 _MAX_ARTIFACT_CONTENT = 80_000
+# Captured once at FastAPI startup (see backend/main.py) so launch_mission
+# can still schedule work when called from a worker thread, e.g. approval
+# side-effects and the startup resync both run via asyncio.to_thread(...).
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def set_main_loop(loop: asyncio.AbstractEventLoop) -> None:
+    global _main_loop
+    _main_loop = loop
 
 
 def launch_mission(company_id: str, mission_id: str) -> bool:
@@ -38,9 +47,21 @@ def launch_mission(company_id: str, mission_id: str) -> bool:
     active = _ACTIVE_MISSIONS.get(key)
     if active and not active.done():
         return False
-    task = asyncio.create_task(run_mission(company_id, mission_id), name=f"company-os:{key}")
-    _ACTIVE_MISSIONS[key] = task
-    task.add_done_callback(lambda _: _ACTIVE_MISSIONS.pop(key, None))
+    coro = run_mission(company_id, mission_id)
+    try:
+        job: "asyncio.Task[None] | asyncio.Future[None]" = asyncio.create_task(coro, name=f"company-os:{key}")
+    except RuntimeError:
+        # No event loop running in THIS thread -- we're inside
+        # asyncio.to_thread (approval side-effects, startup resync). Schedule
+        # onto the loop captured at startup instead of losing the launch;
+        # asyncio.Task and concurrent.futures.Future both support
+        # .done()/.add_done_callback(), so the rest of this function doesn't
+        # need to know which one it got.
+        if _main_loop is None:
+            raise
+        job = asyncio.run_coroutine_threadsafe(coro, _main_loop)
+    _ACTIVE_MISSIONS[key] = job
+    job.add_done_callback(lambda _: _ACTIVE_MISSIONS.pop(key, None))
     return True
 
 

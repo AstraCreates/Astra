@@ -71,9 +71,15 @@ def _now() -> float:
 def _make_key(fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     """Build a deterministic cache key from a function call.
 
+    The function's module-qualified name stays in plaintext ahead of the
+    ``|`` separator (only the argument portion is hashed) so
+    :func:`invalidate_prefix` can match on it -- hashing the whole blob
+    together would make every key an opaque digest with no prefix to find.
+
     Skips ``self``/``cls`` so instance methods don't accidentally embed an
     object id that varies across worker processes."""
-    parts: list[str] = [f"{fn.__module__}.{fn.__qualname__}"]
+    prefix = f"{fn.__module__}.{fn.__qualname__}"
+    parts: list[str] = []
     for index, value in enumerate(args):
         if value is None:
             continue
@@ -88,7 +94,7 @@ def _make_key(fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, A
     for key in sorted(kwargs):
         parts.append(f"{key}={_stable(kwargs[key])}")
     blob = "|".join(parts).encode("utf-8")
-    return hashlib.sha256(blob).hexdigest()
+    return f"{prefix}|{hashlib.sha256(blob).hexdigest()}"
 
 
 def _stable(value: Any) -> str:
@@ -107,8 +113,10 @@ def _evict_expired(now: float) -> None:
 
 
 def _touch(key: str) -> None:
-    _access.move_to_end(key)
-    _access[key] = None
+    if key in _access:
+        _access.move_to_end(key)
+    else:
+        _access[key] = None
     while len(_access) > _MAX_ENTRIES:
         oldest = next(iter(_access))
         _access.pop(oldest, None)

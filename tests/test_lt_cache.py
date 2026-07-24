@@ -13,7 +13,19 @@ import sys
 import threading
 import time
 
+import pytest
+
 from backend.core import lt_cache
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    """lt_cache is process-global state, not per-test -- without this, an
+    earlier test's entries (e.g. test_lru_bound_cap's 1124 keys) leak into
+    later tests that assert exact counts."""
+    lt_cache.invalidate_prefix()
+    yield
+    lt_cache.invalidate_prefix()
 
 
 def test_ttl_zero_passes_through():
@@ -81,7 +93,7 @@ def test_bump_accepts_kwargs():
     lt_cache.bump(echo, 1, label="a")
     assert echo(1, label="b") == "1-b"  # different kwargs -> different key
     assert echo(1, label="a") == "1-a"  # bumped, so re-evaluated
-    assert len(calls) == 2
+    assert len(calls) == 3  # (1,a) evaluated, (1,b) evaluated, (1,a) re-evaluated after bump
 
 
 def test_expiry_releases_value():

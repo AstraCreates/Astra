@@ -95,35 +95,52 @@ async def correlation_id_and_timing_middleware(request: Request, call_next):
     start = time.monotonic()
     status_code = 500
     try:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # A handler with no registered exception handler propagates here
+            # as a raw exception, not a Response -- there is nothing to
+            # attach the correlation-id header to unless we build the 500
+            # response ourselves. Without this, Starlette's own
+            # ServerErrorMiddleware (which wraps outside this middleware)
+            # builds the final response independently and the header never
+            # makes it out, breaking the nginx<->backend log join on exactly
+            # the requests where it matters most.
+            logger.exception("unhandled exception method=%s path=%s corr_id=%s", request.method, request.url.path, corr_id)
+            response = Response("Internal Server Error", status_code=500, media_type="text/plain")
         status_code = response.status_code
         response.headers["X-Correlation-ID"] = corr_id
         response.headers["X-Response-Time-Ms"] = f"{(time.monotonic() - start) * 1000:.2f}"
         return response
     finally:
+        # A bare `return` (or fall-through with no value) inside `finally`
+        # discards any exception in flight from the `try` block above --
+        # Python semantics, not a Starlette quirk. That would silently
+        # swallow every unhandled handler exception instead of letting it
+        # propagate to Starlette's own 500 conversion, so every statement
+        # below must be reachable without an early `return`.
         elapsed_ms = (time.monotonic() - start) * 1000
         # Suppress noisy health-check traffic from the timing log; the
         # container-level health probe does not need a per-request line.
         path = request.url.path
-        if path in {"/health", "/ready", "/release"}:
-            return
-        should_log = (
-            status_code >= 500
-            or status_code == 429
-            or (status_code >= 400 and path.startswith("/api"))
-            or elapsed_ms >= _SLOW_LOG_MS
-        )
-        if should_log:
-            level = logging.WARNING if status_code >= 500 or elapsed_ms >= _SLOW_LOG_MS * 2 else logging.INFO
-            logger.log(
-                level,
-                "request method=%s path=%s status=%d duration_ms=%.2f corr_id=%s",
-                request.method,
-                path,
-                status_code,
-                elapsed_ms,
-                corr_id,
+        if path not in {"/health", "/ready", "/release"}:
+            should_log = (
+                status_code >= 500
+                or status_code == 429
+                or (status_code >= 400 and path.startswith("/api"))
+                or elapsed_ms >= _SLOW_LOG_MS
             )
+            if should_log:
+                level = logging.WARNING if status_code >= 500 or elapsed_ms >= _SLOW_LOG_MS * 2 else logging.INFO
+                logger.log(
+                    level,
+                    "request method=%s path=%s status=%d duration_ms=%.2f corr_id=%s",
+                    request.method,
+                    path,
+                    status_code,
+                    elapsed_ms,
+                    corr_id,
+                )
         _correlation_id_var.reset(token)
 
 
@@ -194,6 +211,12 @@ async def startup_background_jobs():
     from backend.core.events import set_main_loop
     loop = asyncio.get_running_loop()
     set_main_loop(loop)
+
+    # Same reason: launch_mission() is called from asyncio.to_thread workers
+    # (approval side-effects, the async-approval resync below) where
+    # asyncio.create_task() has no running loop to attach to.
+    from backend.company_os_runner import set_main_loop as set_company_os_main_loop
+    set_company_os_main_loop(loop)
 
     # Enlarge the default thread pool used by asyncio.to_thread. Agent LLM calls,
     # tools, and long blocking subprocesses (e.g. the technical agent running

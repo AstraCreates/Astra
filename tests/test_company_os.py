@@ -264,8 +264,12 @@ async def test_approval_decision_route_actually_persists_instead_of_500ing(tmp_p
             headers={"x-astra-user-id": "founder"},
         )
 
-    assert response.status_code == 200
+    # The approval endpoint is asynchronous (see backend/api/company_os_routes.py):
+    # it ACKs with 202 right after the durable ledger write, then applies
+    # task/mission side-effects in the background.
+    assert response.status_code == 202
     body = response.json()
+    assert body["state"] == "approved"
     updated_approval = next(item for item in body["company"]["approvals"] if item["approval_id"] == "a1")
     assert updated_approval["state"] == "approved"
 
@@ -291,8 +295,9 @@ async def test_approval_route_accepts_a_proxy_json_string_envelope(tmp_path, mon
             headers={"content-type": "application/json", "x-astra-user-id": "founder"},
         )
 
-    assert response.status_code == 200
-    assert next(item for item in response.json()["company"]["approvals"] if item["approval_id"] == "a1")["state"] == "approved"
+    assert response.status_code == 202
+    body = response.json()
+    assert next(item for item in body["company"]["approvals"] if item["approval_id"] == "a1")["state"] == "approved"
 
 
 @pytest.mark.asyncio

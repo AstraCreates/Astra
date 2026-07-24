@@ -884,8 +884,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (!sessionId || !isSignedIn) return;
     let cancelled = false;
     let afterSequence = 0;
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let timer = 0;
+    let consecutiveFailures = 0;
 
+    // Sequential setTimeout chain, not setInterval: a slow or erroring
+    // backend can't pile up overlapping requests, and repeated failures back
+    // off (same pattern already proven in CompanyHome's poll) instead of
+    // hammering both this endpoint and its legacy fallback every 5s forever.
+    const schedule = (delay: number) => { if (!cancelled) timer = window.setTimeout(sync, delay); };
     const sync = async () => {
       try {
         const snapshot = await getRunSnapshot(sessionId);
@@ -899,6 +905,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           if (legacyEvent) handleEvent(legacyEvent as Record<string, any>);
         }
         commitState();
+        consecutiveFailures = 0;
+        schedule(5_000);
       } catch {
         // Legacy runs may not have a durable control-plane projection yet.
         // Fall back to the session state endpoint so Workbench remains live
@@ -910,6 +918,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             commitState();
           }
         } catch {}
+        consecutiveFailures += 1;
+        schedule(Math.min(5_000 * 2 ** consecutiveFailures, 60_000));
       }
     };
     const refreshOnReturn = () => {
@@ -918,10 +928,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     void sync();
     window.addEventListener("focus", refreshOnReturn);
     document.addEventListener("visibilitychange", refreshOnReturn);
-    timer = setInterval(() => { void sync(); }, 5_000);
     return () => {
       cancelled = true;
-      if (timer) clearInterval(timer);
+      window.clearTimeout(timer);
       window.removeEventListener("focus", refreshOnReturn);
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };
