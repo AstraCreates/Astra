@@ -168,6 +168,14 @@ activate_release() {
   compose "$sha" build backend
   compose "$sha" build frontend
   compose "$sha" up -d --no-build --no-deps --force-recreate backend frontend
+  # --force-recreate gives backend/frontend fresh container IPs on every
+  # deploy. nginx resolved their hostnames once at its own startup and never
+  # again, so every deploy since this proxy config existed has left the site
+  # 502ing on "no live upstreams" / "could not be resolved" until someone
+  # manually ran `nginx -s reload` -- confirmed live twice in a row. Reload
+  # is a hot config re-read (new worker processes, old ones drain requests
+  # in flight), not a restart, so this adds no downtime.
+  compose "$sha" exec -T nginx nginx -s reload 2>/dev/null || true
 }
 
 smoke_release() {

@@ -159,13 +159,25 @@ def get_file(founder_id: str, file_id: str) -> dict[str, Any] | None:
 
 
 def list_files(founder_id: str, department: str | None = None) -> list[dict[str, Any]]:
-    """Return metadata list (no content) for a founder, optionally filtered by department."""
+    """Return metadata list (no content) for a founder, optionally filtered by department.
+
+    create_file/update_file/delete_file all maintain index.json incrementally,
+    so the common case is a single small JSON read. _rebuild_index() globs
+    every file in the founder's Library directory and parses each one's full
+    content just to recompute metadata -- it used to run unconditionally on
+    every single list call, which is the actual reason Library pages were
+    slow to load: N full-document reads on every page view/tab switch instead
+    of one small index read. Only fall back to it when the cached index is
+    genuinely missing/empty (first run, or a file dropped in outside the
+    normal create_file path), matching what having both functions implies
+    was the original intent."""
     with _lock:
-        rebuilt = _rebuild_index(founder_id)
-        index = rebuilt or _load_index(founder_id)
-        if rebuilt and rebuilt != index:
-            _save_index(founder_id, rebuilt)
-            index = rebuilt
+        index = _load_index(founder_id)
+        if not index:
+            rebuilt = _rebuild_index(founder_id)
+            if rebuilt:
+                _save_index(founder_id, rebuilt)
+                index = rebuilt
     if department:
         index = [f for f in index if f.get("department") == department]
     index.sort(key=lambda f: f.get("updated_at", ""), reverse=True)
