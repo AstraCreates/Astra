@@ -180,12 +180,21 @@ activate_release() {
 
 smoke_release() {
   local sha="$1" legacy_bootstrap="${2:-0}" attempt backend_id frontend_id backend_image frontend_image release_body
-  for attempt in {1..30}; do
+  # 90 attempts * 2s = 180s. Was 30*2s=60s, which routinely wasn't enough:
+  # right after a fresh image build the host is still busy (build just used
+  # the CPU/disk), and this backend does real synchronous startup work
+  # (scheduler bootstrap, Temporal client connect) before /ready responds.
+  # Confirmed live, repeatedly this session: a deploy fails here on the
+  # first attempt with "activation-or-smoke-failed", then succeeds with zero
+  # code changes on a bare re-run a minute later -- the retry wasn't fixing
+  # anything, it was just buying the same extra settling time this gives up
+  # front. A genuinely broken release still fails well within 3 minutes.
+  for attempt in {1..90}; do
     if curl -fsS --max-time 5 http://127.0.0.1:8000/ready >/dev/null \
       && curl -fsS --max-time 5 http://127.0.0.1:3000/ >/dev/null; then
       break
     fi
-    if (( attempt == 30 )); then
+    if (( attempt == 90 )); then
       return 1
     fi
     sleep 2
