@@ -20,6 +20,34 @@ _OPENROUTER_HEADERS = {
 }
 
 _CLIENT_CACHE_TTL_SECONDS = float(os.environ.get("ASTRA_LLM_CLIENT_TTL_SECONDS", "900"))
+# Default per-request timeout for OpenAI/OpenRouter clients. Connect is
+# bounded tight (15s) because a slow handshake usually means a rotated
+# API key is being rejected and there's no point letting it sit. Read is
+# 120s, matching the OpenAI-recommended upper bound for non-streaming chat
+# completions of large reasoning models. Crucially, this guarantees the
+# lower-level httpx client has SOME timeout -- without it a server that
+# just stops ACKing packets would have asyncio.wait_for callers in the
+# agent loop waiting forever.
+_DEFAULT_LLM_READ_TIMEOUT_SECONDS = float(os.environ.get("ASTRA_LLM_TIMEOUT_SECONDS", "120"))
+_DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("ASTRA_LLM_CONNECT_TIMEOUT_SECONDS", "15"))
+
+
+def _default_openai_timeout() -> "httpx.Timeout | float":
+    """Return the default Timeout knob for the OpenAI SDK's underlying httpx
+    client. Falls back to a numeric read timeout (NEVER ``None`` -- the
+    OpenAI SDK treats ``None`` as "no timeout", which would silently disable
+    the bound we just added if httpx is somehow missing in this env).
+    httpx is an openai transitive dep so the fallback is defensive only."""
+    try:
+        import httpx
+    except ImportError:  # pragma: no cover -- defensive only
+        return float(_DEFAULT_LLM_READ_TIMEOUT_SECONDS)
+    return httpx.Timeout(
+        connect=_DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
+        read=_DEFAULT_LLM_READ_TIMEOUT_SECONDS,
+        write=_DEFAULT_LLM_READ_TIMEOUT_SECONDS,
+        pool=_DEFAULT_LLM_CONNECT_TIMEOUT_SECONDS,
+    )
 _sync_cache: dict[tuple[str, str, float | None], tuple[Any, float]] = {}
 _async_cache: dict[tuple[str, str, float | None], tuple[Any, float]] = {}
 _lock = threading.Lock()
@@ -78,7 +106,7 @@ def get_or_client(base_url: str = "", api_key: str = "", timeout: float | None =
                 base_url=base_url,
                 api_key=api_key,
                 default_headers=_or_headers(base_url),
-                timeout=timeout,
+                timeout=timeout if timeout is not None else _default_openai_timeout(),
             )
             client = _store_entry(_sync_cache, key, client)
         return client
@@ -97,7 +125,7 @@ def get_async_or_client(base_url: str = "", api_key: str = "", timeout: float | 
                 base_url=base_url,
                 api_key=api_key,
                 default_headers=_or_headers(base_url),
-                timeout=timeout,
+                timeout=timeout if timeout is not None else _default_openai_timeout(),
             )
             client = _store_entry(_async_cache, key, client)
         return client

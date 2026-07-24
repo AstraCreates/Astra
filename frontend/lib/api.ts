@@ -133,6 +133,23 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   for (const [key, value] of Object.entries(auth)) {
     if (!existing.has(key)) existing.set(key, value);
   }
+  // ── Correlation ID ────────────────────────────────────────────
+  // Reuse one id per browser tab so backend log lines grouped by
+  // X-Correlation-ID match the browser's network panel 1:1. nginx also
+  // forwards its $request_id upstream, but that's per-HTTP-request and
+  // changes on every fetch -- a per-tab id is what stitches a user session
+  // together across multiple requests.
+  if (typeof window !== "undefined" && !existing.has("X-Correlation-ID")) {
+    let cid = (window.sessionStorage.getItem("astra_corr_id") ?? "").trim();
+    if (!cid) {
+      cid =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      window.sessionStorage.setItem("astra_corr_id", cid);
+    }
+    existing.set("X-Correlation-ID", cid);
+  }
   return fetch(input, { ...init, headers: existing });
 }
 

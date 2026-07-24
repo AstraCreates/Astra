@@ -1,10 +1,15 @@
 import asyncio
+import contextvars
 import logging
 import os
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+
 from backend.api.routes import router
 from backend.api.admin import router as admin_router
 from backend.api.workspace_routes import router as workspace_router
@@ -31,6 +36,97 @@ _background_tasks: list[asyncio.Task] = []
 
 app = FastAPI(title="Astra API", version="1.0.0")
 
+
+# ── Process role: web or worker ─────────────────────────────────────────────
+# Replaces the old "skip everything if WEB_CONCURRENCY>1" gate. The dedicated
+# Temporal worker container sets ``ASTRA_WORKER_ROLE=worker`` and now owns
+# recovery + schedulers exclusively; the FastAPI web containers set
+# ``ASTRA_WORKER_ROLE=web`` and skip every background job that races on
+# shared JSON stores (Company OS event log, run ledger, approval ledger,
+# session metadata, control-plane outbox).
+#
+# Values:
+#   worker — run in-process recovery + schedulers + control-plane loops
+#   web    — skip every in-process background job (the worker does them)
+#   auto   — default for tests/local dev. Mirrors the historical behavior:
+#            single-process runs everything like ``worker``; multi-process
+#            ``WEB_CONCURRENCY>1`` runs none like ``web``. Set it explicitly
+#            in production to make the role unambiguous.
+def _process_role() -> str:
+    explicit = (os.environ.get("ASTRA_WORKER_ROLE") or "").strip().lower()
+    if explicit in {"worker", "web"}:
+        return explicit
+    if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
+        return "web"
+    return "worker"
+
+
+# ── Correlation ID + request timing context ────────────────────────────────
+# Read by structured logging handlers so every log line emitted while a
+# request is in flight is correlatable with the browser's network panel via
+# the X-Correlation-ID response header. Setting it as a contextvar (not just
+# request.state) is critical: background tasks spawned via asyncio.create_task
+# later in the request lose the FastAPI Request object but inherit the
+# contextvar, so their log lines still carry the correlation — which is the
+# whole point of having the id in the first place.
+_correlation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "astra_correlation_id", default=None
+)
+
+
+def current_correlation_id() -> str | None:
+    """Return the correlation id active in the current async task, if any."""
+    return _correlation_id_var.get()
+
+
+_SLOW_LOG_MS = float(os.environ.get("ASTRA_SLOW_REQUEST_MS", "750"))
+
+
+@app.middleware("http")
+async def correlation_id_and_timing_middleware(request: Request, call_next):
+    incoming = (
+        request.headers.get("x-correlation-id")
+        or request.headers.get("x-request-id")
+        or ""
+    ).strip()
+    corr_id = incoming or uuid.uuid4().hex
+    token = _correlation_id_var.set(corr_id)
+    request.state.correlation_id = corr_id
+    start = time.monotonic()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Correlation-ID"] = corr_id
+        response.headers["X-Response-Time-Ms"] = f"{(time.monotonic() - start) * 1000:.2f}"
+        return response
+    finally:
+        elapsed_ms = (time.monotonic() - start) * 1000
+        # Suppress noisy health-check traffic from the timing log; the
+        # container-level health probe does not need a per-request line.
+        path = request.url.path
+        if path in {"/health", "/ready", "/release"}:
+            return
+        should_log = (
+            status_code >= 500
+            or status_code == 429
+            or (status_code >= 400 and path.startswith("/api"))
+            or elapsed_ms >= _SLOW_LOG_MS
+        )
+        if should_log:
+            level = logging.WARNING if status_code >= 500 or elapsed_ms >= _SLOW_LOG_MS * 2 else logging.INFO
+            logger.log(
+                level,
+                "request method=%s path=%s status=%d duration_ms=%.2f corr_id=%s",
+                request.method,
+                path,
+                status_code,
+                elapsed_ms,
+                corr_id,
+            )
+        _correlation_id_var.reset(token)
+
+
 from backend.config import settings as _settings
 # Explicit allow-list only — never "*". Header-based auth (x-astra-user-id) means a
 # wildcard origin would let any website drive the API using a visitor's own session.
@@ -43,7 +139,7 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Last-Event-ID", "x-astra-user-id", "x-user-id", "x-astra-email", "x-astra-session"],
-    expose_headers=["Content-Type", "Cache-Control", "X-Accel-Buffering"],
+    expose_headers=["Content-Type", "Cache-Control", "X-Accel-Buffering", "X-Correlation-ID", "X-Response-Time-Ms"],
 )
 # minimum_size=1024: session/goal SSE streams send frequent small text/event-stream
 # chunks — compressing those would buffer them and add latency for no bandwidth win.
@@ -105,7 +201,6 @@ async def startup_background_jobs():
     # only min(32, cpu+4) = 8 on this box, so a few long technical jobs starve
     # every other agent/session. These threads are I/O/subprocess-bound (GIL
     # released while waiting), so a large pool is safe and keeps everyone moving.
-    from concurrent.futures import ThreadPoolExecutor
     _pool_size = max(4, min(64, int(os.environ.get("ASTRA_THREAD_POOL", "32"))))
     loop.set_default_executor(ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="astra"))
     logger.info("Thread pool sized to %d workers", _pool_size)
@@ -125,9 +220,16 @@ async def startup_background_jobs():
     )
     # Uvicorn starts this hook once per worker. Durable recovery scans and
     # schedulers are owned by the dedicated Temporal worker in production;
-    # running them in every web worker races on shared JSON stores.
-    if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
-        logger.info("Skipping in-process recovery and schedulers in multi-worker web mode")
+    # running them in every web worker races on shared JSON stores. The
+    # explicit ASTRA_WORKER_ROLE flag replaces the "WEB_CONCURRENCY==1 ?
+    # worker : skip" inference so this can no longer silently flip.
+    role = _process_role()
+    if role != "worker":
+        explicit = os.environ.get("ASTRA_WORKER_ROLE")
+        logger.info(
+            "Skipping in-process recovery, schedulers, and control-plane loops (ASTRA_WORKER_ROLE=%s)",
+            explicit if explicit else f"auto→{role}",
+        )
         return
     # Reconcile sessions left "running"/"queued" by a prior process crash/restart.
     # This is a durable-store sweep and must not block readiness on a large store.
@@ -189,6 +291,27 @@ async def startup_background_jobs():
             logger.warning("startup Company OS recovery failed: %s", exc)
 
     _background_tasks.append(asyncio.create_task(_recover_company_os_work_in_background()))
+
+    # Sweep any approval requests that were ACK'd by the async /os/approvals
+    # endpoint but whose side-effects (update_task → update_mission →
+    # launch_mission → reconcile_initiatives) were never applied -- either
+    # because the web worker accepted the click and the process restarted
+    # before asyncio.create_task ran, or because the analyze-side-effect step
+    # crashed after the durable ledger write. Idempotent: a second run after
+    # side-effects did complete is a no-op (replay_event leaves events that
+    # already match the desired state untouched).
+    async def _resync_company_os_async_approvals() -> None:
+        try:
+            from backend.api.company_os_routes import resync_pending_async_approvals
+            count = await asyncio.to_thread(resync_pending_async_approvals)
+            if count:
+                logger.info("startup async approval resync: applied %d side-effect(s)", count)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("async approval resync failed: %s", exc)
+
+    _background_tasks.append(asyncio.create_task(_resync_company_os_async_approvals()))
 
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
@@ -340,10 +463,21 @@ async def ready(response: Response):
     return result
 
 
+# Cache the release sha for 30 s. The sidebar polls every 30 s on multiple
+# tabs and never needs sub-second freshness; pinning a TTL collapses a 30-tab
+# fanout into one disk read every 30 s.
+from backend.core.lt_cache import ttl_cache as _release_ttl
+
+
+@_release_ttl(ttl_seconds=30)
+def _release_identity() -> dict[str, str]:
+    return {"sha": os.environ.get("ASTRA_RELEASE_SHA", "development")}
+
+
 @app.get("/release")
 async def release_identity():
     """Expose the runtime release identity for deploy verification only."""
-    return {"sha": os.environ.get("ASTRA_RELEASE_SHA", "development")}
+    return await asyncio.to_thread(_release_identity)
 
 
 @app.get("/metrics")
@@ -448,157 +582,9 @@ async def mcp_http(request: Request):
                 result = _tool_result(await _asyncio.to_thread(_astra_mcp.call_tool, name, args, founder_id))
             content = _json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}, separators=(",", ":"))
             return Response(content=content, media_type="application/json")
-            if name == "astra_submit_goal":
-                from backend.api.schemas import RunCreateRequest
-                from backend.control_plane.start_run import start_run as control_plane_start_run
-                stack_id = args.get("stack_id") or "idea_to_revenue"
-                constraints: dict = {}
-                if args.get("company_name"):
-                    constraints["company_name"] = args["company_name"]
-                if stack_id == "custom" and args.get("agents"):
-                    constraints["agents"] = args["agents"]
-                payload_result = await control_plane_start_run(
-                    RunCreateRequest(
-                        founder_id=founder_id,
-                        instruction=args["goal"],
-                        stack_id=stack_id,
-                        constraints=constraints,
-                    ),
-                    request=None,
-                )
-                payload = {"ok": True, "session_id": payload_result.session_id, "status": payload_result.status,
-                           "message": f"Use astra_session_status(session_id='{payload_result.session_id}') to monitor."}
-                result = _tool_result(payload)
-            elif name == "astra_steer":
-                from backend.core.events import steer_push
-                steer_push(args["session_id"], args["message"])
-                result = _tool_result({"ok": True, "message": "Steering instruction delivered."})
-            elif name == "astra_chat_agent":
-                import openai as _openai
-                from backend.config import settings
-                from backend.core.factory import get_orchestrator
-                orch = get_orchestrator()
-                agent_name = args.get("agent", "research")
-                specialist = orch.specialists.get(agent_name)
-                if not specialist:
-                    payload = {"ok": False, "error": f"Unknown agent: {agent_name}"}
-                else:
-                    from backend.core.llm_client import get_async_or_client
-                    from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
-                    client = get_async_or_client(
-                        settings.chat_model_base_url or settings.agent_model_base_url,
-                        settings.chat_model_api_key or settings.agent_model_api_key,
-                    )
-                    resp = await client.chat.completions.create(
-                        model=settings.chat_model_name or settings.agent_model_name,
-                        messages=[
-                            {"role": "system", "content": specialist.role},
-                            {"role": "user", "content": args["question"]},
-                        ],
-                        max_tokens=1024,
-                        extra_body=openrouter_extra_body(settings.chat_model_name or settings.agent_model_name),
-                    )
-                    payload = {"ok": True, "agent": agent_name, "response": (resp.choices[0].message.content if getattr(resp, "choices", None) else "")}
-                result = _tool_result(payload)
-            else:
-                result = _tool_result(await _asyncio.to_thread(_dispatch_mcp, name, args, founder_id))
         else:
             raise ValueError(f"Unsupported method: {method}")
         content = _json.dumps({"jsonrpc": "2.0", "id": request_id, "result": result}, separators=(",", ":"))
     except Exception as exc:
         content = _json.dumps({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(exc)}}, separators=(",", ":"))
     return Response(content=content, media_type="application/json")
-
-
-def _dispatch_mcp(name: str, args: dict, founder_id: str) -> dict:
-    """Dispatch MCP tool calls directly to Python functions — no HTTP."""
-    import uuid as _uuid
-    import json
-    from backend.stacks.compiler import recommend_stack
-    from backend.stacks.catalog import get_agent_catalog
-    from backend.api.routes import router as _router
-
-    if name == "astra_list_stacks":
-        from backend.stacks.templates import STACK_TEMPLATES
-        return {"ok": True, "stacks": [
-            {"id": s.stack_id, "name": s.name, "target_user": s.target_user,
-             "primary_outcome": s.primary_outcome, "agent_count": len(s.tasks)}
-            for s in STACK_TEMPLATES.values()
-        ]}
-
-    if name == "astra_list_agents":
-        return {"ok": True, "agents": get_agent_catalog()}
-
-    if name == "astra_recommend_stack":
-        r = recommend_stack(args["goal"])
-        return {
-            "ok": True,
-            "recommended_stack_id": r.stack.stack_id,
-            "recommended_stack_name": r.stack.name,
-            "confidence": r.confidence,
-            "reason": r.reason,
-            "matched_signals": r.matched_signals,
-        }
-
-    if name in ("astra_submit_goal", "astra_steer", "astra_chat_agent"):
-        return {"ok": False, "error": f"{name} must be handled by the async dispatcher"}
-
-    if name == "astra_session_status":
-        from backend.core.events import _event_log, _completed
-        session_id = args["session_id"]
-        events = [e for _, e in _event_log.get(session_id, [])]
-        done = session_id in _completed
-        agents: dict = {}
-        for e in events:
-            ag = e.get("agent")
-            if not ag:
-                continue
-            if e["type"] == "agent_start":
-                agents[ag] = {"status": "running"}
-            elif e["type"] == "agent_done":
-                agents[ag] = {"status": "done"}
-            elif e["type"] == "agent_error":
-                agents[ag] = {"status": "error"}
-        done_count = sum(1 for a in agents.values() if a["status"] == "done")
-        return {"ok": True, "session_id": session_id, "done": done,
-                "agents_done": done_count, "agents_total": len(agents),
-                "completion_pct": round(done_count / len(agents) * 100) if agents else 0,
-                "agents": agents}
-
-    if name == "astra_session_digest":
-        from backend.core.events import _event_log
-        session_id = args["session_id"]
-        events = [e for _, e in _event_log.get(session_id, [])]
-        artifacts = [e for e in events if e.get("type") == "artifact"]
-        agent_summaries = {e["agent"]: e.get("summary", "") for e in events if e.get("type") == "agent_done" and e.get("summary")}
-        return {"ok": True, "session_id": session_id, "artifact_count": len(artifacts),
-                "artifacts": artifacts, "agent_summaries": agent_summaries}
-
-    if name == "astra_session_artifacts":
-        from backend.core.events import _event_log
-        session_id = args["session_id"]
-        events = [e for _, e in _event_log.get(session_id, [])]
-        artifacts = [e for e in events if e.get("type") in ("artifact", "run_artifact")]
-        return {"ok": True, "session_id": session_id, "artifact_count": len(artifacts), "artifacts": artifacts}
-
-    if name == "astra_chat_agent":
-        # Chat is handled separately as async — return a placeholder for sync dispatch
-        return {"ok": False, "error": "Use the /chat/{agent} endpoint directly or the stdio MCP for agent chat."}
-
-
-    if name == "astra_session_workboard":
-        from backend.core.events import _event_log
-        session_id = args["session_id"]
-        events = [e for _, e in _event_log.get(session_id, [])]
-        tasks = [e for e in events if e.get("type") in ("task_start", "task_done", "task_error")]
-        return {"ok": True, "session_id": session_id, "tasks": tasks}
-
-    if name == "astra_approve":
-        try:
-            from backend.core.events import steer_push
-            steer_push(args["session_id"], json.dumps({"type": "approval_decision", "action_key": args["action_key"], "decision": "approve", "founder_id": founder_id}))
-            return {"ok": True, "action_key": args["action_key"], "decision": "approve"}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    return {"ok": False, "error": f"Unknown tool: {name}"}

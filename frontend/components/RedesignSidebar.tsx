@@ -6,6 +6,7 @@ import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { desktopDownloadHref } from "@/lib/desktop-download";
+import { useCachedFetch, invalidateMatching } from "@/lib/swr";
 
 const LINKS: { href: string; label: string; match: (p: string) => boolean; svg: string }[] = [
   { href: "/dashboard",    label: "Dashboard",     match: p => p.startsWith("/dashboard"),
@@ -64,27 +65,32 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     return () => window.clearTimeout(hydrationTimer);
   }, []);
 
+  // /api/release used to be polled raw via `fetch().then(...)` every 30 s;
+  // multiplied by the number of sidebar instances in a tab it created a
+  // small herd of identical round trips. The SWR layer below collapses
+  // all of them onto ONE network call and revalidates only when the cached
+  // entry expires (default staleMs=5 s) or the tab regains focus. The
+  // dedicated 30-second cadence is preserved by setting ttlMs above the
+  // stale window so a quiet tab doesn't refetch unnecessarily.
+  const release = useCachedFetch<{ sha?: string }>(
+    "github-release-sha",
+    (signal) =>
+      fetch("/api/release", { cache: "no-store", signal })
+        .then((r) => (r.ok ? r.json() : { sha: "unknown" }))
+        .catch(() => ({ sha: "unknown" })),
+    { staleMs: 30_000, ttlMs: 5 * 60_000 },
+  );
   useEffect(() => {
-    let cancelled = false;
+    if (typeof release.data?.sha === "string") setGithubSha(release.data.sha);
+  }, [release.data?.sha]);
 
-    const loadGithubSha = () => {
-      fetch("/api/release", { cache: "no-store" })
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => {
-          if (!cancelled && typeof d?.sha === "string") setGithubSha(d.sha);
-        })
-        .catch(() => {
-          if (!cancelled) setGithubSha("unknown");
-        });
-    };
-
-    loadGithubSha();
-    const interval = window.setInterval(loadGithubSha, 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, []);
+  // Best-effort cross-tab invalidation: when the founder signs out, the
+  // SWR cache for this tab is stale. There's no auth-aware version of
+  // /api/release, so this currently is a no-op hook reserved for future
+  // multi-account switching.
+  useEffect(() => {
+    if (!userId) invalidateMatching((k) => k.startsWith("github-release-"));
+  }, [userId]);
 
   const displayName = hydrated ? (customName.split(" ")[0] || user?.fullName?.split(" ")[0] || initials(userId)) : "…";
   const accentColor = "#7d8fff";
