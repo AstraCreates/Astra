@@ -5,7 +5,7 @@ import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard,
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
-import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { clearMessages, decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 import { ingestAttachment } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
 
@@ -160,7 +160,14 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
                 </button>
               )}
             </div>
-            <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
+            {selected.status === "blocked" && selected.note ? (
+              <div style={{ marginTop: 14, padding: 10, borderRadius: 8, background: "rgba(185, 28, 28, 0.08)", border: "1px solid rgba(185, 28, 28, 0.2)" }}>
+                <small style={{ color: "var(--red)", fontWeight: 600, display: "block", marginBottom: 5 }}>Failure reason:</small>
+                <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note}</p>
+              </div>
+            ) : (
+              <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
+            )}
           </>}
         </div>
         <MeetingTimeline meetings={squad.meetings} open={meetingsOpen} onToggle={() => setMeetingsOpen(!meetingsOpen)} />
@@ -292,8 +299,8 @@ export default function CompanyHome() {
     if (workspaceInitiativeId === initiativeId) setWorkspaceInitiativeId("");
     try {
       await deleteInitiative({ founderId, companyId }, initiativeId);
-    } catch {
-      setNotice("Could not delete that initiative — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that initiative — try again."));
       reconcileAfterFailedDelete();
     } finally {
       setItemDeleting(initiativeId, false);
@@ -306,8 +313,8 @@ export default function CompanyHome() {
       const data = await updateInitiative({ founderId, companyId }, initiativeId, update);
       setHome(data);
       setNotice("Initiative brief saved.");
-    } catch {
-      setNotice("Could not save that initiative — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not save that initiative — try again."));
     } finally {
       setSavingInitiative(false);
     }
@@ -324,8 +331,8 @@ export default function CompanyHome() {
     if (workbenchSquadId === squadId) setWorkbenchSquadId("");
     try {
       await deleteSquad({ founderId, companyId }, squadId);
-    } catch {
-      setNotice("Could not delete that squad — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that squad — try again."));
       reconcileAfterFailedDelete();
     } finally {
       setItemDeleting(squadId, false);
@@ -337,8 +344,8 @@ export default function CompanyHome() {
     try {
       const data = await retryTask({ founderId, companyId }, taskId);
       setHome(data);
-    } catch {
-      setNotice("Could not retry that task — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not retry that task — try again."));
     } finally {
       setRetryingTaskId("");
     }
@@ -351,8 +358,8 @@ export default function CompanyHome() {
     if (artifact?.id === artifactId) setArtifact(null);
     try {
       await deleteArtifact({ founderId, companyId }, artifactId);
-    } catch {
-      setNotice("Could not delete that artifact — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that artifact — try again."));
       reconcileAfterFailedDelete();
     } finally {
       setItemDeleting(artifactId, false);
@@ -387,8 +394,8 @@ export default function CompanyHome() {
       const data = await editMessage({ founderId, companyId }, editingMessageId, value);
       setHome(data);
       cancelEditingMessage();
-    } catch {
-      setNotice("Could not save that edit — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not save that edit — try again."));
     } finally {
       setMessageBusyId("");
     }
@@ -399,8 +406,8 @@ export default function CompanyHome() {
     try {
       const data = await deleteMessage({ founderId, companyId }, messageId);
       setHome(data);
-    } catch {
-      setNotice("Could not delete that message — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that message — try again."));
     } finally {
       setMessageBusyId("");
     }
@@ -413,8 +420,8 @@ export default function CompanyHome() {
     try {
       const data = await clearMessages({ founderId, companyId });
       setHome(data);
-    } catch {
-      setNotice("Could not clear the chat — try again.");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not clear the chat — try again."));
     } finally {
       setMessageBusyId("");
     }
@@ -435,9 +442,9 @@ export default function CompanyHome() {
       const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })));
       setHome(result.data);
       setNotice(result.message);
-    } catch {
+    } catch (error) {
       setHome(prev => ({ ...prev, conversation: prev.conversation.filter(turn => turn.id !== echoId) }));
-      setNotice("Copilot could not reach Company OS. Your message was not lost locally.");
+      setNotice(`${friendlyErrorMessage(error, "Copilot could not reach Company OS")}. Your message was not lost locally.`);
       setMessage(value);
       setAttachments(pending);
     } finally {
@@ -651,7 +658,11 @@ export default function CompanyHome() {
                                       </span>
                                       <div style={{ flex: 1, minWidth: 0 }}>
                                         <div style={{ fontSize: 13, color: "var(--fg)", textDecoration: task.status === "complete" ? "line-through" : "none", opacity: task.status === "complete" ? 0.7 : 1, letterSpacing: "-0.005em" }}>{task.title}</div>
-                                        {task.note && <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>}
+                                        {task.status === "blocked" && task.note ? (
+                                          <small style={{ display: "block", marginTop: 2, color: "var(--red)", fontSize: 10, fontWeight: 600 }}>Failed: {task.note}</small>
+                                        ) : task.note ? (
+                                          <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>
+                                        ) : null}
                                         {task.status === "blocked" && (
                                           <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
                                             onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
@@ -812,7 +823,7 @@ export default function CompanyHome() {
           {home.approvals.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>Nothing waiting on you.</p>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small><button type="button" onClick={() => { void decideCompanyApproval({ founderId, companyId }, item.id, true).then(setHome).catch(error => setNotice(error instanceof Error ? error.message : "Approval failed.")); }} style={{ padding: "6px 9px", border: 0, borderRadius: 6, background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 10 }}>Approve</button></div></article>)}</div>
+            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small><button type="button" onClick={() => { void decideCompanyApproval({ founderId, companyId }, item.id, true).then(setHome).catch(error => setNotice(friendlyErrorMessage(error, "Approval failed."))); }} style={{ padding: "6px 9px", border: 0, borderRadius: 6, background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 10 }}>Approve</button></div></article>)}</div>
           )}
         </section>
 

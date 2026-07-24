@@ -24,6 +24,21 @@ _COLLECTIONS = (
 )
 _SEGMENT_LIMIT = 250
 _SNAPSHOT_INTERVAL = 50
+# Notified with company_id after every durable event append. Lets other
+# layers (e.g. the route-level TTL cache in company_os_routes.py) invalidate
+# themselves without company_os.py importing them back -- that would be
+# circular, since every route module already imports from here. Registering
+# a listener at the single choke point every mutation passes through also
+# means a route added later can't forget to invalidate the cache, which is
+# exactly how the read-your-own-write staleness bug happened the first time:
+# every route was individually responsible for calling cache_bump(), and
+# every route except the approval ones simply didn't.
+_mutation_listeners: list[Any] = []
+
+
+def on_mutation(listener: Any) -> None:
+    """Register a ``listener(company_id: str)`` called after every append_event."""
+    _mutation_listeners.append(listener)
 logger = logging.getLogger(__name__)
 
 
@@ -129,7 +144,13 @@ def append_event(company_id: str, event_type: str | dict[str, Any], payload: dic
             # short tail instead of the whole event log (was O(total events)
             # on every read, 26k+ events -> 100s+ per GET /os).
             _write_snapshot(directory, state, event["sequence"])
-        return copy.deepcopy(event)
+        result = copy.deepcopy(event)
+    for listener in _mutation_listeners:
+        try:
+            listener(company_id)
+        except Exception:
+            logger.warning("Company OS mutation listener failed company=%s", company_id, exc_info=True)
+    return result
 
 
 def replay_events(company_id: str, *, root: str | Path | None = None) -> list[dict[str, Any]]:

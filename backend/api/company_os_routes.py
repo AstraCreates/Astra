@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, model_validator
 
-from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task
+from backend.company_os import append_message, create_company_os, ensure_company_operations, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.core.lt_cache import ttl_cache, bump as cache_bump
@@ -158,11 +158,23 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 
 # Hot read ─ multiple panels poll this 5-30s. The 2-second TTL is the
 # cheapest way to collapse the stampeding herd without making the UI feel
-# stale: approvals and Squad control actions both invalidate explicitly, so
-# the worst-case staleness for a "decision just landed" view is 2s.
+# stale.
 @ttl_cache(ttl_seconds=2)
 def _read_company_os_state(company_id: str) -> dict[str, Any]:
     return reconcile_initiatives(company_id)
+
+
+# Every durable mutation -- not just approvals -- must invalidate this cache,
+# or a poll landing within the 2s window after a founder sends a message,
+# edits/deletes a message, edits an initiative, etc. serves a stale response
+# that's missing what they just did. That was previously only wired up for
+# the approval routes (cache_bump calls sprinkled at 5 call sites), which
+# left every other mutation route silently stale for up to 2s -- e.g. a
+# founder's own message appearing, then vanishing when a stale-cached poll
+# response replaced local state, then reappearing once the cache expired.
+# Hooking company_os.on_mutation() instead of a per-route cache_bump call
+# means this can't be forgotten again by a route added later.
+on_mutation(lambda company_id: cache_bump(_read_company_os_state, company_id))
 
 
 @router.get("/companies/{company_id}/os")

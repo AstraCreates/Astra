@@ -3,6 +3,26 @@ import { apiFetch } from "./api.ts";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Every failed call in this file throws `new Error(await response.text())` --
+// the raw HTTP body, which for FastAPI's default error shape is JSON like
+// `{"detail":"Initiative not found"}`, not human text. Showing that raw blob
+// in a notice banner reads as broken. Extract `.detail` when present, fall
+// back to the raw text for non-JSON errors (e.g. network failures), and fall
+// back to the caller's fallback message when there's nothing usable at all.
+export function friendlyErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message.trim()) return fallback;
+  const raw = error.message.trim();
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.detail === "string" && parsed.detail.trim()) return parsed.detail;
+    } catch {
+      // Not actually JSON despite the leading brace -- fall through to raw text.
+    }
+  }
+  return raw;
+}
+
 export type CompanyScope = { founderId: string; companyId: string };
 
 export type CompanyHomeTask = {
