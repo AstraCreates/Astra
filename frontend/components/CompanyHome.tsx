@@ -756,7 +756,7 @@ export default function CompanyHome() {
             <h2 className="sec-label" style={{ margin: 0 }}>Initiatives {home.initiatives.length > 0 && <span style={{ color: "var(--fm)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>· {home.initiatives.length}</span>}</h2>
           </div>
           {home.initiatives.length === 0 ? (
-            <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>No initiatives yet. Ask Copilot to kick one off.</p>
+            <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>Keep track of your work here</p>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {home.initiatives.map(item => (

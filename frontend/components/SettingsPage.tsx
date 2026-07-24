@@ -35,27 +35,29 @@ import {
 } from "@/lib/api";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
+// Theme-aware tokens. Neutrals map to CSS vars so dark mode is honored;
+// status colors use translucent fills that read on both light and dark.
 const c = {
-  bg: "#FFFFFF",
-  surface: "#F8F9FA",
-  border: "#E5E7EB",
-  borderStrong: "#D1D5DB",
-  text: "#111827",
-  textSecondary: "#374151",
-  textMuted: "#9CA3AF",
-  grey: "#6B7280",
-  blue: "#002EFF",
-  blueHover: "#0024CC",
-  blueTint: "#E8ECFF",
-  green: "#16a34a",
-  greenTint: "#DCFCE7",
-  greenBorder: "#BBF7D0",
-  amber: "#d97706",
-  amberTint: "#FEF9C3",
-  amberBorder: "#FDE68A",
-  red: "#dc2626",
-  redTint: "#FEF2F2",
-  redBorder: "#FECACA",
+  bg: "var(--bg-surface)",
+  surface: "var(--bg-sunken)",
+  border: "var(--border)",
+  borderStrong: "var(--border-strong)",
+  text: "var(--text)",
+  textSecondary: "var(--text-2)",
+  textMuted: "var(--text-muted)",
+  grey: "var(--grey)",
+  blue: "var(--accent)",
+  blueHover: "var(--accent-hover)",
+  blueTint: "var(--accent-light)",
+  green: "#22c55e",
+  greenTint: "rgba(34,197,94,0.13)",
+  greenBorder: "rgba(34,197,94,0.34)",
+  amber: "#f59e0b",
+  amberTint: "rgba(245,158,11,0.13)",
+  amberBorder: "rgba(245,158,11,0.34)",
+  red: "#ef4444",
+  redTint: "rgba(239,68,68,0.12)",
+  redBorder: "rgba(239,68,68,0.34)",
 };
 
 function inputStyle(focused = false): React.CSSProperties {
@@ -112,10 +114,10 @@ function Row({ label, desc, action }: { label: string; desc?: string; action: Re
 
 function Badge({ children, color = "grey" }: { children: React.ReactNode; color?: "grey" | "green" | "amber" | "blue" | "red" }) {
   const map = {
-    grey: { bg: "#F3F4F6", text: c.grey, border: c.border },
+    grey: { bg: "var(--bg-sunken)", text: c.grey, border: c.border },
     green: { bg: c.greenTint, text: c.green, border: c.greenBorder },
     amber: { bg: c.amberTint, text: c.amber, border: c.amberBorder },
-    blue: { bg: c.blueTint, text: c.blue, border: "#BFDBFE" },
+    blue: { bg: c.blueTint, text: c.blue, border: c.blueTint },
     red: { bg: c.redTint, text: c.red, border: c.redBorder },
   }[color];
   return (
@@ -338,7 +340,7 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <div style={{
               width: 32, height: 32, borderRadius: "50%",
-              background: c.blueTint, border: `1px solid #BFDBFE`,
+              background: c.blueTint, border: `1px solid ${c.blueTint}`,
               display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
             }}>
               <span style={{ fontSize: 13, color: c.blue, fontWeight: 600 }}>{(member.email ?? member.uid).charAt(0).toUpperCase()}</span>
@@ -497,6 +499,27 @@ export default function SettingsPage() {
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState("");
 
+  // Display name — stored locally (drives dashboard greeting + sidebar).
+  const [displayName, setDisplayName] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameSaved, setNameSaved] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("astra_onboarding_name") || "";
+    setDisplayName(stored);
+    setNameDraft(stored);
+  }, []);
+
+  const saveName = () => {
+    const next = nameDraft.trim();
+    if (next) localStorage.setItem("astra_onboarding_name", next);
+    else localStorage.removeItem("astra_onboarding_name");
+    setDisplayName(next);
+    setNameSaved(true);
+    setTimeout(() => setNameSaved(false), 1800);
+    window.dispatchEvent(new CustomEvent("astra:name-changed", { detail: next }));
+  };
+
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     async function ping() {
@@ -606,9 +629,33 @@ export default function SettingsPage() {
       {/* Account */}
       <Section title="Account">
         <Row
-          label="Profile"
-          desc={`Dev User (${founderId.slice(0, 16)})`}
-          action={null}
+          label="Display name"
+          desc={displayName ? `Shown across your workspace · ${founderId.slice(0, 16)}` : `Set the name Astra greets you by · ${founderId.slice(0, 16)}`}
+          action={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveName()}
+                placeholder="Your name"
+                style={{ ...inputStyle(), width: 180, minHeight: 36 }}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
+              />
+              <button
+                onClick={saveName}
+                disabled={nameDraft.trim() === displayName.trim()}
+                style={{
+                  fontSize: 13, padding: "0 16px", minHeight: 36, borderRadius: 8,
+                  background: c.blue, color: "#FFFFFF", border: "none", fontWeight: 500,
+                  cursor: nameDraft.trim() === displayName.trim() ? "not-allowed" : "pointer",
+                  opacity: nameDraft.trim() === displayName.trim() ? 0.5 : 1, whiteSpace: "nowrap",
+                }}
+              >
+                {nameSaved ? "Saved ✓" : "Save"}
+              </button>
+            </div>
+          }
         />
         <Row
           label="Plan"
@@ -670,7 +717,7 @@ export default function SettingsPage() {
           desc="Re-run the setup wizard to change your stack or reconnect integrations"
           action={
             <button
-              onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/"; }}
+              onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/onboarding"; }}
               style={{
                 fontSize: 13, padding: "6px 14px", borderRadius: 8,
                 background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
@@ -952,7 +999,7 @@ export default function SettingsPage() {
               </div>
             </div>
             {requirements?.final_gate.command && (
-              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "8px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>{requirements.final_gate.command}</code>
+              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "var(--bg-sunken)", padding: "8px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>{requirements.final_gate.command}</code>
             )}
           </MiniCard>
 
@@ -1014,13 +1061,13 @@ export default function SettingsPage() {
             </div>
 
             {requirements?.final_gate.verify_manifest_endpoint && (
-              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
+              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "var(--bg-sunken)", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
                 Verify manifest: {requirements.final_gate.verify_manifest_endpoint}
                 {manifestVerification?.summary ? ` · ${manifestVerification.summary}` : ""}
               </code>
             )}
             {requirements?.final_gate.bundle_endpoint && (
-              <code style={{ display: "block", marginTop: 6, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
+              <code style={{ display: "block", marginTop: 6, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "var(--bg-sunken)", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
                 Export bundle: {requirements.final_gate.bundle_endpoint}
               </code>
             )}

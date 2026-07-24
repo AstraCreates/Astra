@@ -41,6 +41,14 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   const [credits, setCredits] = useState<number | null>(null);
   const [githubSha, setGithubSha] = useState<string>("");
   const [hydrated, setHydrated] = useState(false);
+  const [customName, setCustomName] = useState("");
+
+  useEffect(() => {
+    const sync = () => setCustomName(localStorage.getItem("astra_onboarding_name") || "");
+    sync();
+    window.addEventListener("astra:name-changed", sync);
+    return () => window.removeEventListener("astra:name-changed", sync);
+  }, []);
 
   useEffect(() => {
     const hydrationTimer = window.setTimeout(() => setHydrated(true), 0);
@@ -78,7 +86,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     };
   }, []);
 
-  const displayName = hydrated ? (user?.fullName?.split(" ")[0] || initials(userId)) : "…";
+  const displayName = hydrated ? (customName.split(" ")[0] || user?.fullName?.split(" ")[0] || initials(userId)) : "…";
   const accentColor = "#7d8fff";
   const githubShaLabel = githubSha ? shortGithubSha(githubSha) : "checking";
 
