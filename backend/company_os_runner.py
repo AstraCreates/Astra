@@ -261,6 +261,12 @@ async def recover_pending_missions() -> int:
     recovered = 0
     for company in await asyncio.to_thread(list_company_os):
         for mission in company.get("missions", []):
+            squad = _find(company.get("squads", []), "squad_id", mission.get("squad_id"))
+            initiative = _find(company.get("initiatives", []), "initiative_id", mission.get("initiative_id"))
+            if (mission.get("state") in {"archived", "cancelled"}
+                    or (squad and squad.get("state") in {"archived", "cancelled"})
+                    or (initiative and initiative.get("state") in {"archived", "cancelled"})):
+                continue
             mission_tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == mission.get("mission_id")]
             approved_waiting = mission.get("state") == "waiting" and any(
                 task.get("state") in {"pending", "scheduled"} and task.get("approval_decision") == "approved"
@@ -329,6 +335,13 @@ def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
 
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Perform only internal work; policy gating happens before this executor is called."""
+    company = get_company_os(company_id) or {}
+    squad = _find(company.get("squads", []), "squad_id", mission.get("squad_id"))
+    initiative = _find(company.get("initiatives", []), "initiative_id", mission.get("initiative_id"))
+    if (mission.get("state") in {"archived", "cancelled"} or task.get("state") in {"archived", "cancelled"}
+            or (squad and squad.get("state") in {"archived", "cancelled"})
+            or (initiative and initiative.get("state") in {"archived", "cancelled"})):
+        raise RuntimeError("Company OS work was deleted before execution; refusing to recreate artifacts.")
     if str(task.get("mcp_tool") or "") == "astra_company_research" and str(mission.get("department") or "") == "operations":
         raise RuntimeError("Research task is attached to Company Operations; retry after routing repair.")
     mission_name = str(mission.get("name") or "this research")

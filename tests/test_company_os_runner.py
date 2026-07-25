@@ -111,6 +111,22 @@ async def test_recover_pending_missions_leaves_a_genuinely_in_progress_mission_a
     assert await recover_pending_missions() == 0
 
 
+@pytest.mark.asyncio
+async def test_recover_pending_missions_never_resurrects_deleted_work(monkeypatch):
+    company = {
+        "company_id": "acme",
+        "initiatives": [{"initiative_id": "i1", "state": "archived"}],
+        "squads": [{"squad_id": "s1", "initiative_id": "i1", "state": "archived"}],
+        "missions": [{"mission_id": "m1", "initiative_id": "i1", "squad_id": "s1", "state": "review"}],
+        "tasks": [{"task_id": "t1", "mission_id": "m1", "state": "pending", "name": "Old research"}],
+        "task_attempts": [],
+    }
+    monkeypatch.setattr("backend.company_os_runner.list_company_os", lambda: [company])
+    monkeypatch.setattr("backend.company_os_runner.get_company_os", lambda *_args, **_kwargs: company)
+    monkeypatch.setattr("backend.company_os_runner.run_mission", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("deleted work relaunched")))
+    assert await recover_pending_missions() == 0
+
+
 def test_comparison_document_never_recommends_with_unbalanced_evidence():
     title, content = _comparison_document("Compare Cofounder to Astra", {"evidence_ledger": {"Cofounder": {"product": [{"title": "About", "url": "https://cofounder.example/about"}], "pricing": [], "privacy": []}, "Astra": {"product": [], "pricing": [], "privacy": []}}})
     assert "comparison" in title.lower()

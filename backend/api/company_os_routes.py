@@ -275,7 +275,7 @@ async def delete_company_os_initiative(company_id: str, initiative_id: str, foun
     company = _company(request, company_id, founder_id, operator=True)
     if not any(item.get("initiative_id") == initiative_id for item in company.get("initiatives", [])):
         raise HTTPException(status_code=404, detail="Initiative not found")
-    update_initiative(company_id, initiative_id, state="archived")
+    _archive_company_os_scope(company_id, initiative_id=initiative_id)
     return {"ok": True, "initiative_id": initiative_id, "company": get_company_os(company_id)}
 
 
@@ -285,8 +285,43 @@ async def delete_company_os_squad(company_id: str, squad_id: str, founder_id: st
     company = _company(request, company_id, founder_id, operator=True)
     if not any(item.get("squad_id") == squad_id for item in company.get("squads", [])):
         raise HTTPException(status_code=404, detail="Squad not found")
-    update_squad(company_id, squad_id, state="archived", lifecycle="archived")
+    _archive_company_os_scope(company_id, squad_id=squad_id)
     return {"ok": True, "squad_id": squad_id, "company": get_company_os(company_id)}
+
+
+def _archive_company_os_scope(company_id: str, *, initiative_id: str | None = None, squad_id: str | None = None) -> None:
+    """Archive the whole execution graph so recovery can never resurrect it."""
+    company = get_company_os(company_id) or {}
+    if initiative_id:
+        squad_ids = {str(item["squad_id"]) for item in company.get("squads", []) if str(item.get("initiative_id")) == initiative_id}
+        update_initiative(company_id, initiative_id, state="archived", deleted_at=time.time(), deletion_reason="founder_deleted")
+    else:
+        squad_ids = {squad_id or ""}
+    for current_squad_id in squad_ids:
+        update_squad(company_id, current_squad_id, state="archived", lifecycle="archived", deleted_at=time.time(), deletion_reason="founder_deleted")
+    mission_ids = {str(item["mission_id"]) for item in company.get("missions", [])
+                   if str(item.get("squad_id")) in squad_ids or (initiative_id and str(item.get("initiative_id")) == initiative_id)}
+    task_ids = {str(item["task_id"]) for item in company.get("tasks", []) if str(item.get("mission_id")) in mission_ids}
+    for mission in company.get("missions", []):
+        if str(mission.get("mission_id")) in mission_ids:
+            update_mission(company_id, mission["mission_id"], state="archived", blocked_reason="Cancelled by founder", deleted_at=time.time(), deletion_reason="founder_deleted")
+    for task in company.get("tasks", []):
+        if str(task.get("task_id")) in task_ids and task.get("state") not in {"done", "archived"}:
+            update_task(company_id, task["task_id"], state="archived", blocked_reason="Cancelled by founder", deleted_at=time.time(), deletion_reason="founder_deleted")
+    for approval in company.get("approvals", []):
+        if str(approval.get("task_id")) in task_ids and approval.get("state") == "pending":
+            update_approval(company_id, approval["approval_id"], state="archived", decision="cancelled", deletion_reason="founder_deleted")
+    for artifact in company.get("artifacts", []):
+        if str(artifact.get("task_id")) not in task_ids or artifact.get("state") == "archived":
+            continue
+        library_file_id = artifact.get("library_file_id")
+        if library_file_id:
+            try:
+                from backend.library.store import delete_file
+                delete_file(str(company["founder_id"]), str(library_file_id))
+            except Exception:
+                logger.warning("Company OS deletion: Library cascade failed artifact=%s", artifact.get("artifact_id"), exc_info=True)
+        update_artifact(company_id, artifact["artifact_id"], state="archived", deletion_reason="founder_deleted")
 
 
 @router.get("/companies/{company_id}/os/squads/{squad_id}/workbench")
