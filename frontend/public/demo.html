@@ -1368,8 +1368,39 @@ function showOutputs() {
   lib.style.background = 'rgba(125,143,255,0.08)';
   lib.style.borderLeftColor = 'var(--blue)';
 
-  astraMsg(`All done. Everything's saved to your Library — check the sidebar.`);
-  chatState = 'done';
+  astraMsg(`All done. Everything's saved to your Library — check the sidebar.`, () => {
+    chatState = 'done';
+    setTimeout(startContinuousRun, 4000);
+  });
+}
+
+function startContinuousRun() {
+  // Proactive autonomous updates — Astra keeping the company alive
+  const pulses = [
+    { delay: 0,     text: `Sarah Chen (VP Ops, Salesforce) opened your outreach email — flagging for follow-up.` },
+    { delay: 7000,  text: `Notion just raised $150M Series D. Updating your competitor analysis now.` },
+    { delay: 16000, text: `Landing page hit 3 signups in the last hour. Running conversion analysis.` },
+    { delay: 26000, text: `Found 12 new Fortune 1000 leads matching your ICP. Adding to outreach queue.` },
+    { delay: 37000, text: `Follow-up email to Sarah Chen drafted and queued — sends in 2 hours unless you redirect.` },
+    { delay: 49000, text: `Gartner published a new AI ops report. Extracting competitive signals for your brief.` },
+    { delay: 62000, text: `Outreach sequence touch 2 sent to 14 prospects. 3 opens so far — monitoring.` },
+  ];
+
+  pulses.forEach(({ delay, text }) => setTimeout(() => {
+    if (chatState !== 'done') return;
+    astraMsg(text);
+    // tick progress bar
+    const bar = document.getElementById('launchBar');
+    const pct = document.getElementById('launchPct');
+    if (bar && pct) {
+      const cur = parseFloat(bar.style.transform.replace('scaleX(','') || '0') * 100;
+      const next = Math.min(cur + 8, 72);
+      bar.style.transform = `scaleX(${next/100})`;
+      pct.textContent = Math.round(next) + '%';
+      const tasks = document.querySelector('.progress-tasks');
+      if (tasks) tasks.textContent = `${Math.round(next/8)} / 12 tasks`;
+    }
+  }, delay));
 }
 
 // ── init composer ─────────────────────────────────────────────────────────────
