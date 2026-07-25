@@ -410,10 +410,13 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             sources = _initiative_evidence(company_id, mission.get("initiative_id"))
             build = _run_coding_website_agent(company_id, mission, task, website_context, sources)
             if build.get("url"):
-                return _store_artifact(company_id, task, f"Website build — {_short_title(mission_name)}", {
+                result = _store_artifact(company_id, task, f"Website build — {_short_title(mission_name)}", {
                     "content": build["summary"], "sources": sources, "url": build["url"],
                     "hosting": "local_preview", "hosting_status": "ready", "build_metadata": build,
                 }, source="technical coding agent", internal=False)
+                append_message(company_id, build["summary"], author="copilot", scope="task",
+                               scope_id=str(task.get("task_id") or ""), kind="chat")
+                return result
             raise RuntimeError(f"Technical coding agent failed: {build.get('error') or 'no reviewable preview was produced'}")
         if task_key == "product-architecture":
             # Planning is squad context, not a founder-facing Library artifact.
@@ -522,6 +525,22 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
         company = get_company_os(company_id) or {}
         founder_id = str(company.get("founder_id") or company_id)
         objective = str(context.get("objective") or mission.get("name") or "Build the requested website")
+        session_id = str(task.get("task_id") or mission.get("mission_id") or "company-os-website")
+        try:
+            from backend.core.session_store import register_session
+            register_session(session_id, founder_id, objective, company_name=str(company.get("name") or "Company"),
+                             company_id=company_id, workspace_id=company_id, kind="company_os_build", visible=False)
+        except Exception:
+            logger.debug("Could not register Company OS coding session", exc_info=True)
+        last_progress = {"text": ""}
+
+        def progress(text: str, **_extra: Any) -> None:
+            if text == last_progress["text"]:
+                return
+            last_progress["text"] = text
+            update_task(company_id, str(task.get("task_id") or ""), state="working",
+                        progress_text=text, activity=text, last_progress_at=datetime.now(timezone.utc).isoformat())
+
         handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
         source_lines = "\n".join(f"- {item.get('title') or 'Source'}: {item.get('url')}" for item in sources[:12])
         build_context = f"""Company OS website brief:\n{objective}\n\nEntities: {context.get('entities') or []}\nDeliverables: {context.get('deliverables') or []}\nAcceptance criteria: {context.get('acceptance_criteria') or []}\n\nResearch handoffs:\n{handoffs[:24000] or '(none)'}\n\nVerified source URLs:\n{source_lines or '(none)'}"""
@@ -530,11 +549,12 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                   "Use the research handoffs as the content source. Do not make a generic SaaS template. "
                   "Visibly present the researched facts, relevant sections, and source links. "
                   "This is a reviewable local build; do not publish externally."),
-            session_id=str(task.get("task_id") or mission.get("mission_id") or "company-os-website"),
+            session_id=session_id,
             context=build_context,
             required_files=["package.json", "app/page.tsx", "app/layout.tsx", "README.md"],
             founder_id=founder_id,
             agent="web",
+            progress_callback=progress,
         ) or {}
         if result.get("error"):
             return {"ok": False, "error": result["error"], "result": result}
