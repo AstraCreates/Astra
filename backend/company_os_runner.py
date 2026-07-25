@@ -680,7 +680,7 @@ def _decision_brief(mission_name: str, evidence: Mapping[str, Any]) -> tuple[str
         report = str(evidence.get("content") or "").strip()
         if len(report) > 500:
             return _report_title(report, fallback_title=f"Findings — {_short_title(mission_name)}"), report
-    if _is_comparison_request(mission_name):
+    if _has_comparison_evidence(evidence):
         return _synthesize_comparison_document(mission_name, evidence)
     return _synthesize_document(mission_name, evidence, purpose="writing a decision-ready brief",
                                 fallback_title=f"Findings — {_short_title(mission_name)}")
@@ -1013,7 +1013,7 @@ def _synthesize_document(mission_name: str, evidence: Mapping[str, Any], *, purp
     raw = str(evidence.get("content") or evidence.get("combined_formatted") or "").strip() or "No evidence content was captured."
     source_refs = evidence.get("source_references") or evidence.get("sources") or []
     source_lines = [f"- {source.get('title') or 'Source'}: {source.get('url') or ''}" for source in source_refs[:12] if isinstance(source, Mapping)]
-    comparison = _is_comparison_request(mission_name)
+    comparison = _has_comparison_evidence(evidence)
     comparison_requirements = """\n- This is a comparison. Include a compact markdown table with these rows: Product and target user, Core workflow, Pricing and packaging, Evidence and maturity, Privacy/compliance signals, and Key uncertainty. Use the two products as columns.
 - Directly answer which option is better for the founder's stated goal, and why. If the evidence does not establish a fact, write "Not verified from available public evidence" rather than guessing.\n""" if comparison else ""
     prompt = f"""You are a sharp research analyst {purpose}.
@@ -1050,9 +1050,22 @@ Respond with ONLY this JSON object, no prose, no markdown fence:
     return fallback_title, f"## {fallback_title}\n\n{raw[:8000]}"
 
 
-def _is_comparison_request(value: str) -> bool:
-    lowered = value.lower()
-    return "compare" in lowered or " vs " in lowered or " versus " in lowered
+def _has_comparison_evidence(evidence: Mapping[str, Any]) -> bool:
+    """Was this actually researched as a two-subject comparison?
+
+    Previously guessed from the mission's name text via a "compare" in
+    lowered substring check -- which also matched "compared"/"comparison"/
+    etc. in a plain, non-comparison question ("...so smart and efficient
+    compared to other models"), and unlike the same bug already fixed in
+    astra_mcp.py's research-execution routing, misclassifying it HERE meant
+    a real astra_quick_search/run_research_pipeline result (correctly not
+    comparison-shaped) got forced through _comparison_document, which
+    requires exactly two evidence_ledger subjects and always failed with
+    "Comparison evidence incomplete" for anything else. evidence_ledger is
+    only ever populated by run_comparison_research's actual comparison
+    pipeline -- checking it directly is ground truth, not a second guess
+    from the same text a different regex already got wrong once."""
+    return len(evidence.get("evidence_ledger") or {}) == 2
 
 
 def _short_title(text: str, limit: int = 60) -> str:
