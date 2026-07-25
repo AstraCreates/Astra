@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import time
 
 import httpx
