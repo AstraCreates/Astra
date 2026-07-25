@@ -86,7 +86,7 @@ async def run_mission(company_id: str, mission_id: str) -> None:
     mission = _find(company.get("missions", []), "mission_id", mission_id)
     if not mission:
         return
-    dependencies = set(mission.get("depends_on_mission_ids") or [])
+    dependencies = _mission_dependencies(mission)
     completed = {item.get("mission_id") for item in company.get("missions", []) if item.get("state") == "done"}
     if not dependencies.issubset(completed):
         # This is a dependency wait, not a failure or an approval. The
@@ -174,6 +174,27 @@ async def _run_task(company_id: str, mission: Mapping[str, Any], task: Mapping[s
     except Exception as exc:
         logger.exception("Company OS task failed: company=%s task=%s", company_id, task.get("task_id"))
         raise exc
+
+
+def _mission_dependencies(mission: Mapping[str, Any]) -> set[str]:
+    """Every mission this one must wait for before its own tasks can start.
+
+    handoff_for records which mission a handoff came FROM (see
+    company_os_dispatch.py) but was previously provenance-only -- nothing
+    actually gated a handoff mission's task graph on its origin mission
+    reaching "done". Its first task's depends_on_task_ids was empty, so a
+    handoff mission (e.g. "build a website about X") ran its squad fully in
+    parallel with the origin mission (e.g. "research X"), reaching a real
+    publish approval using placeholder content before the research it was
+    supposed to be built on ever produced a finding. Folding handoff_for in
+    here reuses the exact depends_on_mission_ids gate/resume mechanism
+    below unchanged, rather than inventing a second one.
+    """
+    dependencies = set(mission.get("depends_on_mission_ids") or [])
+    handoff_for = mission.get("handoff_for")
+    if handoff_for:
+        dependencies.add(str(handoff_for))
+    return dependencies
 
 
 def _has_task_graph(tasks: list[Mapping[str, Any]]) -> bool:
@@ -423,7 +444,7 @@ def _resume_ready_dependents(company_id: str, completed_mission_id: str) -> None
     company = get_company_os(company_id) or {}
     completed = {item.get("mission_id") for item in company.get("missions", []) if item.get("state") == "done"}
     for mission in company.get("missions", []):
-        dependencies = set(mission.get("depends_on_mission_ids") or [])
+        dependencies = _mission_dependencies(mission)
         if completed_mission_id in dependencies and mission.get("state") in {"active", "working"} and dependencies.issubset(completed):
             launch_mission(company_id, mission["mission_id"])
 
