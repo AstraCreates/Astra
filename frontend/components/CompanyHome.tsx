@@ -22,6 +22,18 @@ const MAX_RAIL_WIDTH = 620;
 
 type DeleteKind = "initiative" | "squad" | "artifact";
 
+// Rejects javascript:/data: and any other non-http(s) scheme before a preview
+// URL is ever used as an iframe src or anchor href -- preview_url is backend-
+// controlled today, but this is the last line of defense if that ever
+// changes, and costs nothing to check.
+function isSafeHttpUrl(value: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 function removeCompanyItem(data: CompanyHomeData, kind: DeleteKind, id: string): CompanyHomeData {
   if (kind === "initiative") {
     const removedSquadNames = new Set(data.squads.filter(squad => squad.initiativeId === id).map(squad => squad.name));
@@ -776,13 +788,24 @@ export default function CompanyHome() {
                           <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1, maxWidth: turn.previewUrl ? "min(640px, 92%)" : undefined }}>
                             <MarkdownDocument content={turn.message} compact inverse={isFounder} />
                             {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
-                            {turn.previewUrl && (
+                            {turn.previewUrl && isSafeHttpUrl(turn.previewUrl) && (
                               <div style={{ marginTop: 10, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
                                   <span style={{ fontSize: 11, color: "var(--fm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{turn.previewUrl}</span>
                                   <a href={turn.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
                                 </div>
-                                <iframe src={turn.previewUrl} title="Website preview" loading="lazy" style={{ width: "100%", height: 360, border: 0, display: "block" }} />
+                                {/* This iframes an autonomously agent-built site, not
+                                    trusted first-party content -- sandboxed with no
+                                    allow-top-navigation/allow-popups-to-escape-sandbox
+                                    so it can't hijack or redirect the parent tab. */}
+                                <iframe
+                                  src={turn.previewUrl}
+                                  title="Website preview"
+                                  loading="lazy"
+                                  sandbox="allow-scripts allow-same-origin allow-forms"
+                                  referrerPolicy="no-referrer"
+                                  style={{ width: "100%", height: 360, border: 0, display: "block" }}
+                                />
                               </div>
                             )}
                           </div>

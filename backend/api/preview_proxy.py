@@ -38,13 +38,17 @@ _FORWARD_HEADERS = {
 }
 
 
-def _preview_owner(slug: str) -> tuple[str, str] | None:
-    """Resolve the preview's durable session metadata, never client input."""
+def _preview_owner(slug: str, port: int) -> tuple[str, str] | None:
+    """Resolve the preview's durable session metadata, never client input.
+
+    ``port`` is the single snapshot the caller already resolved for this
+    request -- re-resolving it here independently (the original shape of
+    this function) would reopen the same TOCTOU gap _authorize_preview's
+    docstring describes, just one level deeper."""
     try:
         from backend.tools import local_preview
-        port = local_preview.get_port_for_slug(slug)
         sessions = [session_id for session_id, value in local_preview._registry_load().items() if value == port]
-        if not port or len(sessions) != 1:
+        if len(sessions) != 1:
             return None
         from backend.core.session_store import get_session_meta
         meta = get_session_meta(sessions[0]) or {}
@@ -74,11 +78,17 @@ def _valid_signed_token(slug: str, token: str) -> bool:
         return False
 
 
-def _authorize_preview(slug: str, request: Request) -> None:
+def _authorize_preview(slug: str, request: Request, port: int | None) -> None:
+    """``port`` must be a single snapshot resolved once per request by the
+    caller and passed to both this and ``_proxy`` -- resolving it separately
+    in each (the original bug here) opens a TOCTOU gap: a preview that comes
+    up in the moment between the two independent lookups would sail through
+    with the ownership check skipped, since this function's own "nothing to
+    authorize" decision was made against a now-stale, no-longer-true snapshot
+    of the registry."""
     if _valid_signed_token(slug, request.query_params.get("preview_token", "")):
         return
-    from backend.tools.local_preview import get_port_for_slug
-    if get_port_for_slug(slug) is None:
+    if port is None:
         # No live process for this slug at all (most commonly: the dev-server
         # was evicted, or died when the backend container was redeployed) --
         # this is not an ownership decision, it's "there's nothing running".
@@ -87,17 +97,14 @@ def _authorize_preview(slug: str, request: Request) -> None:
         # verified" 403 -- confirmed live: a real founder hit exactly that
         # 403 for a preview whose registry entry had simply expired.
         return
-    owner = _preview_owner(slug)
+    owner = _preview_owner(slug, port)
     if not owner:
         raise HTTPException(status_code=403, detail="Preview ownership could not be verified.")
     from backend.tenant_auth import require_company_access
     require_company_access(request, owner[0], owner[1], min_role="viewer")
 
 
-async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
-    from backend.tools.local_preview import get_port_for_slug
-
-    port = get_port_for_slug(slug)
+async def _proxy(slug: str, path: str, request: Request, port: int | None) -> StreamingResponse:
     if not port:
         raise HTTPException(status_code=404, detail=(
             f"No preview running for '{slug}' -- it was likely idle-evicted or stopped when the "
@@ -149,8 +156,10 @@ async def preview_proxy_path(path: str, request: Request):
     slug = host.split(".")[0] if "." in host else ""
     if not slug:
         raise HTTPException(status_code=400, detail="Missing preview slug")
-    _authorize_preview(slug, request)
-    return await _proxy(slug, path, request)
+    from backend.tools.local_preview import get_port_for_slug
+    port = get_port_for_slug(slug)  # resolved once, shared by both calls below -- see _authorize_preview's docstring
+    _authorize_preview(slug, request, port)
+    return await _proxy(slug, path, request, port)
 
 
 @router.api_route("/preview-route", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
