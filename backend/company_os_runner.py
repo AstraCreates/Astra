@@ -66,8 +66,21 @@ def launch_mission(company_id: str, mission_id: str) -> bool:
 
 
 async def run_mission(company_id: str, mission_id: str) -> None:
-    """Execute a mission's durable task graph in bounded dependency-ready rounds."""
-    company = get_company_os(company_id)
+    """Execute a mission's durable task graph in bounded dependency-ready rounds.
+
+    Every call here that touches Company OS state (get_company_os,
+    append_message, update_mission/_squad, reconcile_initiatives, _meeting)
+    parses and checksums the FULL snapshot on every invocation (confirmed via
+    live profiling: a busy company's snapshot was 11MB) -- previously called
+    directly, unwrapped, this ran on the same asyncio event loop thread
+    serving every other request that worker process handles. One mission's
+    bookkeeping call could freeze that worker's ENTIRE event loop for the
+    duration of a full snapshot parse, stalling unrelated GET /os polls and
+    other missions on the same worker along with it. asyncio.to_thread here
+    matches the pattern _run_task already used correctly for execute_task
+    below, and the pattern the GET /os route itself uses.
+    """
+    company = await asyncio.to_thread(get_company_os, company_id)
     if not company:
         return
     mission = _find(company.get("missions", []), "mission_id", mission_id)
@@ -81,15 +94,15 @@ async def run_mission(company_id: str, mission_id: str) -> None:
         return
     squad = _find(company.get("squads", []), "squad_id", mission["squad_id"])
     if squad:
-        update_squad(company_id, squad["squad_id"], state="working", lifecycle="working")
-    update_mission(company_id, mission_id, state="working")
-    append_message(company_id, f"{mission['name']}: the {mission.get('department', 'operations').replace('_', ' ').title()} Lead started the squad work.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+        await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state="working", lifecycle="working")
+    await asyncio.to_thread(update_mission, company_id, mission_id, state="working")
+    await asyncio.to_thread(append_message, company_id, f"{mission['name']}: the {mission.get('department', 'operations').replace('_', ' ').title()} Lead started the squad work.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
 
-    _meeting(company_id, mission, phase="kickoff")
+    await asyncio.to_thread(_meeting, company_id, mission, phase="kickoff")
     blocked: list[Exception] = []
     waiting = False
     while True:
-        tasks = _mission_tasks(company_id, mission_id)
+        tasks = await asyncio.to_thread(_mission_tasks, company_id, mission_id)
         ready = _ready_tasks(tasks)
         if not ready:
             break
@@ -106,7 +119,7 @@ async def run_mission(company_id: str, mission_id: str) -> None:
             for task, result in zip(batch, results):
                 if isinstance(result, Exception):
                     blocked.append(result)
-                    _meeting(company_id, mission, phase="checkpoint", task=task, blockers=[str(result)])
+                    await asyncio.to_thread(_meeting, company_id, mission, phase="checkpoint", task=task, blockers=[str(result)])
                     continue
                 if result.get("status") == "awaiting_approval":
                     waiting = True
@@ -115,45 +128,45 @@ async def run_mission(company_id: str, mission_id: str) -> None:
 
     if blocked:
         detail = "; ".join(str(item) for item in blocked[:3])
-        update_mission(company_id, mission_id, state="review", blocked_reason=detail)
+        await asyncio.to_thread(update_mission, company_id, mission_id, state="review", blocked_reason=detail)
         if squad:
-            update_squad(company_id, squad["squad_id"], state="review", lifecycle="review")
-        _meeting(company_id, mission, phase="closeout", blockers=[detail])
-        append_message(company_id, f"{mission['name']} needs review before continuing: {detail}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
-        reconcile_initiatives(company_id)
+            await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state="review", lifecycle="review")
+        await asyncio.to_thread(_meeting, company_id, mission, phase="closeout", blockers=[detail])
+        await asyncio.to_thread(append_message, company_id, f"{mission['name']} needs review before continuing: {detail}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+        await asyncio.to_thread(reconcile_initiatives, company_id)
         return
     if waiting:
-        update_mission(company_id, mission_id, state="waiting")
+        await asyncio.to_thread(update_mission, company_id, mission_id, state="waiting")
         if squad:
-            update_squad(company_id, squad["squad_id"], state="waiting", lifecycle="review")
-        _meeting(company_id, mission, phase="checkpoint", blockers=["Approval required"])
-        append_message(company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
-        reconcile_initiatives(company_id)
+            await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state="waiting", lifecycle="review")
+        await asyncio.to_thread(_meeting, company_id, mission, phase="checkpoint", blockers=["Approval required"])
+        await asyncio.to_thread(append_message, company_id, f"{mission['name']} is waiting for approval before the next action.", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+        await asyncio.to_thread(reconcile_initiatives, company_id)
         return
 
     final_state: str | None = None
-    remaining = _mission_tasks(company_id, mission_id)
+    remaining = await asyncio.to_thread(_mission_tasks, company_id, mission_id)
     if _all_terminal(remaining):
-        _meeting(company_id, mission, phase="review")
+        await asyncio.to_thread(_meeting, company_id, mission, phase="review")
         final_state = "done" if all(task.get("state") == "done" for task in remaining) else "waiting"
-        update_mission(company_id, mission_id, state=final_state)
+        await asyncio.to_thread(update_mission, company_id, mission_id, state=final_state)
         if squad:
-            update_squad(company_id, squad["squad_id"], state=final_state, lifecycle="done" if final_state == "done" else "review")
+            await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state=final_state, lifecycle="done" if final_state == "done" else "review")
         if final_state == "done":
-            reply = _completion_reply(company_id, mission)
+            reply = await asyncio.to_thread(_completion_reply, company_id, mission)
         else:
             reply = f"{mission['name']} is waiting on your approval before the last step. Check Approvals in the sidebar."
-        append_message(company_id, reply, author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="chat")
-        _meeting(company_id, mission, phase="closeout")
-    reconcile_initiatives(company_id)
+        await asyncio.to_thread(append_message, company_id, reply, author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="chat")
+        await asyncio.to_thread(_meeting, company_id, mission, phase="closeout")
+    await asyncio.to_thread(reconcile_initiatives, company_id)
     if final_state == "done":
-        _resume_ready_dependents(company_id, mission_id)
+        await asyncio.to_thread(_resume_ready_dependents, company_id, mission_id)
 
 
 async def _run_task(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
     """Execute one role-owned task and leave a concise founder-visible status."""
-    _meeting(company_id, mission, phase="task_start", task=task)
-    append_message(company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"], kind="status")
+    await asyncio.to_thread(_meeting, company_id, mission, phase="task_start", task=task)
+    await asyncio.to_thread(append_message, company_id, f"Working on: {task['name']}.", author="copilot", scope="task", scope_id=task["task_id"], kind="status")
     try:
         return await asyncio.to_thread(
             execute_task, company_id, task, lambda current: _execute_internal_work(company_id, mission, current)
