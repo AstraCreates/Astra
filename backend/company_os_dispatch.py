@@ -213,14 +213,18 @@ def infer_work_request(intent: str) -> dict[str, Any]:
 def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     """Use the planner to describe work, then validate it against local capabilities."""
     from backend.tools._llm import generate, parse_json_response
-    catalog = {head: sorted(profile["capabilities"]) for head, profile in CAPABILITY_REGISTRY.items()}
+    catalog = {head: {"capabilities": sorted(profile["capabilities"]),
+                      "roles": [{"role": role["role_key"], "capabilities": sorted(role["capabilities"])}
+                                for role in SQUAD_ROLE_REGISTRY.get(head, [])]}
+               for head, profile in CAPABILITY_REGISTRY.items()}
     prompt = f"""A founder sent this message to their company's AI operating system: {intent!r}
 Extract a compact, structured description of the work this message is asking for.
 Available capabilities: {catalog}
-Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact capability that owns the first deliverable, "required_capabilities": [exact capabilities from the catalog], "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
+Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact department capability that owns the first deliverable, "required_capabilities": [exact department capabilities from the catalog], "required_role_capabilities": [exact role capabilities needed, if any], "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
 Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities, and do not invent a comparison, audience, or platform the founder never mentioned.
 A request to explain, describe, or research a specific named subject (a company, product, market, or person) is self-sufficient on its own -- proceed with the standard dimensions a competent analyst would cover (overview, business model, market position, competitors) rather than asking what to cover. Most requests are NOT ambiguous: default to reasonable assumptions and proceed. Only set clarification_question when the request is so vague the work genuinely cannot start at all (e.g. "build me an app" with no description of what it does) -- not to narrow scope, pick an emphasis, or confirm something you could reasonably infer. When you do ask, and the missing piece is naturally a short list of choices genuinely implied by the founder's own message, set clarification_options to 2-5 short answer strings drawn from that message; otherwise leave clarification_options null for an open-ended answer."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
+    known_role = {capability for roles in SQUAD_ROLE_REGISTRY.values() for role in roles for capability in role["capabilities"]}
     failures: list[str] = []
     # The strict instruction model is materially more reliable for a small
     # schema than the chat/fast model, so it goes first. The retry uses
@@ -240,6 +244,8 @@ A request to explain, describe, or research a specific named subject (a company,
             raw = generate(prompt, model=model, json_mode=True, max_tokens=2000, temperature=0.0)
             payload = parse_json_response(raw)
             capabilities = {value for value in payload.get("required_capabilities", []) if isinstance(value, str) and value in known}
+            role_capabilities = {value for value in payload.get("required_role_capabilities", [])
+                                 if isinstance(value, str) and value in known_role}
             confidence = float(payload.get("confidence", 0) or 0)
             if not capabilities or confidence < 0.45:
                 failures.append(f"{model}: insufficient validated capabilities")
@@ -253,7 +259,8 @@ A request to explain, describe, or research a specific named subject (a company,
                     "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
                     "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
-                    "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities), "confidence": min(confidence, 1.0),
+                    "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities),
+                    "required_role_capabilities": sorted(role_capabilities), "confidence": min(confidence, 1.0),
                     "requires_clarification": clarification_question is not None,
                     "clarification_question": clarification_question,
                     "clarification_options": clarification_options or None,
@@ -325,9 +332,10 @@ def choose_department(intent: str) -> tuple[str, str]:
 def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any]:
     """Select a lead and at most three specialists from the actual request."""
     capabilities = {str(value).lower() for value in request.get("required_capabilities") or []}
+    role_capabilities = {str(value).lower() for value in request.get("required_role_capabilities") or []}
     definitions = SQUAD_ROLE_REGISTRY[lead]
     selected = [definitions[0]]
-    scored = [(len(capabilities & {str(value).lower() for value in role["capabilities"]}), index, role) for index, role in enumerate(definitions[1:])]
+    scored = [(len((capabilities | role_capabilities) & {str(value).lower() for value in role["capabilities"]}), index, role) for index, role in enumerate(definitions[1:])]
     selected.extend(role for score, _index, role in sorted(scored, key=lambda item: (-item[0], item[1])) if score > 0)
     # A website needs a structural design pass as well as implementation even
     # when the model only labels it "website". Research specialists are
@@ -335,7 +343,7 @@ def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any
     # one generalist researcher for plain research so the squad still has a
     # bounded worker without inventing an unrelated market/technical lane.
     defaults: list[str] = []
-    if lead == "research" and len(selected) == 1 and capabilities & {"research", "evidence research", "source validation"}:
+    if lead == "research" and len(selected) == 1 and (capabilities | role_capabilities) & {"research", "evidence research", "source validation"}:
         defaults = ["general_researcher"]
     elif lead == "product_technical" and capabilities & {"website", "landing page", "website delivery", "local preview"}:
         defaults = ["architect", "frontend_engineer"]

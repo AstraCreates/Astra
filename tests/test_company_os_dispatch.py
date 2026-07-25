@@ -340,6 +340,19 @@ def test_research_profile_can_designate_policy_and_customer_specialists():
     assert profile["role_keys"] == ["research_lead", "policy_researcher", "customer_regulatory_analyst"]
 
 
+def test_role_profile_uses_role_level_requirements():
+    from backend.company_os_dispatch import select_squad_profile
+
+    profile = select_squad_profile({
+        "objective": "Assess technical feasibility and regulatory exposure",
+        "required_capabilities": ["research"],
+        "required_role_capabilities": ["technical research", "policy research"],
+    }, "research")
+
+    assert profile["role_keys"][0] == "research_lead"
+    assert {"technical_researcher", "policy_researcher"}.issubset(profile["role_keys"])
+
+
 def test_dispatch_persists_charter_role_records_and_task_contract(monkeypatch):
     dispatch, store = _dispatch(monkeypatch)
     request = {
