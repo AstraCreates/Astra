@@ -33,7 +33,7 @@ _lock = threading.Lock()
 class PtyTerm:
     """One live PTY-backed openclaude session, keyed by app session id."""
 
-    def __init__(self, app_session_id: str, master_fd: int, proc: subprocess.Popen, oc_session_id: str, workspace: str):
+    def __init__(self, app_session_id: str, master_fd: int, proc: subprocess.Popen, oc_session_id: str, workspace: str, *, shared: bool = False):
         self.app_session_id = app_session_id
         self.master_fd = master_fd
         self.proc = proc
@@ -41,13 +41,46 @@ class PtyTerm:
         self.workspace = workspace
         self.cols = 120
         self.rows = 32
-        self._on_output: Callable[[bytes], None] | None = None
+        self.shared = shared
+        self.started_at = __import__("time").time()
+        self._subscribers: dict[int, Callable[[bytes], None]] = {}
+        self._next_subscriber = 1
+        self._transcript = bytearray()
+        self._transcript_limit = 512 * 1024
         self._alive = True
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
+    def subscribe(self, cb: Callable[[bytes], None]) -> int:
+        with _lock:
+            token = self._next_subscriber
+            self._next_subscriber += 1
+            self._subscribers[token] = cb
+            return token
+
+    def unsubscribe(self, token: int) -> None:
+        with _lock:
+            self._subscribers.pop(token, None)
+
     def set_output(self, cb: Callable[[bytes], None] | None) -> None:
-        self._on_output = cb
+        """Compatibility shim for the legacy one-viewer takeover path."""
+        with _lock:
+            self._subscribers.pop(0, None)
+            if cb:
+                self._subscribers[0] = cb
+
+    def transcript(self) -> bytes:
+        with _lock:
+            return bytes(self._transcript)
+
+    @property
+    def state(self) -> str:
+        if self.alive:
+            return "live"
+        # A PTY master reports EIO when the slave closes, which can precede the
+        # parent observing the child exit code. Treat that terminal-close state as
+        # completed unless a non-zero status has actually been reaped.
+        return "failed" if self.proc.returncode not in (None, 0) else "completed"
 
     def _read_loop(self) -> None:
         while self._alive:
@@ -57,21 +90,27 @@ class PtyTerm:
                 break
             if not data:
                 break
-            cb = self._on_output
-            if cb:
+            with _lock:
+                self._transcript.extend(data)
+                if len(self._transcript) > self._transcript_limit:
+                    del self._transcript[:-self._transcript_limit]
+                subscribers = list(self._subscribers.values())
+            for cb in subscribers:
                 try:
                     cb(data)
                 except Exception:
                     pass
         self._alive = False
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes) -> bool:
         if not self._alive:
-            return
+            return False
         try:
             os.write(self.master_fd, data)
+            return True
         except OSError:
             self._alive = False
+            return False
 
     def resize(self, cols: int, rows: int) -> None:
         self.cols, self.rows = cols, rows
@@ -106,11 +145,27 @@ _terminals: dict[str, PtyTerm] = {}
 
 def get_terminal(app_session_id: str) -> PtyTerm | None:
     with _lock:
-        term = _terminals.get(app_session_id)
-        if term and not term.alive:
+        return _terminals.get(app_session_id)
+
+
+def spawn_shared_process(app_session_id: str, cmd: list[str], *, cwd: str, env: dict[str, str], workspace: str) -> PtyTerm:
+    """Start the original coding command in a PTY shared by progress parsing and viewers."""
+    with _lock:
+        existing = _terminals.get(app_session_id)
+        if existing and existing.alive:
+            raise RuntimeError(f"terminal already live for {app_session_id}")
+        if existing:
             _terminals.pop(app_session_id, None)
-            return None
-        return term
+    master_fd, slave_fd = pty.openpty()
+    try:
+        proc = subprocess.Popen(cmd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+                                cwd=cwd, env=env, start_new_session=True, close_fds=True)
+    finally:
+        os.close(slave_fd)
+    term = PtyTerm(app_session_id, master_fd, proc, "", workspace, shared=True)
+    with _lock:
+        _terminals[app_session_id] = term
+    return term
 
 
 def open_takeover(app_session_id: str, cols: int = 120, rows: int = 32) -> PtyTerm:

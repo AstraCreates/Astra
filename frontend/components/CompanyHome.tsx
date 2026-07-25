@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard, Link2, Loader2, MessageCircle, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
+import TerminalPane from "@/components/TerminalPane";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
 import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
@@ -20,6 +21,18 @@ const MIN_RAIL_WIDTH = 320;
 const MAX_RAIL_WIDTH = 620;
 
 type DeleteKind = "initiative" | "squad" | "artifact";
+
+// Rejects javascript:/data: and any other non-http(s) scheme before a preview
+// URL is ever used as an iframe src or anchor href -- preview_url is backend-
+// controlled today, but this is the last line of defense if that ever
+// changes, and costs nothing to check.
+function isSafeHttpUrl(value: string): boolean {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
 
 function removeCompanyItem(data: CompanyHomeData, kind: DeleteKind, id: string): CompanyHomeData {
   if (kind === "initiative") {
@@ -114,6 +127,7 @@ export function MeetingTimeline({ meetings, open, onToggle }: { meetings: Compan
 function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad: CompanyHomeSquad; onClose: () => void; onRetryTask: (taskId: string) => void; retryingTaskId: string }) {
   const [selectedId, setSelectedId] = useState(() => squad.tasks.find(t => t.status === "active")?.id ?? squad.tasks[0]?.id ?? "");
   const [meetingsOpen, setMeetingsOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const selected = squad.tasks.find(t => t.id === selectedId) ?? squad.tasks[0] ?? null;
   const lanes = squad.tasks.reduce<Record<string, typeof squad.tasks>>((groups, task) => ({ ...groups, [task.parallelLane]: [...(groups[task.parallelLane] ?? []), task] }), {});
   return <div role="dialog" aria-modal="true" aria-label={`${squad.name} workbench`} onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.72)" }}>
@@ -169,6 +183,17 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
             ) : (
               <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
             )}
+            {selected.terminalSessionId && (
+              <section style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--bd)" }}>
+                {!terminalOpen ? (
+                  <button type="button" className="btn sm" onClick={() => setTerminalOpen(true)}>
+                    Open interactive build terminal
+                  </button>
+                ) : (
+                  <TerminalPane sessionId={selected.terminalSessionId} onClose={() => setTerminalOpen(false)} />
+                )}
+              </section>
+            )}
           </>}
         </div>
         <MeetingTimeline meetings={squad.meetings} open={meetingsOpen} onToggle={() => setMeetingsOpen(!meetingsOpen)} />
@@ -212,6 +237,7 @@ export default function CompanyHome() {
   const [artifactError, setArtifactError] = useState("");
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [retryingTaskId, setRetryingTaskId] = useState("");
+  const [chatTerminalTaskId, setChatTerminalTaskId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
@@ -722,8 +748,10 @@ export default function CompanyHome() {
                             const sitesVisited = squad.tasks.reduce((sum, task) => sum + (task.searchCount ?? 0), 0);
                             const anyActive = squad.tasks.some(task => task.status === "active");
                             const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
+                            const openTerminalTask = squad.tasks.find(task => task.id === chatTerminalTaskId);
+                            const hasLivePreview = squad.tasks.some(task => task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl));
                             return (
-                              <div className="ch-chat-bubble" style={{ maxWidth: "min(420px, 84%)" }}>
+                              <div className="ch-chat-bubble" style={{ maxWidth: openTerminalTask || hasLivePreview ? "min(640px, 92%)" : "min(420px, 84%)" }}>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg)", marginBottom: 10, letterSpacing: "-0.005em" }}>{squad.name}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                                   {squad.tasks.map(task => (
@@ -738,11 +766,47 @@ export default function CompanyHome() {
                                         ) : task.note ? (
                                           <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>
                                         ) : null}
-                                        {task.status === "blocked" && (
-                                          <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
-                                            onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
-                                            {retryingTaskId === task.id ? "Retrying…" : "Retry"}
-                                          </button>
+                                        <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                                          {task.status === "blocked" && (
+                                            <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
+                                              onClick={() => void handleRetryTask(task.id)}>
+                                              {retryingTaskId === task.id ? "Retrying…" : "Retry"}
+                                            </button>
+                                          )}
+                                          {task.terminalSessionId && (
+                                            <button type="button" className="btn sm"
+                                              onClick={() => setChatTerminalTaskId(chatTerminalTaskId === task.id ? "" : task.id)}>
+                                              {chatTerminalTaskId === task.id ? "Hide terminal" : "Open build terminal"}
+                                            </button>
+                                          )}
+                                        </div>
+                                        {chatTerminalTaskId === task.id && task.terminalSessionId && (
+                                          <div style={{ marginTop: 8 }}>
+                                            <TerminalPane sessionId={task.terminalSessionId} onClose={() => setChatTerminalTaskId("")} />
+                                          </div>
+                                        )}
+                                        {/* While this task is actually building, auto-show the
+                                            live (hot-reloading) preview so the site visibly comes
+                                            together rather than only appearing once finished --
+                                            the terminal stays a deliberate click (it's an
+                                            interactive RCE shell, not something to auto-connect). */}
+                                        {task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
+                                          <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
+                                              <span style={{ fontSize: 10.5, color: "var(--fm)", display: "flex", alignItems: "center", gap: 5 }}>
+                                                <Loader2 size={10} className="company-home-spin" /> Live preview — updating as the build progresses
+                                              </span>
+                                              <a href={task.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
+                                            </div>
+                                            <iframe
+                                              src={task.previewUrl}
+                                              title="Live build preview"
+                                              loading="lazy"
+                                              sandbox="allow-scripts allow-same-origin allow-forms"
+                                              referrerPolicy="no-referrer"
+                                              style={{ width: "100%", height: 280, border: 0, display: "block" }}
+                                            />
+                                          </div>
                                         )}
                                       </div>
                                     </div>
@@ -760,9 +824,29 @@ export default function CompanyHome() {
                             );
                           })()
                         ) : (
-                          <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1 }}>
+                          <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1, maxWidth: turn.previewUrl ? "min(640px, 92%)" : undefined }}>
                             <MarkdownDocument content={turn.message} compact inverse={isFounder} />
                             {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
+                            {turn.previewUrl && isSafeHttpUrl(turn.previewUrl) && (
+                              <div style={{ marginTop: 10, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
+                                  <span style={{ fontSize: 11, color: "var(--fm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{turn.previewUrl}</span>
+                                  <a href={turn.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
+                                </div>
+                                {/* This iframes an autonomously agent-built site, not
+                                    trusted first-party content -- sandboxed with no
+                                    allow-top-navigation/allow-popups-to-escape-sandbox
+                                    so it can't hijack or redirect the parent tab. */}
+                                <iframe
+                                  src={turn.previewUrl}
+                                  title="Website preview"
+                                  loading="lazy"
+                                  sandbox="allow-scripts allow-same-origin allow-forms"
+                                  referrerPolicy="no-referrer"
+                                  style={{ width: "100%", height: 360, border: 0, display: "block" }}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

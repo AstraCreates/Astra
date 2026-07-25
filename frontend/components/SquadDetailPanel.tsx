@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { MeetingTimeline } from "@/components/CompanyHome";
+import TerminalPane from "@/components/TerminalPane";
 import type { CompanyHomeSquad, CompanyHomeArtifact } from "@/lib/company-os";
 
 const WORKBENCH_STATE: Record<string, string> = { planned: "que", active: "run", waiting: "que", complete: "done", blocked: "err" };
@@ -32,6 +33,8 @@ export default function SquadDetailPanel({
   // component, same props, just not defaulted shut.
   const [meetingsOpen, setMeetingsOpen] = useState(true);
   const [pendingDeleteId, setPendingDeleteId] = useState("");
+  const [expandedTaskId, setExpandedTaskId] = useState("");
+  const [openTerminalTaskId, setOpenTerminalTaskId] = useState("");
 
   useEffect(() => {
     if (!pendingDeleteId) return;
@@ -105,39 +108,66 @@ export default function SquadDetailPanel({
           <p style={{ margin: 0, fontSize: 12, color: "var(--fm)" }}>This squad hasn&apos;t started work.</p>
         ) : (
           <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-            {squad.tasks.map(task => (
-              <div key={task.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 10px", border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", minWidth: 0 }}>
-                <span style={{ fontSize: 12.5, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>{task.title}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  {task.status === "blocked" && onRetryTask && (
-                    <button
-                      type="button"
-                      onClick={() => onRetryTask?.(task.id)}
-                      disabled={retryingTaskId === task.id}
-                      style={{
-                        padding: "4px 8px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        border: "1px solid var(--bd)",
-                        borderRadius: 5,
-                        background: "var(--bg-surface)",
-                        color: retryingTaskId === task.id ? "var(--fm)" : "var(--fg)",
-                        cursor: retryingTaskId === task.id ? "default" : "pointer",
-                        opacity: retryingTaskId === task.id ? 0.6 : 1,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        transition: "opacity .12s",
-                      }}
-                    >
-                      {retryingTaskId === task.id && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
-                      {retryingTaskId === task.id ? "Retrying…" : "Retry"}
-                    </button>
-                  )}
-                  <span className={`dc-badge ${WORKBENCH_STATE[task.status] ?? "que"}`}>{WORKBENCH_LABEL[task.status] ?? task.status}</span>
+            {squad.tasks.map(task => {
+              const expanded = expandedTaskId === task.id;
+              return (
+              <div key={task.id} style={{ border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", minWidth: 0, overflow: "hidden" }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setExpandedTaskId(expanded ? "" : task.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedTaskId(expanded ? "" : task.id); } }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 10px", cursor: "pointer", minWidth: 0 }}
+                >
+                  <span style={{ fontSize: 12.5, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>{task.title}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {task.status === "blocked" && onRetryTask && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onRetryTask?.(task.id); }}
+                        disabled={retryingTaskId === task.id}
+                        style={{
+                          padding: "4px 8px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          border: "1px solid var(--bd)",
+                          borderRadius: 5,
+                          background: "var(--bg-surface)",
+                          color: retryingTaskId === task.id ? "var(--fm)" : "var(--fg)",
+                          cursor: retryingTaskId === task.id ? "default" : "pointer",
+                          opacity: retryingTaskId === task.id ? 0.6 : 1,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          transition: "opacity .12s",
+                        }}
+                      >
+                        {retryingTaskId === task.id && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
+                        {retryingTaskId === task.id ? "Retrying…" : "Retry"}
+                      </button>
+                    )}
+                    <span className={`dc-badge ${WORKBENCH_STATE[task.status] ?? "que"}`}>{WORKBENCH_LABEL[task.status] ?? task.status}</span>
+                  </div>
                 </div>
+                {expanded && (
+                  <div style={{ padding: "0 10px 10px", borderTop: "1px solid var(--bd)", marginTop: -1 }}>
+                    <p style={{ margin: "10px 0", fontSize: 12, lineHeight: 1.6, color: "var(--fd)", whiteSpace: "pre-wrap" }}>
+                      {task.note || "No additional detail recorded for this task yet."}
+                    </p>
+                    {task.terminalSessionId && (
+                      openTerminalTaskId === task.id ? (
+                        <TerminalPane sessionId={task.terminalSessionId} onClose={() => setOpenTerminalTaskId("")} />
+                      ) : (
+                        <button type="button" className="btn sm" onClick={() => setOpenTerminalTaskId(task.id)}>
+                          Open interactive build terminal
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

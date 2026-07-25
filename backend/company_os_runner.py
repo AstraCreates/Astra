@@ -414,8 +414,13 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
                     "content": build["summary"], "sources": sources, "url": build["url"],
                     "hosting": "local_preview", "hosting_status": "ready", "build_metadata": build,
                 }, source="technical coding agent", internal=False)
+                # Replace the mid-build dev-preview URL (if any) with the
+                # final one now that the real build finished.
+                update_task(company_id, str(task.get("task_id") or ""), preview_url=build["url"])
                 append_message(company_id, build["summary"], author="copilot", scope="task",
-                               scope_id=str(task.get("task_id") or ""), kind="chat")
+                               scope_id=str(task.get("task_id") or ""), kind="chat",
+                               thread_id=_thread_id_for_initiative(company_id, mission.get("initiative_id")),
+                               preview_url=build["url"])
                 return result
             raise RuntimeError(f"Technical coding agent failed: {build.get('error') or 'no reviewable preview was produced'}")
         if task_key == "product-architecture":
@@ -491,6 +496,21 @@ def _department_tool_arguments(department: str, objective: str, company_id: str)
     return {}
 
 
+def _thread_id_for_initiative(company_id: str, initiative_id: object) -> str:
+    """Tasks/missions carry no thread_id of their own -- only the founder's
+    live conversation turns do. Without this, a background task's follow-up
+    chat message (e.g. the "website build ready" summary) always falls back
+    to the default thread's append_message default, so a founder working in
+    any other thread would never see it land in the chat they're actually
+    looking at. The copilot's own "plan" reply for this initiative (posted
+    synchronously, with the real thread_id, in company_os_copilot.py) is the
+    one durable record of which thread this work started in."""
+    company = get_company_os(company_id) or {}
+    plan_message = next((m for m in company.get("conversation", [])
+                         if m.get("scope") == "initiative" and m.get("scope_id") == initiative_id and m.get("kind") == "plan"), None)
+    return str((plan_message or {}).get("thread_id") or "default")
+
+
 def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str, internal: bool = False) -> dict[str, Any]:
     # Research pipelines expose the human-readable evidence under
     # combined_formatted. Falling through to str(result) leaked raw tool JSON.
@@ -532,14 +552,30 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                              company_id=company_id, workspace_id=company_id, kind="company_os_build", visible=False)
         except Exception:
             logger.debug("Could not register Company OS coding session", exc_info=True)
+        # Keep the authenticated PTY identity on the Company OS task. The
+        # Company Home workbench uses this field to expose the terminal inline.
+        update_task(company_id, str(task.get("task_id") or ""),
+                    terminal_session_id=session_id, build_session_id=session_id,
+                    execution_profile="technical_agent")
         last_progress = {"text": ""}
 
-        def progress(text: str, **_extra: Any) -> None:
-            if text == last_progress["text"]:
+        def progress(text: str, **extra: Any) -> None:
+            preview_url = extra.get("preview_url")
+            if text == last_progress["text"] and not preview_url:
                 return
             last_progress["text"] = text
-            update_task(company_id, str(task.get("task_id") or ""), state="working",
-                        progress_text=text, activity=text, last_progress_at=datetime.now(timezone.utc).isoformat())
+            fields: dict[str, Any] = {"terminal_session_id": session_id, "build_session_id": session_id,
+                                       "progress_text": text, "activity": text,
+                                       "last_progress_at": datetime.now(timezone.utc).isoformat()}
+            # The live dev-mode preview (backend/tools/local_preview.py's
+            # start_local_preview(..., dev=True), called from run_mvp_loop
+            # before the first coding pass) reports its URL through this same
+            # progress channel -- surface it on the task so the chat UI can
+            # show the site updating in real time, not just once the whole
+            # build finishes.
+            if preview_url:
+                fields["preview_url"] = preview_url
+            update_task(company_id, str(task.get("task_id") or ""), state="working", **fields)
 
         handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
         source_lines = "\n".join(f"- {item.get('title') or 'Source'}: {item.get('url')}" for item in sources[:12])

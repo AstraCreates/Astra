@@ -3740,13 +3740,6 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
         await websocket.close(code=4403)
         return
 
-    # Pause the autonomous agent so it stops stepping on the openclaude session
-    # while the founder drives it by hand.
-    try:
-        cancellation.pause_session(session_id)
-    except Exception:
-        pass
-
     closed = threading.Event()
 
     def _on_output(data: bytes) -> None:
@@ -3758,8 +3751,19 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
         except Exception:
             pass
 
+    shared = False
     try:
-        term = await asyncio.to_thread(pty_terminal.open_takeover, session_id)
+        # A Company OS build registers its original coding subprocess here. Attach
+        # to that PTY instead of starting a resumed agent, so chat shows the exact
+        # commands/output the coding process is using.
+        term = await asyncio.to_thread(pty_terminal.get_terminal, session_id)
+        shared = bool(term and term.shared)
+        if not term:
+            try:
+                cancellation.pause_session(session_id)
+            except Exception:
+                pass
+            term = await asyncio.to_thread(pty_terminal.open_takeover, session_id)
     except Exception as e:
         logger.error("terminal takeover spawn failed: %s", e)
         try:
@@ -3773,7 +3777,16 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
             pass
         return
 
-    term.set_output(_on_output)
+    try:
+        await websocket.send_text(json.dumps({"t": "terminal_state", "state": term.state,
+                                               "shared": shared, "workspace": term.workspace,
+                                               "interactive": term.alive}))
+        transcript = term.transcript()
+        if transcript:
+            await _safe_send_bytes(websocket, transcript)
+    except Exception:
+        pass
+    subscription = term.subscribe(_on_output)
 
     try:
         while True:
@@ -3782,7 +3795,8 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
                 break
             data_b = msg.get("bytes")
             if data_b is not None:
-                term.write(data_b)
+                if not term.write(data_b):
+                    await websocket.send_text(json.dumps({"t": "error", "message": "Build terminal is read-only because the process has completed."}))
                 continue
             text = msg.get("text")
             if text is None:
@@ -3806,15 +3820,16 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
         logger.warning("terminal ws loop error: %s", e)
     finally:
         closed.set()
-        term.set_output(None)
-        try:
-            pty_terminal.close_takeover(session_id)
-        except Exception:
-            pass
-        try:
-            cancellation.resume_session(session_id)
-        except Exception:
-            pass
+        term.unsubscribe(subscription)
+        if not shared:
+            try:
+                pty_terminal.close_takeover(session_id)
+            except Exception:
+                pass
+            try:
+                cancellation.resume_session(session_id)
+            except Exception:
+                pass
 
 
 async def _safe_send_bytes(websocket: WebSocket, data: bytes) -> None:

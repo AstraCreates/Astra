@@ -1,9 +1,7 @@
 "use client";
 
-/* Interactive openclaude takeover terminal.
-   Connects to the backend WS /terminal/{sessionId}, renders the live PTY with
-   xterm.js, forwards keystrokes, and reflows on resize. The backend resumes the
-   agent's openclaude session so the founder drives the exact same conversation. */
+/* Shared Company OS build terminal. Connects to the original coding PTY when
+   available, so the browser sees the same bytes the autonomous agent sees. */
 
 import { useEffect, useRef, useState } from "react";
 import { getAuthToken, waitForAuthReady } from "@/lib/api";
@@ -16,13 +14,23 @@ export function terminalWsUrl(sessionId: string, token: string): string {
   let base = API;
   if (base.startsWith("https://")) base = "wss://" + base.slice(8);
   else if (base.startsWith("http://")) base = "ws://" + base.slice(7);
-  else base = (typeof window !== "undefined" && window.location.protocol === "https:" ? "wss://" : "ws://") + base;
+  else {
+    // NEXT_PUBLIC_API_URL is "/api" in production (relative, same-origin) --
+    // naively prepending "wss://" onto a leading-slash path produces
+    // "wss:///api" (empty host, invalid URL) and the socket fails instantly
+    // with no request ever reaching the backend. Resolve it against the
+    // current page's own origin instead.
+    const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = typeof window !== "undefined" ? window.location.host : "";
+    base = `${proto}//${host}${base.startsWith("/") ? base : `/${base}`}`;
+  }
   return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
 }
 
 export default function TerminalPane({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"connecting" | "live" | "closed" | "error">("connecting");
+  const [shared, setShared] = useState(false);
 
   useEffect(() => {
     let term: import("@xterm/xterm").Terminal | null = null;
@@ -74,7 +82,14 @@ export default function TerminalPane({ sessionId, onClose }: { sessionId: string
         if (!term) return;
         if (typeof ev.data === "string") {
           // Control/error frames arrive as JSON text.
-          try { const m = JSON.parse(ev.data); if (m?.t === "error") term.write(`\r\n\x1b[31m[${m.message}]\x1b[0m\r\n`); }
+          try {
+            const m = JSON.parse(ev.data);
+            if (m?.t === "terminal_state") {
+              setShared(Boolean(m.shared));
+              setStatus(m.state === "live" ? "live" : "closed");
+              term.write(`\r\n\x1b[2m[${m.shared ? "shared live build terminal" : "recovery terminal"} · ${m.state}${m.workspace ? ` · ${m.workspace}` : ""}]\x1b[0m\r\n`);
+            } else if (m?.t === "error") term.write(`\r\n\x1b[31m[${m.message}]\x1b[0m\r\n`);
+          }
           catch { term.write(ev.data); }
         } else {
           term.write(new Uint8Array(ev.data as ArrayBuffer));
@@ -101,7 +116,7 @@ export default function TerminalPane({ sessionId, onClose }: { sessionId: string
   }, [sessionId]);
 
   const dot = status === "live" ? "#34d399" : status === "connecting" ? "#fcd34d" : "#f87171";
-  const label = status === "live" ? "live — you are driving openclaude" : status === "connecting" ? "connecting…" : status === "closed" ? "session ended" : "connection error";
+  const label = status === "live" ? (shared ? "live shared build shell — your input is shared with the coding agent" : "recovery shell") : status === "connecting" ? "connecting to live build…" : status === "closed" ? "build completed — transcript is read-only" : "connection error";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

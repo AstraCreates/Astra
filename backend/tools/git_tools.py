@@ -1121,87 +1121,115 @@ def _stream_caveman_events(cmd: list, cwd: str, timeout: int, env: dict,
             return "\n".join(b.get("text") or "" for b in content if isinstance(b, dict))
         return str(content or "")
 
+    def handle_line(raw: str) -> bool:
+        nonlocal result_text, turns, usage_in, usage_out, usage_cr, usage_cw
+        line = raw.strip().rstrip("\r")
+        if not line.startswith("{"):
+            if line and ("error" in line.lower() or "failed" in line.lower()):
+                stderr_lines.append(line)
+            return True
+        try:
+            ev = json.loads(line)
+        except Exception:
+            return True
+        etype = ev.get("type")
+        if etype == "session":
+            pub({"kind": "start", "tools": []})
+        elif etype == "turn_start":
+            turns += 1
+        elif etype == "tool_execution_start":
+            name, args = ev.get("toolName") or "", ev.get("args") or {}
+            if name in ("write", "edit"):
+                path = args.get("path") or args.get("file_path") or ""
+                content = args.get("content") or args.get("new_string") or ""
+                if path:
+                    files[path] = content
+                    pub({"kind": "file", "path": path, "content": content[:20000], "size": len(content), "verb": "edited" if name == "edit" else "wrote"})
+            elif name == "bash":
+                pub({"kind": "command", "command": (args.get("command") or "")[:500], "desc": ""})
+            else:
+                pub({"kind": "tool", "tool": name, "target": str(args.get("path") or args.get("pattern") or args.get("query") or "")[:120]})
+        elif etype == "tool_execution_end":
+            out = _txt((ev.get("result") or {}).get("content")).strip()
+            if out and out != "(no output)":
+                pub({"kind": "error" if bool(ev.get("isError")) else "output", "text": out[-700:], "command": (ev.get("toolName") or "")[:120]})
+        elif etype == "message_end":
+            msg = ev.get("message") or {}
+            if msg.get("role") == "assistant":
+                usage = msg.get("usage") or {}
+                usage_in += int(usage.get("input", 0) or 0)
+                usage_out += int(usage.get("output", 0) or 0)
+                usage_cr += int(usage.get("cacheRead", 0) or 0)
+                usage_cw += int(usage.get("cacheWrite", 0) or 0)
+                result_text = _txt(msg.get("content")).strip() or result_text
+                if result_text:
+                    pub({"kind": "log", "text": result_text[:2000]})
+                token_cap = getattr(settings, "mvp_max_build_tokens", 0) or 0
+                if token_cap and (usage_in + usage_out) > token_cap:
+                    pub({"kind": "error", "text": f"Build stopped: exceeded {token_cap:,} token cap ({usage_in + usage_out:,} tokens used)."})
+                    return False
+        return True
+
     with _build_semaphore:
-        proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, env=env, bufsize=1)
+        shared_term = None
+        subscription = None
+        output_queue = None
+        if app_session_id:
+            import queue
+            from backend.core import pty_terminal
+            output_queue = queue.Queue()
+            shared_term = pty_terminal.spawn_shared_process(app_session_id, cmd, cwd=cwd, env=env, workspace=cwd)
+            subscription = shared_term.subscribe(lambda data: output_queue.put(data))
+            proc = shared_term.proc
+        else:
+            proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, bufsize=1)
         watchdog = _th.Timer(timeout, proc.kill)
         watchdog.daemon = True
         watchdog.start()
-
-        def _pump_stderr() -> None:
-            try:
-                assert proc.stderr is not None
-                for raw in proc.stderr:
-                    line = raw.strip()
-                    if line:
-                        stderr_lines.append(line)
-            except Exception:
-                pass
-
-        stderr_thread = _th.Thread(target=_pump_stderr, daemon=True)
-        stderr_thread.start()
-        try:
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                line = line.strip()
-                if not line.startswith("{"):
-                    continue  # banner / warnings — not JSON
+        stderr_thread = None
+        if not shared_term:
+            def pump_stderr() -> None:
                 try:
-                    ev = json.loads(line)
+                    assert proc.stderr is not None
+                    for raw in proc.stderr:
+                        if raw.strip():
+                            stderr_lines.append(raw.strip())
                 except Exception:
-                    continue
-                etype = ev.get("type")
-                if etype == "session":
-                    pub({"kind": "start", "tools": []})
-                elif etype == "turn_start":
-                    turns += 1
-                elif etype == "tool_execution_start":
-                    name = ev.get("toolName") or ""
-                    args = ev.get("args") or {}
-                    if name in ("write", "edit"):
-                        path = args.get("path") or args.get("file_path") or ""
-                        content = args.get("content") or args.get("new_string") or ""
-                        if path:
-                            files[path] = content
-                            pub({"kind": "file", "path": path, "content": content[:20000],
-                                 "size": len(content), "verb": "edited" if name == "edit" else "wrote"})
-                    elif name == "bash":
-                        pub({"kind": "command", "command": (args.get("command") or "")[:500], "desc": ""})
-                    else:
-                        tgt = str(args.get("path") or args.get("pattern") or args.get("query") or "")[:120]
-                        pub({"kind": "tool", "tool": name, "target": tgt})
-                elif etype == "tool_execution_end":
-                    out = _txt((ev.get("result") or {}).get("content")).strip()
-                    if out and out != "(no output)":
-                        is_err = bool(ev.get("isError"))
-                        pub({"kind": "error" if is_err else "output", "text": out[-700:],
-                             "command": (ev.get("toolName") or "")[:120]})
-                elif etype == "message_end":
-                    msg = ev.get("message") or {}
-                    if msg.get("role") == "assistant":
-                        u = msg.get("usage") or {}
-                        usage_in += int(u.get("input", 0) or 0)
-                        usage_out += int(u.get("output", 0) or 0)
-                        usage_cr += int(u.get("cacheRead", 0) or 0)
-                        usage_cw += int(u.get("cacheWrite", 0) or 0)
-                        txt = _txt(msg.get("content")).strip()
-                        if txt:
-                            result_text = txt
-                            pub({"kind": "log", "text": txt[:2000]})
-                        token_cap = getattr(settings, "mvp_max_build_tokens", 0) or 0
-                        if token_cap and (usage_in + usage_out) > token_cap:
-                            pub({"kind": "error",
-                                 "text": f"Build stopped: exceeded {token_cap:,} token cap "
-                                         f"({usage_in + usage_out:,} tokens used)."})
+                    pass
+            stderr_thread = _th.Thread(target=pump_stderr, daemon=True)
+            stderr_thread.start()
+        try:
+            if shared_term:
+                pending = ""
+                while proc.poll() is None or not output_queue.empty():
+                    try:
+                        pending += output_queue.get(timeout=0.2).decode("utf-8", "replace")
+                    except Exception:
+                        continue
+                    lines = pending.split("\n")
+                    pending = lines.pop()
+                    for line in lines:
+                        if not handle_line(line):
                             proc.kill()
                             break
+                if pending:
+                    handle_line(pending)
+            else:
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    if not handle_line(line):
+                        proc.kill()
+                        break
         finally:
             watchdog.cancel()
             try:
                 proc.wait(timeout=10)
             except Exception:
                 proc.kill()
-            stderr_thread.join(timeout=1)
+            if shared_term and subscription is not None:
+                shared_term.unsubscribe(subscription)
+            if stderr_thread:
+                stderr_thread.join(timeout=1)
 
     _record_build_usage(
         {"usage": {"input": usage_in, "output": usage_out, "cacheRead": usage_cr, "cacheWrite": usage_cw},
@@ -2012,6 +2040,20 @@ def run_mvp_loop(
         if not incremental and not (Path(local) / "package.json").exists():
             _phase("Scaffolding Next.js skeleton…")
             _scaffold_nextjs_skeleton(local)
+
+        # Start a live, hot-reloading preview immediately -- before any coding
+        # pass runs -- so the founder can watch the site come together in
+        # real time instead of only seeing a URL once the whole build
+        # finishes. Best-effort: a dev preview that fails to start (no free
+        # port, non-Node project, etc.) must never block the actual build.
+        if (Path(local) / "package.json").exists():
+            try:
+                from backend.tools.local_preview import start_local_preview as _start_preview
+                dev_preview_url = _start_preview(local, session_id, company_name=Path(local).name, dev=True)
+                if dev_preview_url:
+                    _phase("Live preview is up — watch it update as the build progresses", preview_url=dev_preview_url)
+            except Exception as e:
+                logger.debug("live dev preview failed to start: %s", e)
 
         # Plan the product with MiniMax-M3 BEFORE building (the MVP planner), so
         # openclaude implements a real app from a concrete spec instead of improvising.

@@ -28,6 +28,8 @@ export type CompanyScope = { founderId: string; companyId: string };
 
 export type CompanyHomeTask = {
   id: string;
+  terminalSessionId?: string;
+  previewUrl?: string;
   title: string;
   status: "planned" | "active" | "waiting" | "complete" | "blocked";
   squad: string;
@@ -50,7 +52,7 @@ export type CompanyHomeArtifact = { id: string; title: string; source: string; u
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrainLink = { squadId: string; recordCount: number };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[]; squadLinks: CompanyHomeBrainLink[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string; previewUrl?: string };
 export type CompanyChatThread = { id: string; title: string; updatedAt: string };
 
 export type CompanyHomeData = {
@@ -159,7 +161,7 @@ function meetings(value: unknown): CompanyHomeMeeting[] {
 
 function task(value: UnknownRecord, fallbackId: string, squadName: string): CompanyHomeTask {
   const dependencies = dependencyIds(value.depends_on_task_ids ?? value.dependencies ?? value.depends_on ?? value.depends_on_ids ?? value.prerequisites);
-  return { id: text(value.id ?? value.task_id, fallbackId), title: text(value.title ?? value.name, "Untitled task"), status: taskStatus(value.status ?? value.state), squad: titleCase(text(value.owner_agent ?? value.department, squadName)), note: text(value.notes ?? value.detail ?? value.description), searchCount: Number.isFinite(Number(value.search_count)) && Number(value.search_count) > 0 ? Number(value.search_count) : undefined, dependencyIds: dependencies, dependencyState: dependencyState(value, dependencies), parallelLane: text(value.parallel_lane ?? value.parallel_group ?? value.lane ?? value.wave ?? value.batch, "Main lane") };
+  return { id: text(value.id ?? value.task_id, fallbackId), terminalSessionId: text(value.terminal_session_id ?? value.session_id ?? value.build_session_id) || undefined, previewUrl: text(value.preview_url) || undefined, title: text(value.title ?? value.name, "Untitled task"), status: taskStatus(value.status ?? value.state), squad: titleCase(text(value.owner_agent ?? value.department, squadName)), note: text(value.notes ?? value.detail ?? value.description ?? value.progress_text ?? value.activity), searchCount: Number.isFinite(Number(value.search_count)) && Number(value.search_count) > 0 ? Number(value.search_count) : undefined, dependencyIds: dependencies, dependencyState: dependencyState(value, dependencies), parallelLane: text(value.parallel_lane ?? value.parallel_group ?? value.lane ?? value.wave ?? value.batch, "Main lane") };
 }
 
 function resolveDependencyStates(tasks: CompanyHomeTask[]): CompanyHomeTask[] {
@@ -183,7 +185,7 @@ function conversation(value: unknown): CompanyHomeMessage[] {
     const kindRaw = text(message.kind, "chat");
     const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
     const options = list(message.options).map(option => text(option)).filter(Boolean);
-    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), threadId: text(message.thread_id, "default"), ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
+    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), threadId: text(message.thread_id, "default"), previewUrl: text(message.preview_url) || undefined, ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
   });
 }
 
