@@ -1368,9 +1368,9 @@ function showOutputs() {
   lib.style.background = 'rgba(125,143,255,0.08)';
   lib.style.borderLeftColor = 'var(--blue)';
 
-  astraMsg(`All done. Everything's saved to your Library — check the sidebar.`, () => {
+  astraMsg(`Run complete. All outputs saved to your Library.\n\nYour squads aren't stopping — they'll keep working in the background and surface updates here as things happen.`, () => {
     chatState = 'done';
-    setTimeout(startContinuousRun, 4000);
+    setTimeout(startContinuousRun, 5000);
   });
 }
 
