@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { createChatThread, deleteChatThread, type CompanyChatThread } from "@/lib/company-os";
 
@@ -26,6 +26,13 @@ interface CompanyContextValue {
   setActiveThreadId: (threadId: string) => void;
   createChat: () => Promise<void>;
   deleteChat: (threadId: string) => Promise<void>;
+  // Sending a message needs the REAL thread_id, never the local
+  // "optimistic-<ts>" placeholder createChat shows immediately -- the
+  // backend has no record of that id, so a message sent under it (and any
+  // squad/task work the copilot dispatches from it) gets permanently
+  // orphaned the moment the real id swaps in. Resolves immediately for an
+  // already-real id; awaits the in-flight create for a placeholder.
+  resolveActiveThreadId: () => Promise<string>;
 }
 
 const CompanyContext = createContext<CompanyContextValue | null>(null);
@@ -69,19 +76,33 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   // trip -- ensure_company_operations/ensure_default_chat_thread run on
   // every request this hits, so on a busy company the real response can
   // take a beat even though the actual create is a single small write.
+  const pendingCreateRef = useRef<Map<string, Promise<string>>>(new Map());
+
   const createChat = useCallback(async () => {
     const tempId = `optimistic-${Date.now()}`;
     setChatsState(prev => [...prev, { id: tempId, title: "New chat", updatedAt: new Date().toISOString() }]);
     setActiveThreadId(tempId);
-    try {
+    const creation = (async () => {
       const result = await createChatThread({ founderId, companyId });
       setChats(result.data.chats);
-      setActiveThreadId(result.threadId);
+      setActiveThreadId(current => (current === tempId ? result.threadId : current));
+      return result.threadId;
+    })();
+    pendingCreateRef.current.set(tempId, creation);
+    try {
+      await creation;
     } catch {
       setChatsState(prev => prev.filter(chat => chat.id !== tempId));
-      setActiveThreadId("default");
+      setActiveThreadId(current => (current === tempId ? "default" : current));
+    } finally {
+      pendingCreateRef.current.delete(tempId);
     }
   }, [founderId, companyId]);
+
+  const resolveActiveThreadId = useCallback(async () => {
+    const pending = pendingCreateRef.current.get(activeThreadId);
+    return pending ? pending : activeThreadId;
+  }, [activeThreadId]);
 
   const deleteChat = useCallback(async (threadId: string) => {
     const previous = chats;
@@ -111,6 +132,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       setActiveThreadId,
       createChat,
       deleteChat,
+      resolveActiveThreadId,
     }}>
       {children}
     </CompanyContext.Provider>

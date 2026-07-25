@@ -201,7 +201,7 @@ function InitiativeWorkspace({ initiative, squads, artifacts, saving, onSave, on
 }
 
 export default function CompanyHome() {
-  const { founderId, companyId, activeCompany, setChats, activeThreadId, createChat } = useCompany();
+  const { founderId, companyId, activeCompany, setChats, activeThreadId, createChat, resolveActiveThreadId } = useCompany();
   const { user } = useDevUser();
   const [home, setHome] = useState(EMPTY);
   const [message, setMessage] = useState("");
@@ -251,9 +251,9 @@ export default function CompanyHome() {
       // local echo has been superseded and must drop out, or both show up.
       const landed = new Set(next.conversation
         .filter(turn => turn.author === "founder" && turn.kind === "chat")
-        .map(turn => `${turn.threadId ?? "default"} ${turn.message}`));
+        .map(turn => `${turn.threadId ?? "default"} ${turn.message}`));
       const stillPending = [...pendingMessagesRef.current.values()]
-        .filter(turn => !landed.has(`${turn.threadId ?? "default"} ${turn.message}`));
+        .filter(turn => !landed.has(`${turn.threadId ?? "default"} ${turn.message}`));
       for (const turn of pendingMessagesRef.current.values()) {
         if (!stillPending.includes(turn)) pendingMessagesRef.current.delete(turn.id);
       }
@@ -452,15 +452,24 @@ export default function CompanyHome() {
     setAttachments([]);
     setSending(true);
     setNotice("Copilot is forming a squad and briefing the department lead...");
+    // Resolve the REAL thread id before sending anything -- "+ New chat"
+    // switches activeThreadId to a local "optimistic-<ts>" placeholder the
+    // instant it's clicked, well before the backend has a matching thread
+    // record. Sending under that placeholder (echo included) would dispatch
+    // real work but permanently orphan the message and its echo the moment
+    // activeThreadId swaps to the real id a beat later -- confirmed live:
+    // squads/tasks got created from a message that then never appeared in
+    // any chat. Resolves immediately if activeThreadId is already real.
+    const threadId = await resolveActiveThreadId();
     // Echo the founder's own message immediately -- the real turn (classify +
     // dispatch) is a multi-second round trip, and without this the message
     // only appeared once that whole thing finished, making sending feel stuck.
     const echoId = `optimistic-${Date.now()}`;
-    const echo: CompanyHomeData["conversation"][number] = { id: echoId, author: "founder", message: value, kind: "chat", edited: false, threadId: activeThreadId };
+    const echo: CompanyHomeData["conversation"][number] = { id: echoId, author: "founder", message: value, kind: "chat", edited: false, threadId };
     pendingMessagesRef.current.set(echoId, echo);
     setHome(prev => ({ ...prev, conversation: [...prev.conversation, echo] }));
     try {
-      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), activeThreadId);
+      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), threadId);
       pendingMessagesRef.current.delete(echoId);
       setHome(result.data);
       setNotice(result.message);
