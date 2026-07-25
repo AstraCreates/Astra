@@ -51,7 +51,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   const pathname = usePathname() || "/";
   const router = useRouter();
   const { userId, isSignedIn, user } = useDevUser();
-  const { chats, activeThreadId, setActiveThreadId, createChat, deleteChat } = useCompany();
+  const { chats, chatsLoaded, activeThreadId, setActiveThreadId, createChat, deleteChat } = useCompany();
   const [credits, setCredits] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -156,7 +156,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1, paddingBottom: 8 }}>
           {chats.length === 0 ? (
-            <div style={{ padding: "6px 8px", fontSize: 11.5, color: "#6f7b98" }}>No chats yet</div>
+            <div style={{ padding: "6px 8px", fontSize: 11.5, color: "#6f7b98" }}>{chatsLoaded ? "No chats yet" : "Loading…"}</div>
           ) : chats.map(chat => (
             <div key={chat.id}
               onClick={() => selectChat(chat.id)}
@@ -166,7 +166,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.title}</div>
                 {chat.updatedAt && <div style={{ fontSize: 9.5, color: "#6f7b98", marginTop: 1 }}>{chatRelativeTime(chat.updatedAt)}</div>}
               </div>
-              {chat.id !== "default" && (
+              {chats.length > 1 && (
                 <button type="button"
                   onClick={(event) => {
                     event.stopPropagation();

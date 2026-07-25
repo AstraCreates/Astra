@@ -225,6 +225,13 @@ export default function CompanyHome() {
   const threadRef = useRef<HTMLDivElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const pendingDeleteIdsRef = useRef(new Set<string>());
+  // Optimistic echoes for in-flight sends -- the background poll (below)
+  // runs on its own timer and does a full setHome(data) replace, which would
+  // otherwise wipe out a just-sent message for the several seconds it takes
+  // the real classify+dispatch turn to land server-side (the message would
+  // visibly vanish, then reappear once submitToCopilot's own response
+  // arrives). Keyed by the same echoId submitToCopilot creates.
+  const pendingMessagesRef = useRef(new Map<string, CompanyHomeData["conversation"][number]>());
 
   const setItemDeleting = (id: string, deleting: boolean) => {
     if (deleting) pendingDeleteIdsRef.current.add(id);
@@ -236,6 +243,21 @@ export default function CompanyHome() {
     let next = data;
     for (const id of pendingDeleteIdsRef.current) {
       next = removeCompanyItem(removeCompanyItem(removeCompanyItem(next, "initiative", id), "squad", id), "artifact", id);
+    }
+    if (pendingMessagesRef.current.size) {
+      // The server-persisted twin of an optimistic echo gets its own real
+      // message_id (never the local echoId), so dedupe by content -- once a
+      // founder/chat message with the same text lands in this thread, the
+      // local echo has been superseded and must drop out, or both show up.
+      const landed = new Set(next.conversation
+        .filter(turn => turn.author === "founder" && turn.kind === "chat")
+        .map(turn => `${turn.threadId ?? "default"} ${turn.message}`));
+      const stillPending = [...pendingMessagesRef.current.values()]
+        .filter(turn => !landed.has(`${turn.threadId ?? "default"} ${turn.message}`));
+      for (const turn of pendingMessagesRef.current.values()) {
+        if (!stillPending.includes(turn)) pendingMessagesRef.current.delete(turn.id);
+      }
+      if (stillPending.length) next = { ...next, conversation: [...next.conversation, ...stillPending] };
     }
     return next;
   };
@@ -434,12 +456,16 @@ export default function CompanyHome() {
     // dispatch) is a multi-second round trip, and without this the message
     // only appeared once that whole thing finished, making sending feel stuck.
     const echoId = `optimistic-${Date.now()}`;
-    setHome(prev => ({ ...prev, conversation: [...prev.conversation, { id: echoId, author: "founder", message: value, kind: "chat", edited: false, threadId: activeThreadId }] }));
+    const echo: CompanyHomeData["conversation"][number] = { id: echoId, author: "founder", message: value, kind: "chat", edited: false, threadId: activeThreadId };
+    pendingMessagesRef.current.set(echoId, echo);
+    setHome(prev => ({ ...prev, conversation: [...prev.conversation, echo] }));
     try {
       const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), activeThreadId);
+      pendingMessagesRef.current.delete(echoId);
       setHome(result.data);
       setNotice(result.message);
     } catch (error) {
+      pendingMessagesRef.current.delete(echoId);
       setHome(prev => ({ ...prev, conversation: prev.conversation.filter(turn => turn.id !== echoId) }));
       setNotice(`${friendlyErrorMessage(error, "Copilot could not reach Company OS")}. Your message was not lost locally.`);
       setMessage(value);

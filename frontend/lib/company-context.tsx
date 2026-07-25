@@ -20,6 +20,7 @@ interface CompanyContextValue {
   setCompanyId: (companyId: string) => void;
   refreshCompanies: () => Promise<void>;
   chats: CompanyChatThread[];
+  chatsLoaded: boolean;
   setChats: (chats: CompanyChatThread[]) => void;
   activeThreadId: string;
   setActiveThreadId: (threadId: string) => void;
@@ -36,8 +37,13 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const setCompanyId = useCallback(() => {}, []);
   const refreshCompanies = useCallback(async () => {}, []);
 
-  const [chats, setChats] = useState<CompanyChatThread[]>([]);
+  const [chats, setChatsState] = useState<CompanyChatThread[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState("default");
+  const setChats = useCallback((next: CompanyChatThread[]) => {
+    setChatsState(next);
+    setChatsLoaded(true);
+  }, []);
 
   useEffect(() => {
     if (!companyId) return;
@@ -65,27 +71,27 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   // take a beat even though the actual create is a single small write.
   const createChat = useCallback(async () => {
     const tempId = `optimistic-${Date.now()}`;
-    setChats(prev => [...prev, { id: tempId, title: "New chat", updatedAt: new Date().toISOString() }]);
+    setChatsState(prev => [...prev, { id: tempId, title: "New chat", updatedAt: new Date().toISOString() }]);
     setActiveThreadId(tempId);
     try {
       const result = await createChatThread({ founderId, companyId });
       setChats(result.data.chats);
       setActiveThreadId(result.threadId);
     } catch {
-      setChats(prev => prev.filter(chat => chat.id !== tempId));
+      setChatsState(prev => prev.filter(chat => chat.id !== tempId));
       setActiveThreadId("default");
     }
   }, [founderId, companyId]);
 
   const deleteChat = useCallback(async (threadId: string) => {
     const previous = chats;
-    setChats(prev => prev.filter(chat => chat.id !== threadId));
+    setChatsState(prev => prev.filter(chat => chat.id !== threadId));
     if (activeThreadId === threadId) setActiveThreadId("default");
     try {
       const data = await deleteChatThread({ founderId, companyId }, threadId);
       setChats(data.chats);
     } catch {
-      setChats(previous);
+      setChatsState(previous);
     }
   }, [founderId, companyId, chats, activeThreadId]);
 
@@ -99,6 +105,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       setCompanyId,
       refreshCompanies,
       chats,
+      chatsLoaded,
       setChats,
       activeThreadId,
       setActiveThreadId,

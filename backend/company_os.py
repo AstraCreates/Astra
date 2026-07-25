@@ -91,10 +91,19 @@ def ensure_default_chat_thread(company_id: str, *, root: str | Path | None = Non
     company = get_company_os(company_id, root=root)
     if company is None:
         raise KeyError(f"unknown company: {company_id}")
-    existing = next((item for item in company["chat_threads"] if item.get("thread_id") == _DEFAULT_THREAD_ID), None)
-    if existing:
-        return existing
-    return create_thread(company_id, "General", thread_id=_DEFAULT_THREAD_ID, root=root)
+    threads = company["chat_threads"]
+    existing = next((item for item in threads if item.get("thread_id") == _DEFAULT_THREAD_ID), None)
+    if existing is None:
+        return create_thread(company_id, "General", thread_id=_DEFAULT_THREAD_ID, root=root)
+    other_active = any(item.get("thread_id") != _DEFAULT_THREAD_ID and not item.get("archived") for item in threads)
+    if existing.get("archived") and not other_active:
+        # The founder deleted every chat, including this one -- resurrect it
+        # (update, not create) rather than leave them with none. Reusing the
+        # same thread_id via create_thread would duplicate the record, since
+        # chat_threads is an append-only event-sourced collection with no
+        # uniqueness enforcement beyond callers checking "existing" first.
+        return update_thread(company_id, _DEFAULT_THREAD_ID, archived=False, root=root)
+    return existing
 
 
 def _ensure_operations_tasks(company_id: str, initiative_id: str, *, root: str | Path | None,

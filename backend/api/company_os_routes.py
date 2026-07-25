@@ -485,8 +485,6 @@ async def delete_chat_thread_route(company_id: str, thread_id: str, founder_id: 
     company = _company(request, company_id, founder_id, operator=True)
     if not any(item.get("thread_id") == thread_id for item in company.get("chat_threads", [])):
         raise HTTPException(status_code=404, detail="Chat not found")
-    if thread_id == "default":
-        raise HTTPException(status_code=400, detail="The default chat can't be deleted")
     updated = update_thread(company_id, thread_id, archived=True)
     for item in company["chat_threads"]:
         if item.get("thread_id") == thread_id:
