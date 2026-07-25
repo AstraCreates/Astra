@@ -25,6 +25,8 @@ function chatRelativeTime(iso: string): string {
 const LINKS: { href: string; label: string; match: (p: string) => boolean; svg: string }[] = [
   { href: "/dashboard",    label: "Dashboard",     match: p => p.startsWith("/dashboard"),
     svg: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
+  { href: "/squads",       label: "Squads",        match: p => p.startsWith("/squads"),
+    svg: '<circle cx="6" cy="7" r="2.6"/><circle cx="18" cy="7" r="2.6"/><circle cx="12" cy="18" r="2.6"/><path d="M8.3 8 15.7 8M7.3 9.3 10.6 15.7M16.7 9.3 13.4 15.7"/>' },
   { href: "/goals",        label: "Checklist",     match: p => p.startsWith("/goals"),
     svg: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>' },
   { href: "/outreach",     label: "Outreach",      match: p => p.startsWith("/outreach"),

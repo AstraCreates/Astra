@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // @ts-expect-error Node's TypeScript runner intentionally imports the source extension.
-import { companyScopedUrl, normalizeCompanyHomeData, updateInitiative } from "../lib/company-os.ts";
+import { companyScopedUrl, getCompanyHomeData, normalizeCompanyHomeData, updateInitiative } from "../lib/company-os.ts";
 
 test("companyScopedUrl carries both company scope identifiers", () => {
   const url = new URL(companyScopedUrl("/missions", { founderId: "founder one", companyId: "company/two" }));
@@ -81,4 +81,36 @@ test("updateInitiative sends the complete editable brief through the company-sco
   assert.equal(request?.method, "PATCH");
   assert.equal(request?.url, "http://localhost:8000/companies/c1/os/initiatives/i1?founder_id=f1&company_id=c1");
   assert.deepEqual(await request?.json(), { founder_id: "f1", name: "Launch", objective: "Grow", success_criteria: ["100 trials", "30% activation"], priority: "High", owner: "Maya", budget: { summary: "$1000" }, due_date: "2026-09-30", state: "working" });
+});
+
+test("normalizeCompanyOS joins handoff missions to squad ids and groups squad-scoped brain records", async () => {
+  const fetcher = async () => new Response(JSON.stringify({
+    name: "Northstar",
+    initiatives: [], tasks: [], approvals: [], artifacts: [], conversation: [],
+    squads: [
+      { squad_id: "s1", initiative_id: "i1", name: "Insights" },
+      { squad_id: "s2", initiative_id: "i1", name: "Growth" },
+    ],
+    missions: [
+      { mission_id: "m1", squad_id: "s1", name: "Research", state: "done" },
+      // s2's mission was a handoff FROM s1's mission -- handoff_for points at
+      // the ORIGIN mission id, not a squad id, so the normalizer has to join
+      // through missionById to recover that s2 received a handoff from s1.
+      { mission_id: "m2", squad_id: "s2", name: "Build", state: "active", handoff_for: "m1" },
+    ],
+    context_records: [
+      { key: "pricing", value: "x", scope: "squad", scope_id: "s1" },
+      { key: "pricing_detail", value: "y", scope: "squad", scope_id: "s1" },
+      { key: "north_star", value: "z", scope: "company" },
+    ],
+  }), { status: 200 });
+
+  const home = await getCompanyHomeData({ founderId: "f1", companyId: "c1" }, "default", fetcher as typeof fetch);
+
+  const s1 = home.squads.find((squad: { id: string }) => squad.id === "s1");
+  const s2 = home.squads.find((squad: { id: string }) => squad.id === "s2");
+  assert.ok(s1 && s2, "both squads must be present in the normalized output");
+  assert.deepEqual(s1.handoffFromSquadIds, []);
+  assert.deepEqual(s2.handoffFromSquadIds, ["s1"]);
+  assert.deepEqual(home.brain.squadLinks, [{ squadId: "s1", recordCount: 2 }]);
 });

@@ -43,11 +43,12 @@ export type CompanyInitiativeBrief = { objective: string; successCriteria: strin
 export type CompanyHomeInitiative = { id: string; title: string; status: string; progress: number; taskCount: number; archived: boolean; brief: CompanyInitiativeBrief; dependencies: CompanyInitiativeDependency[]; timeline: CompanyInitiativeTimelineItem[] };
 export type CompanyHomeSquadMember = { name: string; role: string; status: string; responsibility: string; isLead: boolean };
 export type CompanyHomeMeeting = { id: string; occurredAt: string; phase: string; decisions: string[]; blockers: string[]; nextAction: string };
-export type CompanyHomeSquad = { id: string; initiativeId: string; name: string; lifecycle: string; activity: string; members: string[]; roster: CompanyHomeSquadMember[]; charter: string; tasks: CompanyHomeTask[]; meetings: CompanyHomeMeeting[]; archived: boolean };
+export type CompanyHomeSquad = { id: string; initiativeId: string; name: string; lifecycle: string; activity: string; members: string[]; roster: CompanyHomeSquadMember[]; charter: string; tasks: CompanyHomeTask[]; meetings: CompanyHomeMeeting[]; archived: boolean; handoffFromSquadIds: string[] };
 export type CompanyHomeApproval = { id: string; title: string; squad: string; detail: string };
 export type CompanyHomeArtifact = { id: string; title: string; source: string; updatedAt: string; url?: string; initiativeId?: string; archived: boolean };
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
-export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[] };
+export type CompanyHomeBrainLink = { squadId: string; recordCount: number };
+export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[]; squadLinks: CompanyHomeBrainLink[] };
 export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string };
 export type CompanyChatThread = { id: string; title: string; updatedAt: string };
 
@@ -273,6 +274,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       tasks: missionTasks,
       meetings: meetings(mission.meetings ?? mission.meeting_timeline ?? mission.meeting_summaries),
       archived: false,
+      handoffFromSquadIds: [], // legacy payload shape carries no handoff linkage
     };
   });
   const approvals = pending.map((item, index): CompanyHomeApproval => {
@@ -309,6 +311,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
       sourceCount: sources.length,
       recordCount: records.length,
       artifacts,
+      squadLinks: [], // legacy payload shape carries no scope/scope_id on brain records
     },
     conversation: conversation(root.conversation),
     chats: chatThreads(root.chat_threads),
@@ -451,6 +454,18 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
   const initiatives = list(root.initiatives).map(record);
   const approvals = list(root.approvals).map(record);
   const brainRecords = list(root.context_records).map(record);
+  // Squad-graph edges: a handoff mission carries handoff_for = the ORIGIN
+  // mission's id (backend/company_os_dispatch.py), not a squad id directly --
+  // join through missionById to recover which squad handed off to which.
+  const missionById = new Map(missions.map(mission => [text(mission.mission_id), mission]));
+  const squadLinkCounts = new Map<string, number>();
+  for (const brainRecord of brainRecords) {
+    if (text(brainRecord.scope) !== "squad") continue;
+    const squadId = text(brainRecord.scope_id);
+    if (!squadId) continue;
+    squadLinkCounts.set(squadId, (squadLinkCounts.get(squadId) ?? 0) + 1);
+  }
+  const squadLinks: CompanyHomeBrainLink[] = Array.from(squadLinkCounts, ([squadId, recordCount]) => ({ squadId, recordCount }));
   return {
     companyName: text(root.name, "Your company"),
     northStar: text(brainRecords.find(item => item.key === "north_star")?.value, "Ask Copilot to form your first initiative."),
@@ -473,10 +488,17 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
       const meetingRecords = squadMeetings.filter(meeting => meeting.squad_id === squad.squad_id);
       const squadMeetingTimeline = meetings(meetingRecords.length ? meetingRecords : squad.meetings ?? squad.meeting_timeline ?? squad.meeting_summaries ?? mission?.meetings);
       const squadCharter = charter(squad.squad_charter ?? squad.charter ?? mission?.charter ?? mission?.goal ?? squad.mission ?? squad.purpose);
-      return { id: text(squad.squad_id, `squad-${index}`), initiativeId: text(squad.initiative_id), name: squadName, lifecycle: titleCase(text(mission?.state ?? squad.lifecycle, "formed")), activity: active?.title ?? squadMeetingTimeline[0]?.nextAction ?? "Setting direction", members: members(rosterRecords), roster: roster(rosterRecords), charter: squadCharter, tasks: matching, meetings: squadMeetingTimeline, archived: text(squad.state).toLowerCase() === "archived" };
+      const ownMissions = missions.filter(item => item.squad_id === squad.squad_id);
+      const handoffFromSquadIds = Array.from(new Set(
+        ownMissions
+          .map(item => missionById.get(text(item.handoff_for))?.squad_id)
+          .filter((id): id is string => Boolean(id) && id !== squad.squad_id)
+          .map(id => text(id))
+      ));
+      return { id: text(squad.squad_id, `squad-${index}`), initiativeId: text(squad.initiative_id), name: squadName, lifecycle: titleCase(text(mission?.state ?? squad.lifecycle, "formed")), activity: active?.title ?? squadMeetingTimeline[0]?.nextAction ?? "Setting direction", members: members(rosterRecords), roster: roster(rosterRecords), charter: squadCharter, tasks: matching, meetings: squadMeetingTimeline, archived: text(squad.state).toLowerCase() === "archived", handoffFromSquadIds };
     }).filter(squad => !squad.archived),
     approvals: approvals.filter(item => text(item.state, "pending") === "pending").map((item, index) => ({ id: text(item.approval_id, `approval-${index}`), title: text(item.title, "Decision requested"), squad: titleCase(text(item.department, "Operations")), detail: text(item.detail, "A teammate needs your approval before continuing.") })),
-    brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived) },
+    brain: { summary: brainRecords.length ? "Scoped Company Brain records ground every initiative and squad." : "Company knowledge is ready to ground each decision.", sourceCount: brainRecords.reduce((count, item) => count + list(item.source_references).length, 0), recordCount: brainRecords.length, artifacts: list(root.artifacts).map((item, index) => { const artifact = record(item); return { id: text(artifact.artifact_id, `artifact-${index}`), title: text(artifact.name, "Untitled artifact"), source: titleCase(text(artifact.source, "Company Brain")), updatedAt: text(artifact.created_at, "Recently"), url: text(artifact.url) || undefined, initiativeId: text(artifact.initiative_id) || undefined, archived: text(artifact.state).toLowerCase() === "archived" }; }).filter(artifact => !artifact.archived), squadLinks },
     conversation: conversation(root.conversation),
     chats: chatThreads(root.chat_threads),
   };

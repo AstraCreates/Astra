@@ -9,7 +9,7 @@ import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage,
 import { ingestAttachment } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
 
-const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [] }, conversation: [], chats: [] };
+const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [], squadLinks: [] }, conversation: [], chats: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_BACKOFF_MS = 60000;
@@ -105,7 +105,7 @@ function SquadCard({ squad, deleting, onDelete, onOpenWorkbench }: { squad: Comp
 const WORKBENCH_STATE = { complete: "done", active: "run", blocked: "err", waiting: "que", planned: "que" } as const;
 const WORKBENCH_LABEL = { complete: "Done", active: "In progress", blocked: "Blocked", waiting: "Waiting on you", planned: "Queued" } as const;
 
-function MeetingTimeline({ meetings, open, onToggle }: { meetings: CompanyHomeSquad["meetings"]; open: boolean; onToggle: () => void }) {
+export function MeetingTimeline({ meetings, open, onToggle }: { meetings: CompanyHomeSquad["meetings"]; open: boolean; onToggle: () => void }) {
   if (!meetings.length) return null;
   return <section style={{ borderTop: "1px solid var(--bd)", padding: "0 20px 16px", flexShrink: 0 }}><button type="button" onClick={onToggle} aria-expanded={open} style={{ width: "100%", padding: "13px 0", border: 0, background: "transparent", color: "var(--fg)", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", fontWeight: 700, fontSize: 12 }}><span>Meeting timeline · {meetings.length}</span><ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform .18s" }} /></button>{open && <div style={{ display: "grid", gap: 8 }}>{meetings.map(meeting => <article key={meeting.id} style={{ padding: 10, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)", color: "var(--fm)", fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "var(--fg)" }}>{meeting.phase}</b> <small>· {meeting.occurredAt}</small>{meeting.decisions.length > 0 && <div>Decisions: {meeting.decisions.join("; ")}</div>}{meeting.blockers.length > 0 && <div style={{ color: "var(--red)" }}>Blockers: {meeting.blockers.join("; ")}</div>}{meeting.nextAction && <div><b style={{ color: "var(--fg)" }}>Next: </b>{meeting.nextAction}</div>}</article>)}</div>}</section>;
 }
