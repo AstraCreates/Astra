@@ -77,6 +77,16 @@ def _valid_signed_token(slug: str, token: str) -> bool:
 def _authorize_preview(slug: str, request: Request) -> None:
     if _valid_signed_token(slug, request.query_params.get("preview_token", "")):
         return
+    from backend.tools.local_preview import get_port_for_slug
+    if get_port_for_slug(slug) is None:
+        # No live process for this slug at all (most commonly: the dev-server
+        # was evicted, or died when the backend container was redeployed) --
+        # this is not an ownership decision, it's "there's nothing running".
+        # Let _proxy()'s own 404 (with the accurate, actionable message) fire
+        # instead of masking it behind a misleading "ownership could not be
+        # verified" 403 -- confirmed live: a real founder hit exactly that
+        # 403 for a preview whose registry entry had simply expired.
+        return
     owner = _preview_owner(slug)
     if not owner:
         raise HTTPException(status_code=403, detail="Preview ownership could not be verified.")
@@ -89,7 +99,10 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
 
     port = get_port_for_slug(slug)
     if not port:
-        raise HTTPException(status_code=404, detail=f"No preview running for '{slug}'")
+        raise HTTPException(status_code=404, detail=(
+            f"No preview running for '{slug}' -- it was likely idle-evicted or stopped when the "
+            "server last restarted. Ask Astra to rebuild it and you'll get a fresh preview link."
+        ))
 
     # Target is always localhost — not attacker-influenced
     qs = f"?{request.url.query}" if request.url.query else ""

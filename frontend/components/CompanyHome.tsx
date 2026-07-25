@@ -773,9 +773,18 @@ export default function CompanyHome() {
                             );
                           })()
                         ) : (
-                          <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1 }}>
+                          <div className="ch-chat-bubble" style={{ opacity: busy ? 0.6 : 1, maxWidth: turn.previewUrl ? "min(640px, 92%)" : undefined }}>
                             <MarkdownDocument content={turn.message} compact inverse={isFounder} />
                             {turn.edited && <small style={{ display: "block", marginTop: 4, opacity: 0.7, fontSize: 10 }}>(edited)</small>}
+                            {turn.previewUrl && (
+                              <div style={{ marginTop: 10, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
+                                  <span style={{ fontSize: 11, color: "var(--fm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{turn.previewUrl}</span>
+                                  <a href={turn.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
+                                </div>
+                                <iframe src={turn.previewUrl} title="Website preview" loading="lazy" style={{ width: "100%", height: 360, border: 0, display: "block" }} />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

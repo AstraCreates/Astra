@@ -51,7 +51,7 @@ export type CompanyHomeArtifact = { id: string; title: string; source: string; u
 export type CompanyArtifactDetail = CompanyHomeArtifact & { content: string; sourceReferences: unknown[] };
 export type CompanyHomeBrainLink = { squadId: string; recordCount: number };
 export type CompanyHomeBrain = { summary: string; sourceCount: number; recordCount: number; artifacts: CompanyHomeArtifact[]; squadLinks: CompanyHomeBrainLink[] };
-export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string };
+export type CompanyHomeMessage = { id: string; author: string; message: string; kind: "chat" | "status" | "question" | "plan"; edited: boolean; question?: string; options?: string[]; squadId?: string; threadId: string; previewUrl?: string };
 export type CompanyChatThread = { id: string; title: string; updatedAt: string };
 
 export type CompanyHomeData = {
@@ -184,7 +184,7 @@ function conversation(value: unknown): CompanyHomeMessage[] {
     const kindRaw = text(message.kind, "chat");
     const kind = kindRaw === "status" ? "status" : kindRaw === "question" ? "question" : kindRaw === "plan" ? "plan" : "chat";
     const options = list(message.options).map(option => text(option)).filter(Boolean);
-    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), threadId: text(message.thread_id, "default"), ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
+    return { id: text(message.message_id ?? message.id, `message-${index}`), author: text(message.author, "copilot"), message: text(message.message), kind, edited: Boolean(message.edited), threadId: text(message.thread_id, "default"), previewUrl: text(message.preview_url) || undefined, ...(kind === "question" ? { question: text(message.question) || undefined, options: options.length ? options : undefined } : {}), ...(kind === "plan" ? { squadId: text(message.squad_id) || undefined } : {}) };
   });
 }
 

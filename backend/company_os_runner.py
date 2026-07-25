@@ -415,7 +415,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
                     "hosting": "local_preview", "hosting_status": "ready", "build_metadata": build,
                 }, source="technical coding agent", internal=False)
                 append_message(company_id, build["summary"], author="copilot", scope="task",
-                               scope_id=str(task.get("task_id") or ""), kind="chat")
+                               scope_id=str(task.get("task_id") or ""), kind="chat",
+                               thread_id=_thread_id_for_initiative(company_id, mission.get("initiative_id")),
+                               preview_url=build["url"])
                 return result
             raise RuntimeError(f"Technical coding agent failed: {build.get('error') or 'no reviewable preview was produced'}")
         if task_key == "product-architecture":
@@ -489,6 +491,21 @@ def _department_tool_arguments(department: str, objective: str, company_id: str)
     if department == "operations":
         return {"founder_id": founder_id}
     return {}
+
+
+def _thread_id_for_initiative(company_id: str, initiative_id: object) -> str:
+    """Tasks/missions carry no thread_id of their own -- only the founder's
+    live conversation turns do. Without this, a background task's follow-up
+    chat message (e.g. the "website build ready" summary) always falls back
+    to the default thread's append_message default, so a founder working in
+    any other thread would never see it land in the chat they're actually
+    looking at. The copilot's own "plan" reply for this initiative (posted
+    synchronously, with the real thread_id, in company_os_copilot.py) is the
+    one durable record of which thread this work started in."""
+    company = get_company_os(company_id) or {}
+    plan_message = next((m for m in company.get("conversation", [])
+                         if m.get("scope") == "initiative" and m.get("scope_id") == initiative_id and m.get("kind") == "plan"), None)
+    return str((plan_message or {}).get("thread_id") or "default")
 
 
 def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str, internal: bool = False) -> dict[str, Any]:
