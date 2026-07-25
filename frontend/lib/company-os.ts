@@ -29,6 +29,7 @@ export type CompanyScope = { founderId: string; companyId: string };
 export type CompanyHomeTask = {
   id: string;
   terminalSessionId?: string;
+  previewUrl?: string;
   title: string;
   status: "planned" | "active" | "waiting" | "complete" | "blocked";
   squad: string;
@@ -160,7 +161,7 @@ function meetings(value: unknown): CompanyHomeMeeting[] {
 
 function task(value: UnknownRecord, fallbackId: string, squadName: string): CompanyHomeTask {
   const dependencies = dependencyIds(value.depends_on_task_ids ?? value.dependencies ?? value.depends_on ?? value.depends_on_ids ?? value.prerequisites);
-  return { id: text(value.id ?? value.task_id, fallbackId), terminalSessionId: text(value.terminal_session_id ?? value.session_id ?? value.build_session_id) || undefined, title: text(value.title ?? value.name, "Untitled task"), status: taskStatus(value.status ?? value.state), squad: titleCase(text(value.owner_agent ?? value.department, squadName)), note: text(value.notes ?? value.detail ?? value.description ?? value.progress_text ?? value.activity), searchCount: Number.isFinite(Number(value.search_count)) && Number(value.search_count) > 0 ? Number(value.search_count) : undefined, dependencyIds: dependencies, dependencyState: dependencyState(value, dependencies), parallelLane: text(value.parallel_lane ?? value.parallel_group ?? value.lane ?? value.wave ?? value.batch, "Main lane") };
+  return { id: text(value.id ?? value.task_id, fallbackId), terminalSessionId: text(value.terminal_session_id ?? value.session_id ?? value.build_session_id) || undefined, previewUrl: text(value.preview_url) || undefined, title: text(value.title ?? value.name, "Untitled task"), status: taskStatus(value.status ?? value.state), squad: titleCase(text(value.owner_agent ?? value.department, squadName)), note: text(value.notes ?? value.detail ?? value.description ?? value.progress_text ?? value.activity), searchCount: Number.isFinite(Number(value.search_count)) && Number(value.search_count) > 0 ? Number(value.search_count) : undefined, dependencyIds: dependencies, dependencyState: dependencyState(value, dependencies), parallelLane: text(value.parallel_lane ?? value.parallel_group ?? value.lane ?? value.wave ?? value.batch, "Main lane") };
 }
 
 function resolveDependencyStates(tasks: CompanyHomeTask[]): CompanyHomeTask[] {

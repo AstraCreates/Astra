@@ -414,6 +414,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
                     "content": build["summary"], "sources": sources, "url": build["url"],
                     "hosting": "local_preview", "hosting_status": "ready", "build_metadata": build,
                 }, source="technical coding agent", internal=False)
+                # Replace the mid-build dev-preview URL (if any) with the
+                # final one now that the real build finished.
+                update_task(company_id, str(task.get("task_id") or ""), preview_url=build["url"])
                 append_message(company_id, build["summary"], author="copilot", scope="task",
                                scope_id=str(task.get("task_id") or ""), kind="chat",
                                thread_id=_thread_id_for_initiative(company_id, mission.get("initiative_id")),
@@ -556,13 +559,23 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                     execution_profile="technical_agent")
         last_progress = {"text": ""}
 
-        def progress(text: str, **_extra: Any) -> None:
-            if text == last_progress["text"]:
+        def progress(text: str, **extra: Any) -> None:
+            preview_url = extra.get("preview_url")
+            if text == last_progress["text"] and not preview_url:
                 return
             last_progress["text"] = text
-            update_task(company_id, str(task.get("task_id") or ""), state="working",
-                        terminal_session_id=session_id, build_session_id=session_id,
-                        progress_text=text, activity=text, last_progress_at=datetime.now(timezone.utc).isoformat())
+            fields: dict[str, Any] = {"terminal_session_id": session_id, "build_session_id": session_id,
+                                       "progress_text": text, "activity": text,
+                                       "last_progress_at": datetime.now(timezone.utc).isoformat()}
+            # The live dev-mode preview (backend/tools/local_preview.py's
+            # start_local_preview(..., dev=True), called from run_mvp_loop
+            # before the first coding pass) reports its URL through this same
+            # progress channel -- surface it on the task so the chat UI can
+            # show the site updating in real time, not just once the whole
+            # build finishes.
+            if preview_url:
+                fields["preview_url"] = preview_url
+            update_task(company_id, str(task.get("task_id") or ""), state="working", **fields)
 
         handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
         source_lines = "\n".join(f"- {item.get('title') or 'Source'}: {item.get('url')}" for item in sources[:12])

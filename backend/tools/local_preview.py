@@ -277,11 +277,18 @@ def stop_local_preview(session_id: str) -> bool:
     return bool(entry)
 
 
-def start_local_preview(local: str, session_id: str, company_name: str = "") -> str | None:
+def start_local_preview(local: str, session_id: str, company_name: str = "", *, dev: bool = False) -> str | None:
     """Start the MVP locally and return its public URL, or None if not possible.
 
     Next.js: runs `next build` (blocking, capped by semaphore) then `next start`
-    (near-zero persistent RAM vs ~1 GB for `npm run dev`).
+    (near-zero persistent RAM vs ~1 GB for `npm run dev`) -- UNLESS ``dev`` is
+    set, which skips the build step entirely and runs `next dev` directly.
+    That trades ~1GB steady-state RAM for near-instant startup and hot
+    reload, so a founder can watch the coding agent's changes land live
+    while it's still mid-build, not just once the final production build
+    finishes. Calling this again with the same session_id (e.g. once the
+    real build completes) replaces this dev server the same way any other
+    repeat call already does -- see stop_local_preview below.
     """
     pkg = Path(local) / "package.json"
     deps: dict = {}
@@ -325,7 +332,33 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
             ]
         return ["sh", "-c", inner_sh]
 
-    if is_next:
+    if is_next and dev:
+        # No build step -- just get deps in place and let `next dev` compile
+        # on demand. Still capped by the same semaphore since `npm install`
+        # (when needed) is the same CPU-heavy step the production path guards.
+        install_sh = f"cd {local!r} && ([ -d node_modules ] || npm install --no-audit --no-fund --prefer-offline >>{log} 2>&1)"
+        acquired = _NODE_BUILD_SEM.acquire(timeout=_BUILD_TIMEOUT_S)
+        if not acquired:
+            logger.warning("Build semaphore timeout for %s (dev preview install)", session_id)
+            with _lock:
+                _previews.pop(session_id, None)
+            return None
+        try:
+            r = subprocess.run(_wrap(install_sh), timeout=_BUILD_TIMEOUT_S, capture_output=True)
+            if r.returncode != 0:
+                logger.warning("npm install failed for dev preview %s (exit %s)", session_id, r.returncode)
+                with _lock:
+                    _previews.pop(session_id, None)
+                return None
+        except Exception as e:
+            logger.warning("npm install error for dev preview %s: %s", session_id, e)
+            with _lock:
+                _previews.pop(session_id, None)
+            return None
+        finally:
+            _NODE_BUILD_SEM.release()
+        start_sh = f"cd {local!r} && npx next dev -p {port} -H 0.0.0.0 >>{log} 2>&1"
+    elif is_next:
         build_sh = (
             f"cd {local!r} && "
             f"([ -d node_modules ] || npm install --no-audit --no-fund --prefer-offline >>{log} 2>&1) && "

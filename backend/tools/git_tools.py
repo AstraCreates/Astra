@@ -2013,6 +2013,20 @@ def run_mvp_loop(
             _phase("Scaffolding Next.js skeleton…")
             _scaffold_nextjs_skeleton(local)
 
+        # Start a live, hot-reloading preview immediately -- before any coding
+        # pass runs -- so the founder can watch the site come together in
+        # real time instead of only seeing a URL once the whole build
+        # finishes. Best-effort: a dev preview that fails to start (no free
+        # port, non-Node project, etc.) must never block the actual build.
+        if (Path(local) / "package.json").exists():
+            try:
+                from backend.tools.local_preview import start_local_preview as _start_preview
+                dev_preview_url = _start_preview(local, session_id, company_name=Path(local).name, dev=True)
+                if dev_preview_url:
+                    _phase("Live preview is up — watch it update as the build progresses", preview_url=dev_preview_url)
+            except Exception as e:
+                logger.debug("live dev preview failed to start: %s", e)
+
         # Plan the product with MiniMax-M3 BEFORE building (the MVP planner), so
         # openclaude implements a real app from a concrete spec instead of improvising.
         # Only for the product build (technical) — the web/landing agent skips it (no

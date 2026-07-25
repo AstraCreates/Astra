@@ -749,8 +749,9 @@ export default function CompanyHome() {
                             const anyActive = squad.tasks.some(task => task.status === "active");
                             const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
                             const openTerminalTask = squad.tasks.find(task => task.id === chatTerminalTaskId);
+                            const hasLivePreview = squad.tasks.some(task => task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl));
                             return (
-                              <div className="ch-chat-bubble" style={{ maxWidth: openTerminalTask ? "min(640px, 92%)" : "min(420px, 84%)" }}>
+                              <div className="ch-chat-bubble" style={{ maxWidth: openTerminalTask || hasLivePreview ? "min(640px, 92%)" : "min(420px, 84%)" }}>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg)", marginBottom: 10, letterSpacing: "-0.005em" }}>{squad.name}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                                   {squad.tasks.map(task => (
@@ -782,6 +783,29 @@ export default function CompanyHome() {
                                         {chatTerminalTaskId === task.id && task.terminalSessionId && (
                                           <div style={{ marginTop: 8 }}>
                                             <TerminalPane sessionId={task.terminalSessionId} onClose={() => setChatTerminalTaskId("")} />
+                                          </div>
+                                        )}
+                                        {/* While this task is actually building, auto-show the
+                                            live (hot-reloading) preview so the site visibly comes
+                                            together rather than only appearing once finished --
+                                            the terminal stays a deliberate click (it's an
+                                            interactive RCE shell, not something to auto-connect). */}
+                                        {task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
+                                          <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
+                                              <span style={{ fontSize: 10.5, color: "var(--fm)", display: "flex", alignItems: "center", gap: 5 }}>
+                                                <Loader2 size={10} className="company-home-spin" /> Live preview — updating as the build progresses
+                                              </span>
+                                              <a href={task.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
+                                            </div>
+                                            <iframe
+                                              src={task.previewUrl}
+                                              title="Live build preview"
+                                              loading="lazy"
+                                              sandbox="allow-scripts allow-same-origin allow-forms"
+                                              referrerPolicy="no-referrer"
+                                              style={{ width: "100%", height: 280, border: 0, display: "block" }}
+                                            />
                                           </div>
                                         )}
                                       </div>
