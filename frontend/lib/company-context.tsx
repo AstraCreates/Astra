@@ -48,7 +48,10 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState("default");
   const setChats = useCallback((next: CompanyChatThread[]) => {
-    setChatsState(next);
+    // Filter out any chats currently pending deletion so that a stale poll
+    // response can't resurrect a just-deleted thread.
+    const filtered = next.filter(chat => !pendingDeleteThreadIdsRef.current.has(chat.id));
+    setChatsState(filtered);
     setChatsLoaded(true);
   }, []);
 
@@ -78,6 +81,13 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   // take a beat even though the actual create is a single small write.
   const pendingCreateRef = useRef<Map<string, Promise<string>>>(new Map());
 
+  // Track thread_ids currently being deleted client-side. If a stale poll
+  // response arrives after deleteChat's optimistic removal, the poll's
+  // setChats call should not resurrect the just-deleted thread. The poll
+  // timer and deleteChat are independent writers to the same chats state;
+  // this ref allows setChats to filter out any ids that are mid-delete.
+  const pendingDeleteThreadIdsRef = useRef<Set<string>>(new Set());
+
   const createChat = useCallback(async () => {
     const tempId = `optimistic-${Date.now()}`;
     setChatsState(prev => [...prev, { id: tempId, title: "New chat", updatedAt: new Date().toISOString() }]);
@@ -106,6 +116,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   const deleteChat = useCallback(async (threadId: string) => {
     const previous = chats;
+    pendingDeleteThreadIdsRef.current.add(threadId);
     setChatsState(prev => prev.filter(chat => chat.id !== threadId));
     if (activeThreadId === threadId) setActiveThreadId("default");
     try {
@@ -113,6 +124,8 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       setChats(data.chats);
     } catch {
       setChatsState(previous);
+    } finally {
+      pendingDeleteThreadIdsRef.current.delete(threadId);
     }
   }, [founderId, companyId, chats, activeThreadId]);
 

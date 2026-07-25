@@ -20,7 +20,7 @@ function lifecycleColor(lifecycle: string): string {
 }
 
 type GraphNode = { id: string; label: string; radius: number; color: string; isBrain: boolean; x: number; y: number };
-type GraphEdge = { id: string; source: string; target: string; weight: number };
+type GraphEdge = { id: string; source: string; target: string; weight: number; kind: "handoff" | "brain" | "initiative" };
 
 export default function SquadGraph({
   squads, brain, selectedSquadId, onSelectSquad,
@@ -72,14 +72,45 @@ export default function SquadGraph({
 
     const nodeIds = new Set(simNodes.map(n => n.id));
     const simEdges: GraphEdge[] = [];
+
+    // Handoff edges
+    const handoffEdgeSet = new Set<string>();
     for (const squad of squads) {
       for (const fromId of squad.handoffFromSquadIds) {
-        if (nodeIds.has(fromId)) simEdges.push({ id: `handoff-${fromId}-${squad.id}`, source: fromId, target: squad.id, weight: 1 });
+        if (nodeIds.has(fromId)) {
+          simEdges.push({ id: `handoff-${fromId}-${squad.id}`, source: fromId, target: squad.id, weight: 1, kind: "handoff" });
+          handoffEdgeSet.add(`${fromId}-${squad.id}`);
+          handoffEdgeSet.add(`${squad.id}-${fromId}`);
+        }
       }
     }
+
+    // Brain edges
     if (hasBrainLinks) {
       for (const link of brain.squadLinks) {
-        if (nodeIds.has(link.squadId)) simEdges.push({ id: `brain-${link.squadId}`, source: link.squadId, target: BRAIN_NODE_ID, weight: link.recordCount });
+        if (nodeIds.has(link.squadId)) simEdges.push({ id: `brain-${link.squadId}`, source: link.squadId, target: BRAIN_NODE_ID, weight: link.recordCount, kind: "brain" });
+      }
+    }
+
+    // Same-initiative edges
+    const initiativeMap = new Map<string, string[]>();
+    for (const squad of squads) {
+      if (!initiativeMap.has(squad.initiativeId)) {
+        initiativeMap.set(squad.initiativeId, []);
+      }
+      initiativeMap.get(squad.initiativeId)!.push(squad.id);
+    }
+
+    for (const squadIds of initiativeMap.values()) {
+      for (let i = 0; i < squadIds.length; i++) {
+        for (let j = i + 1; j < squadIds.length; j++) {
+          const id1 = squadIds[i];
+          const id2 = squadIds[j];
+          // Skip if already connected via handoff
+          if (!handoffEdgeSet.has(`${id1}-${id2}`)) {
+            simEdges.push({ id: `initiative-${id1}-${id2}`, source: id1, target: id2, weight: 0.5, kind: "initiative" });
+          }
+        }
       }
     }
 
@@ -118,6 +149,22 @@ export default function SquadGraph({
       node.y = height / 2 + ((node.y ?? 0) - midY) * fitScale;
     }
 
+    // forceLink() mutates each edge's source/target in place once the
+    // simulation initializes -- what started as plain string ids (matching
+    // GraphEdge's declared type) becomes a reference to the actual resolved
+    // node object. Every edge was silently dropping at render time as a
+    // result: `layout.positions.get(edge.source)` expects a string key, an
+    // object reference never matches one, so `src`/`tgt` were always
+    // undefined and the "if (!src || !tgt) return null" guard swallowed
+    // every single edge with no error. Restore the string-id invariant
+    // GraphEdge promises before handing this off to the renderer.
+    for (const edge of simEdges) {
+      const source = edge.source as unknown as string | { id: string };
+      const target = edge.target as unknown as string | { id: string };
+      edge.source = typeof source === "string" ? source : source.id;
+      edge.target = typeof target === "string" ? target : target.id;
+    }
+
     const positions = new Map<string, GraphNode>();
     for (const node of simNodes) positions.set(node.id, node);
     return { width, height, positions, edges: simEdges };
@@ -144,10 +191,31 @@ export default function SquadGraph({
             const tgt = layout.positions.get(edge.target);
             if (!src || !tgt) return null;
             const active = selectedSquadId === edge.source || selectedSquadId === edge.target;
+
+            const isInitiative = edge.kind === "initiative";
+            // var(--fm) (not a hardcoded rgba(0,0,0,...)) so edges are
+            // actually visible in dark theme -- black-based strokes at
+            // 8-12% alpha were essentially invisible against this app's
+            // dark background; --fm is the same muted foreground color
+            // already used for the node subtitle text below, and adapts
+            // correctly per theme. Prominence is carried by opacity instead
+            // of baking alpha into the color, so weight/active-state
+            // weighting still works the same as before.
+            const stroke = active ? "#002EFF" : "var(--fm)";
+            const strokeWidth = isInitiative
+              ? (active ? Math.min(2, 0.6 + edge.weight * 0.2) : Math.min(1.5, 0.5 + edge.weight * 0.15))
+              : (active ? Math.min(3.5, 1.4 + edge.weight * 0.4) : Math.min(2.5, 0.8 + edge.weight * 0.3));
+            const strokeDasharray = isInitiative ? "3,4" : undefined;
+            const opacity = isInitiative
+              ? (active ? 0.7 : Math.min(0.45, 0.22 + edge.weight * 0.08))
+              : (active ? 1 : Math.min(0.75, 0.45 + edge.weight * 0.15));
+
             return (
               <line key={edge.id} x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                stroke={active ? "rgba(0,46,255,0.55)" : "rgba(0,0,0,0.12)"}
-                strokeWidth={active ? Math.min(3.5, 1.4 + edge.weight * 0.4) : Math.min(2.5, 0.8 + edge.weight * 0.3)} />
+                stroke={stroke}
+                strokeWidth={strokeWidth}
+                strokeDasharray={strokeDasharray}
+                opacity={opacity} />
             );
           })}
           {Array.from(layout.positions.values()).map(node => {

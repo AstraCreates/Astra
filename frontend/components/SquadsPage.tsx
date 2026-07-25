@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/company-context";
-import { getCompanyHomeData, type CompanyHomeData } from "@/lib/company-os";
+import { deleteSquad, friendlyErrorMessage, getCompanyHomeData, retryTask, type CompanyHomeData } from "@/lib/company-os";
 import SquadGraph from "@/components/SquadGraph";
 import SquadDetailPanel from "@/components/SquadDetailPanel";
 
@@ -14,6 +14,8 @@ export default function SquadsPage() {
   const [home, setHome] = useState<CompanyHomeData | null>(null);
   const [notice, setNotice] = useState("");
   const [selectedSquadId, setSelectedSquadId] = useState("");
+  const [retryingTaskId, setRetryingTaskId] = useState("");
+  const [deletingSquadId, setDeletingSquadId] = useState("");
 
   // Same sequential setTimeout-chain + exponential-backoff pattern already
   // proven in CompanyHome.tsx's main poll -- a slow/erroring backend can't
@@ -52,8 +54,36 @@ export default function SquadsPage() {
     }
   }, [home, selectedSquadId]);
 
+  const handleRetryTask = async (taskId: string) => {
+    if (!founderId || !companyId) return;
+    setRetryingTaskId(taskId);
+    try {
+      const data = await retryTask({ founderId, companyId }, taskId);
+      setHome(data);
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not retry that task — try again."));
+    } finally {
+      setRetryingTaskId("");
+    }
+  };
+
+  const handleDeleteSquad = async () => {
+    if (!founderId || !companyId || !selectedSquad) return;
+    setDeletingSquadId(selectedSquad.id);
+    try {
+      await deleteSquad({ founderId, companyId }, selectedSquad.id);
+      setHome(current => current ? { ...current, squads: current.squads.filter(s => s.id !== selectedSquad.id) } : null);
+      setSelectedSquadId("");
+    } catch (error) {
+      setNotice(friendlyErrorMessage(error, "Could not delete that squad — try again."));
+    } finally {
+      setDeletingSquadId("");
+    }
+  };
+
   const squads = home?.squads ?? [];
   const selectedSquad = squads.find(squad => squad.id === selectedSquadId) ?? null;
+  const selectedSquadArtifacts = selectedSquad ? home?.brain.artifacts.filter(artifact => artifact.initiativeId === selectedSquad.initiativeId) ?? [] : [];
 
   return (
     <div style={{ padding: "24px 30px", display: "grid", gap: 16, maxWidth: 1400, margin: "0 auto" }}>
@@ -69,7 +99,13 @@ export default function SquadsPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(320px, 1fr)", gap: 16, alignItems: "start" }}>
           <SquadGraph squads={squads} brain={home.brain} selectedSquadId={selectedSquadId} onSelectSquad={setSelectedSquadId} />
-          <SquadDetailPanel squad={selectedSquad} />
+          <SquadDetailPanel
+            squad={selectedSquad}
+            artifacts={selectedSquadArtifacts}
+            retryingTaskId={retryingTaskId}
+            onRetryTask={handleRetryTask}
+            onDeleteSquad={handleDeleteSquad}
+          />
         </div>
       )}
     </div>
