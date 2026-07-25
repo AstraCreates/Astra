@@ -325,7 +325,7 @@ export default function CompanyHome() {
           if (!live) return;
           if (data) {
             setHome(applyPendingDeletes(data));
-            setChats(data.chats);
+            setChats(data.chats, "poll");
           }
           setNotice("");
           consecutiveFailures = 0;

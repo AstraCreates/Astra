@@ -21,7 +21,7 @@ interface CompanyContextValue {
   refreshCompanies: () => Promise<void>;
   chats: CompanyChatThread[];
   chatsLoaded: boolean;
-  setChats: (chats: CompanyChatThread[]) => void;
+  setChats: (chats: CompanyChatThread[], source?: "mutation" | "poll") => void;
   activeThreadId: string;
   setActiveThreadId: (threadId: string) => void;
   createChat: () => Promise<void>;
@@ -63,10 +63,40 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [chats, setChatsState] = useState<CompanyChatThread[]>([]);
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState("default");
-  const setChats = useCallback((next: CompanyChatThread[]) => {
+  // Chat mutations and the Home polling loop are independent writers. Keep
+  // a newly-created real id pinned until a poll has observed it, so an older
+  // in-flight poll cannot make the optimistic chat briefly disappear.
+  const pendingServerConfirmationThreadIdsRef = useRef<Set<string>>(new Set());
+
+  // Optimistic creates need to resolve a real backend thread before messages
+  // can be sent against them.
+  const pendingCreateRef = useRef<Map<string, Promise<string>>>(new Map());
+
+  // Track thread_ids currently being deleted client-side. If a stale poll
+  // response arrives after deleteChat's optimistic removal, the poll's
+  // setChats call should not resurrect the just-deleted thread.
+  const pendingDeleteThreadIdsRef = useRef<Set<string>>(new Set());
+
+  const setChats = useCallback((next: CompanyChatThread[], source: "mutation" | "poll" = "mutation") => {
     // Filter out any chats currently pending deletion so that a stale poll
     // response can't resurrect a just-deleted thread.
     const filtered = next.filter(chat => !pendingDeleteThreadIdsRef.current.has(chat.id));
+
+    if (source === "poll" && pendingServerConfirmationThreadIdsRef.current.size > 0) {
+      for (const threadId of Array.from(pendingServerConfirmationThreadIdsRef.current)) {
+        if (filtered.some(chat => chat.id === threadId)) {
+          pendingServerConfirmationThreadIdsRef.current.delete(threadId);
+        }
+      }
+
+      // This response was started before the create mutation committed. Wait
+      // for the next poll that contains every just-created real thread.
+      if (pendingServerConfirmationThreadIdsRef.current.size > 0) {
+        setChatsLoaded(true);
+        return;
+      }
+    }
+
     setChatsState(filtered);
     setChatsLoaded(true);
   }, []);
@@ -90,26 +120,13 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [chats, activeThreadId]);
 
-  // Optimistic: show the new chat immediately (matches the founder's own
-  // message echo pattern in CompanyHome) rather than waiting on the round
-  // trip -- ensure_company_operations/ensure_default_chat_thread run on
-  // every request this hits, so on a busy company the real response can
-  // take a beat even though the actual create is a single small write.
-  const pendingCreateRef = useRef<Map<string, Promise<string>>>(new Map());
-
-  // Track thread_ids currently being deleted client-side. If a stale poll
-  // response arrives after deleteChat's optimistic removal, the poll's
-  // setChats call should not resurrect the just-deleted thread. The poll
-  // timer and deleteChat are independent writers to the same chats state;
-  // this ref allows setChats to filter out any ids that are mid-delete.
-  const pendingDeleteThreadIdsRef = useRef<Set<string>>(new Set());
-
   const createChat = useCallback(async () => {
     const tempId = `optimistic-${Date.now()}`;
     setChatsState(prev => [...prev, { id: tempId, title: "New chat", updatedAt: new Date().toISOString() }]);
     setActiveThreadId(tempId);
     const creation = (async () => {
       const result = await createChatThread({ founderId, companyId });
+      pendingServerConfirmationThreadIdsRef.current.add(result.threadId);
       setChats(result.data.chats);
       setActiveThreadId(current => (current === tempId ? result.threadId : current));
       return result.threadId;
