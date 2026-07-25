@@ -1281,17 +1281,14 @@ function injectAgentCards() {
     }, ag.delay);
   });
 
-  // steer prompt at 15s
+  // steer at 15s — silently unlock + auto-type
   setTimeout(() => {
-    astraMsg(`The team is about 40% through. Want to redirect them? Type below — I'll pass it on immediately.`, () => {
-      chatState = 'steering';
-      unlockComposer('Redirect the team, add context…');
-      // auto-type steer suggestion
-      const ta = document.getElementById('compTa');
-      const steer = 'focus on enterprise, not small business';
-      let i = 0;
-      (function t() { if (i < steer.length) { ta.value += steer[i++]; setTimeout(t, 55 + Math.random()*30); } })();
-    });
+    chatState = 'steering';
+    unlockComposer('Redirect the team, add context…');
+    const ta = document.getElementById('compTa');
+    const steer = 'focus on enterprise, not small business';
+    let i = 0;
+    (function t() { if (i < steer.length) { ta.value += steer[i++]; setTimeout(t, 55 + Math.random()*30); } })();
   }, 15000);
 }
 
