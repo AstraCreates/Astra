@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
-from backend.company_os import append_message, company_os_version, create_company_os, create_thread, ensure_company_operations, ensure_default_chat_thread, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task, update_thread
+from backend.company_os import append_message, company_os_version, create_company_os, create_thread, ensure_company_operations, ensure_default_chat_thread, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task, update_task_attempt, update_thread
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.core.lt_cache import ttl_cache, bump as cache_bump
@@ -665,6 +665,13 @@ async def retry_company_os_task(company_id: str, task_id: str, founder_id: str, 
         raise HTTPException(status_code=404, detail="Task not found")
     if task.get("state") != "blocked":
         raise HTTPException(status_code=409, detail="Task is not blocked")
+    # A deploy/restart can kill the in-memory executor after it has persisted
+    # a running attempt. Without closing that orphan, execute_task's
+    # idempotency guard rejects the founder-approved retry forever.
+    for attempt in company.get("task_attempts", []):
+        if attempt.get("task_id") == task_id and attempt.get("state") in {"running", "working"}:
+            update_task_attempt(company_id, str(attempt["attempt_id"]), state="interrupted",
+                                failure_reason="Superseded by founder retry after executor recovery.")
     update_task(company_id, task_id, state="pending", blocked_reason=None)
     mission_id = task.get("mission_id")
     if mission_id:
