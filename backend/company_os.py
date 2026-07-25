@@ -321,11 +321,22 @@ def update_initiative(company_id: str, initiative_id: str, *, root: str | Path |
     return _update(company_id, "initiative", "initiative_id", initiative_id, changes, root)
 
 
-def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) -> dict[str, Any]:
-    """Persist derived initiative rollups without treating an empty task list as done.
+def reconcile_initiatives(company_id: str, *, root: str | Path | None = None, persist: bool = True) -> dict[str, Any]:
+    """Compute derived initiative rollups without treating an empty task list as done.
 
     This is deliberately callable after asynchronous task transitions and at
     recovery boundaries. Founder-authored archive state always wins.
+
+    ``persist=False`` (used by the hot GET /os read path) skips the durable
+    ``update_initiative`` write and only applies the derived fields to the
+    in-memory dict being returned. On a busy company with many initiatives,
+    calling this on every read *with* persistence turned an idle poll into a
+    write to the event log any time independent worker processes (each with
+    their own short-TTL read cache, see _read_company_os_state) raced on a
+    transient view of the data and both "detected" the same non-drift as
+    drift -- inflating the event log with no real state change (confirmed:
+    one real company accumulated 174 event-log segments and an 11MB
+    snapshot this way). A read should never durably write.
 
     Returns the freshly materialized company state (with any derived changes
     already applied in-place) so callers don't need a second full replay just
@@ -334,13 +345,28 @@ def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) ->
     company = get_company_os(company_id, root=root) or {}
     changes: dict[str, dict[str, Any]] = {}
     terminal = {"done", "complete", "completed", "archived", "cancelled"}
+
+    # Precompute grouped-by-initiative/task maps once instead of rescanning
+    # the full missions/tasks/approvals collections per initiative -- with N
+    # initiatives this was O(N * (missions + tasks + approvals*tasks)),
+    # which is where a busy company's multi-second GET /os came from.
+    missions_by_initiative: dict[str, list[dict[str, Any]]] = {}
+    for item in company.get("missions", []):
+        missions_by_initiative.setdefault(item.get("initiative_id"), []).append(item)
+    tasks_by_initiative: dict[str, list[dict[str, Any]]] = {}
+    for item in company.get("tasks", []):
+        tasks_by_initiative.setdefault(item.get("initiative_id"), []).append(item)
+    pending_approval_task_ids = {
+        item.get("task_id") for item in company.get("approvals", []) if item.get("state") == "pending"
+    }
+
     for initiative in company.get("initiatives", []):
         if initiative.get("state") == "archived":
             continue
         initiative_id = initiative["initiative_id"]
-        missions = [item for item in company.get("missions", []) if item.get("initiative_id") == initiative_id]
-        tasks = [item for item in company.get("tasks", []) if item.get("initiative_id") == initiative_id]
-        approvals = [item for item in company.get("approvals", []) if item.get("state") == "pending" and any(task.get("task_id") == item.get("task_id") for task in tasks)]
+        missions = missions_by_initiative.get(initiative_id, [])
+        tasks = tasks_by_initiative.get(initiative_id, [])
+        approvals = [task for task in tasks if task.get("task_id") in pending_approval_task_ids]
         complete = sum(1 for task in tasks if task.get("state") in terminal)
         progress = round(complete / len(tasks) * 100) if tasks else 0
         states = {str(item.get("state", "")) for item in missions + tasks}
@@ -358,7 +384,8 @@ def reconcile_initiatives(company_id: str, *, root: str | Path | None = None) ->
             state = "planned"
         derived = {"state": state, "progress": progress, "squad_count": len({item.get("squad_id") for item in missions}), "pending_approval_count": len(approvals)}
         if any(initiative.get(key) != value for key, value in derived.items()):
-            update_initiative(company_id, initiative_id, root=root, **derived)
+            if persist:
+                update_initiative(company_id, initiative_id, root=root, **derived)
             initiative.update(derived)
             changes[initiative_id] = derived
     return company

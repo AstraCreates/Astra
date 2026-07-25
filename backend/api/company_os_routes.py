@@ -196,7 +196,7 @@ _DASHBOARD_EXCLUDED_COLLECTIONS = ("policy_decisions", "mcp_audit", "dispatch_au
 
 @ttl_cache(ttl_seconds=2)
 def _read_company_os_state(company_id: str) -> dict[str, Any]:
-    state = reconcile_initiatives(company_id)
+    state = reconcile_initiatives(company_id, persist=False)
     return {key: value for key, value in state.items() if key not in _DASHBOARD_EXCLUDED_COLLECTIONS}
 
 
