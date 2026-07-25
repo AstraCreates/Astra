@@ -37,6 +37,22 @@ interface CompanyContextValue {
 
 const CompanyContext = createContext<CompanyContextValue | null>(null);
 
+// "default" used to be a safe, always-there fallback target. It no longer
+// is -- the default/"General" chat is deletable now, and stays deleted
+// (the backend only self-heals it back when it's the founder's LAST
+// remaining chat) whenever another chat still exists. Falling back to the
+// literal string "default" after that point lands on another archived,
+// sidebar-invisible thread whose legacy messages (every message sent
+// before chat threads existed backfills onto thread_id "default") are
+// still real and still render -- the founder sees a chat with no sidebar
+// entry, exactly the bug this fixes. Prefer "default" only while it's
+// still actually a live, visible chat; otherwise pick any real one.
+function pickFallbackThreadId(list: CompanyChatThread[], excludeId?: string): string {
+  const candidates = list.filter(chat => chat.id !== excludeId);
+  if (candidates.some(chat => chat.id === "default")) return "default";
+  return candidates[0]?.id ?? "default";
+}
+
 export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const { userId, isLoading } = useDevUser();
   const founderId = userId === "anon" ? "founder_001" : userId;
@@ -70,7 +86,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   // default thread instead of showing an empty feed for a chat that's gone.
   useEffect(() => {
     if (chats.length && !chats.some(chat => chat.id === activeThreadId)) {
-      setActiveThreadId("default");
+      setActiveThreadId(pickFallbackThreadId(chats));
     }
   }, [chats, activeThreadId]);
 
@@ -103,7 +119,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       await creation;
     } catch {
       setChatsState(prev => prev.filter(chat => chat.id !== tempId));
-      setActiveThreadId(current => (current === tempId ? "default" : current));
+      setActiveThreadId(current => (current === tempId ? pickFallbackThreadId(chats, tempId) : current));
     } finally {
       pendingCreateRef.current.delete(tempId);
     }
@@ -118,7 +134,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     const previous = chats;
     pendingDeleteThreadIdsRef.current.add(threadId);
     setChatsState(prev => prev.filter(chat => chat.id !== threadId));
-    if (activeThreadId === threadId) setActiveThreadId("default");
+    if (activeThreadId === threadId) setActiveThreadId(pickFallbackThreadId(previous, threadId));
     try {
       const data = await deleteChatThread({ founderId, companyId }, threadId);
       setChats(data.chats);
