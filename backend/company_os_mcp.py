@@ -93,8 +93,9 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
     args = dict(arguments or {})
     args.setdefault("company_id", company_id)
     args.setdefault("founder_id", company["founder_id"])
-    if tool == "astra_company_research":
-        # Only this tool reads task_id (to persist a live search-count onto
+    _research_tools = ("astra_company_research", "astra_quick_search")
+    if tool in _research_tools:
+        # Only these tools read task_id (to persist a live search-count onto
         # the task as evidence comes in) -- injecting it for every tool broke
         # the generic runtime registry's strict unknown-argument check for
         # handlers that don't accept **kwargs.
@@ -106,7 +107,9 @@ def invoke(company_id: str, tool: str, arguments: Mapping[str, Any] | None = Non
     call_id = hashlib.sha256(f"{company_id}:{tool}:{canonical}".encode()).hexdigest()[:20]
     append_event(company_id, "mcp.tool_called", {"call_id": call_id, "tool": tool,
                   "task_id": task_id, "mission_id": mission_id,
-                  "profile": "company_os_deep_research" if tool == "astra_company_research" else "quick_lookup_or_specialist",
+                  "profile": "company_os_deep_research" if tool == "astra_company_research"
+                             else "company_os_quick_research" if tool == "astra_quick_search"
+                             else "quick_lookup_or_specialist",
                   "arguments": _safe_args(args)})
     try:
         from backend import astra_mcp

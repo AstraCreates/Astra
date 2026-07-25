@@ -371,13 +371,21 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
     if department == "research":
         specialist_roles = role_keys[1:] or [role(0)]
         evidence_keys: list[str] = []
+        # A single specialist lane means select_squad_profile already judged
+        # this narrow enough not to need parallel evidence-gathering roles --
+        # the cheapest available signal that this is a "small" research ask,
+        # with no new classifier call needed. Favor the fast single-pass
+        # search+fetch (~5 sources, no supervisor loop) for it; anything
+        # broad enough to warrant multiple parallel specialists keeps the
+        # full Open Deep Research pipeline.
+        research_tool = "astra_quick_search" if len(specialist_roles) == 1 else "astra_company_research"
         for specialist_role in specialist_roles:
             role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
             key = f"research-{specialist_role}"
             evidence_keys.append(key)
             add(specialist_role, key, f"{role_title}: gather validated evidence{suffix}",
                 f"Independently investigate the {role_title.lower()} dimension with fetched, cited sources.",
-                f"{role_title} evidence pack", "internal_analysis", group="evidence-lanes", mcp_tool="astra_company_research")
+                f"{role_title} evidence pack", "internal_analysis", group="evidence-lanes", mcp_tool=research_tool)
         add(role(0), "research-review", f"Review evidence and resolve conflicts{suffix}",
             "Compare specialist evidence, validate coverage, and identify targeted follow-ups.",
             "Validated evidence review", "internal_review", depends_on=evidence_keys, group="review")

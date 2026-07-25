@@ -410,6 +410,11 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "task_id": {"type": "string"}, "mission_id": {"type": "string"}, "squad_id": {"type": "string"}, "initiative_id": {"type": "string"}, "deep_worker": {"type": "boolean", "default": False}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
     },
     {
+        "name": "astra_quick_search",
+        "description": "Fast, single-pass evidence search for a Company OS Research squad -- roughly 5 sources, one search round, no Open Deep Research supervisor loop. For narrow, single-specialist research asks where the full multi-turn deep-research pipeline is more depth than the question needs; astra_company_research remains the default for anything broader.",
+        "inputSchema": _schema({"company_id": {"type": "string"}, "subject": {"type": "string"}, "focus": {"type": "string", "default": "market"}, "task_id": {"type": "string"}, "mission_id": {"type": "string"}, "squad_id": {"type": "string"}, "initiative_id": {"type": "string"}, "founder_id": {"type": "string"}}, ["company_id", "subject"]),
+    },
+    {
         "name": "astra_company_tool_catalog",
         "description": "List the MCP and specialist tools available to Copilot and Company OS squads, including capability, availability, mutability, and approval risk.",
         "inputSchema": _schema({"company_id": {"type": "string"}, "include_external": {"type": "boolean", "default": True}, "founder_id": {"type": "string"}}, ["company_id"]),
@@ -844,14 +849,17 @@ def _company_research(args: dict) -> dict:
             except Exception:
                 pass
     attempts = []
-    # settings.quick_research_mode short-circuits straight to the plain
-    # search+fetch call below (the same one the ODR supervisor only ever
-    # reaches itself, via its own recursive deep_worker tool call) --
-    # skipping the supervisor's multi-turn LLM loop entirely, capped at one
-    # attempt regardless of deep_research_max_attempts. That loop is the
-    # dominant token/latency cost of a research task; this is strictly a
-    # dev-iteration speed/cost switch, not a real research mode.
-    quick = bool(settings.quick_research_mode)
+    # Two independent ways to land on the same fast path: settings.quick_research_mode
+    # is a blanket dev/test switch (every call goes quick, for cheap iteration);
+    # args["quick"] is per-call, set by the standalone astra_quick_search tool
+    # (see _quick_search below) and by dispatch favoring it outright for small,
+    # single-specialist research tasks (company_os_dispatch.py's squad_task_dag).
+    # Either way it short-circuits straight to the plain search+fetch call below
+    # (the same one the ODR supervisor only ever reaches itself, via its own
+    # recursive deep_worker tool call) -- skipping the supervisor's multi-turn
+    # LLM loop entirely, capped at one attempt. That loop is the dominant
+    # token/latency cost of a research task, not the search+fetch itself.
+    quick = bool(settings.quick_research_mode) or bool(args.get("quick"))
     max_attempts = 1 if quick else max(1, int(settings.deep_research_max_attempts))
     for attempt_number in range(max_attempts):
         started = time.perf_counter()
@@ -902,18 +910,25 @@ def _company_research(args: dict) -> dict:
             evidence.update({"research_status": "validated" if validation["ok"] else "evidence_incomplete",
                              "research_metadata": metadata, "evidence_validation": validation,
                              "attempts": attempts + [metadata]})
-            if validation["ok"] or attempt_number + 1 >= int(settings.deep_research_max_attempts):
+            if validation["ok"] or attempt_number + 1 >= max_attempts:
                 return {"ok": validation["ok"], **evidence}
         except Exception as exc:
             metadata = {"profile": "company_os_deep_research", "model": settings.deep_research_model,
                         "provider": settings.deep_research_model.split("/", 1)[0], "attempt": attempt_number + 1,
                         "latency_ms": round((time.perf_counter() - started) * 1000), "error": str(exc)}
             attempts.append(metadata)
-            if attempt_number + 1 >= int(settings.deep_research_max_attempts):
+            if attempt_number + 1 >= max_attempts:
                 return {"ok": False, "error": str(exc), "research_status": "evidence_incomplete",
                         "research_metadata": metadata, "attempts": attempts}
         time.sleep(float(settings.deep_research_backoff_seconds) * (2 ** attempt_number))
     return {"ok": False, "research_status": "evidence_incomplete", "attempts": attempts}
+
+def _quick_search(args: dict) -> dict:
+    """astra_quick_search's handler -- the exact same call, evidence
+    validation, and search-count tracking as _company_research, just
+    forced onto the fast path regardless of settings.quick_research_mode.
+    A standalone tool rather than a duplicate implementation."""
+    return _company_research({**args, "quick": True})
 
 def _company_tool_catalog(args: dict) -> dict:
     from backend.company_os import get_company_os
@@ -973,6 +988,7 @@ _DISPATCH: dict[str, Any] = {
     "astra_credits": _credits,
     "astra_company_os_context": _company_os_context,
     "astra_company_research": _company_research,
+    "astra_quick_search": _quick_search,
     "astra_company_tool_catalog": _company_tool_catalog,
     "vercel_deploy": _vercel_deploy,
 }
