@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #060608;
+  --sb-bg:      #080A12;
+  --s1:         #0f0f14;
+  --s2:         #141419;
+  --s3:         #1a1a22;
+  --blue:       #7d8fff;
+  --blue-dim:   rgba(125,143,255,0.13);
+  --blue-glow:  rgba(125,143,255,0.22);
+  --text:       #edf1fb;
+  --fg-dim:     #a8aec8;
+  --fg-mute:    #5a607a;
+  --bd:         rgba(255,255,255,0.07);
+  --bd2:        rgba(255,255,255,0.12);
+  --mint:       #22c55e;
+  --mint-dim:   rgba(34,197,94,0.12);
+  --red:        #ef4444;
+  --pink:       #FF2BBF;
+  --ease:       cubic-bezier(0.16,1,0.3,1);
+  --mono:       'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+
+/* ══ SIDEBAR ══════════════════════════════════════ */
+.sb {
+  width: 214px;
+  flex-shrink: 0;
+  background: var(--sb-bg);
+  border-right: 1px solid var(--bd);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.sb-logo {
+  padding: 18px 16px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sb-logo-mark {
+  width: 22px;
+  height: 22px;
+  background: white;
+  -webkit-mask: url('logo.png') center/contain no-repeat;
+  mask: url('logo.png') center/contain no-repeat;
+  flex-shrink: 0;
+}
+.sb-logo-text { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; }
+.sb-logo-sub  { font-size: 9px; font-weight: 600; color: var(--fg-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-top: 1px; }
+
+.sb-nav { flex: 1; padding: 4px 8px; }
+.sb-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-mute);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  margin-bottom: 1px;
+  user-select: none;
+}
+.sb-link:hover { background: rgba(255,255,255,.04); color: var(--fg-dim); }
+.sb-link.active { font-weight: 600; color: var(--text); background: rgba(255,255,255,.06); border-left-color: var(--blue); }
+.sb-link svg { flex-shrink: 0; opacity: 0.65; }
+.sb-link.active svg { opacity: 1; }
+
+.sb-run {
+  margin: 6px 8px 4px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: rgba(125,143,255,0.07);
+  border: 1px solid rgba(125,143,255,0.16);
+  cursor: pointer;
+  display: none;
+  transition: background .15s;
+}
+.sb-run:hover { background: rgba(125,143,255,0.11); }
+.sb-run-top { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.sb-run-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); flex-shrink: 0; }
+.sb-run-label { font-size: 11px; font-weight: 600; color: var(--blue); }
+.sb-run-name { font-size: 11px; color: var(--fg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.sb-bottom {
+  padding: 10px 8px 16px;
+  border-top: 1px solid var(--bd);
+}
+.user-row { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; cursor: pointer; transition: background .12s; }
+.user-row:hover { background: rgba(255,255,255,.04); }
+.user-av { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg,#526cff,#9b3cff); display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.user-name { font-size: 12px; font-weight: 600; color: var(--fg-dim); }
+.user-role { font-size: 10.5px; color: var(--fg-mute); }
+
+
+/* ══ MAIN ════════════════════════════════════════ */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.top-bar {
+  height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--bd);
+  gap: 10px;
+  flex-shrink: 0;
+  background: var(--sb-bg);
+}
+.top-bar-title { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.top-bar-sep { color: var(--fg-mute); }
+.top-bar-sub { font-size: 12.5px; color: var(--fg-mute); }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+}
+.badge.running { background: var(--mint-dim); border: 1px solid rgba(34,197,94,0.2); color: var(--mint); }
+.badge.done    { background: var(--blue-dim); border: 1px solid rgba(125,143,255,0.2); color: var(--blue); }
+.badge .dot { display: none; }
+
+/* ══ SCREENS ═════════════════════════════════════ */
+.screen { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.screen.active { display: flex; animation: scIn .32s var(--ease) forwards; }
+@keyframes scIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+/* ══ APPLE GLASS VARS (match real app) ══════════ */
+:root {
+  --apple-ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+  --apple-ease-smooth: cubic-bezier(0.28,0.11,0.32,1);
+  --apple-ease-out:    cubic-bezier(0.16,1,0.3,1);
+  --apple-glass-bg:          linear-gradient(180deg,rgba(255,255,255,0.07) 0%,rgba(255,255,255,0.025) 100%);
+  --apple-glass-bg-strong:   linear-gradient(180deg,rgba(255,255,255,0.10) 0%,rgba(255,255,255,0.04) 100%);
+  --apple-glass-bg-soft:     linear-gradient(180deg,rgba(255,255,255,0.045) 0%,rgba(255,255,255,0.012) 100%);
+  --apple-glass-border:      rgba(255,255,255,0.10);
+  --apple-glass-border-strong: rgba(255,255,255,0.16);
+  --apple-glass-highlight:   inset 0 1px 0 rgba(255,255,255,0.10);
+  --apple-glass-shadow:      0 10px 36px rgba(0,0,0,0.30),var(--apple-glass-highlight);
+  --apple-glass-shadow-hover:0 14px 44px rgba(0,0,0,0.42),inset 0 1px 0 rgba(255,255,255,0.14),0 0 0 3px rgba(82,108,255,0.18);
+  --text-2: #a8aec8;
+  --text-3: #5a607a;
+}
+
+/* ══ SCREEN 1 — dashboard / new run ══════════════ */
+.dash-hero {
+  flex-shrink: 0;
+  padding: 28px 32px 26px;
+  background: linear-gradient(160deg, #0d1340 0%, #0a0f2e 45%, #060608 100%);
+  border-bottom: 1px solid var(--bd);
+  position: relative; overflow: hidden;
+}
+.dash-hero::after {
+  content: '';
+  position: absolute; right: -40px; top: -60px;
+  width: 320px; height: 240px;
+  background: radial-gradient(ellipse, rgba(82,108,255,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+.dash-hero-greeting { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 4px; }
+.dash-hero-sub { font-size: 13px; color: rgba(237,241,251,0.55); }
+
+.dash-body {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* empty state */
+.dash-empty {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 0 24px 20px;
+  transition: opacity .2s;
+}
+.dash-logo-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  background: rgba(82,108,255,0.15); border: 1px solid rgba(82,108,255,0.22);
+  display: grid; place-items: center; margin-bottom: 4px;
+}
+.dash-logo-mark {
+  width: 26px; height: 26px;
+  background: white;
+  -webkit-mask: url('logo.png') center/contain no-repeat;
+  mask: url('logo.png') center/contain no-repeat;
+}
+.dash-empty-h { font-size: 19px; font-weight: 700; letter-spacing: -0.025em; }
+.dash-empty-s { font-size: 13px; color: var(--fg-mute); margin-top: 2px; }
+.dash-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.dash-chip {
+  padding: 7px 16px; border-radius: 999px;
+  background: var(--s2); border: 1px solid var(--bd2);
+  font-size: 12.5px; font-weight: 500; color: var(--fg-dim);
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.dash-chip:hover { background: var(--s3); border-color: rgba(125,143,255,0.25); color: var(--text); }
+
+/* chat thread */
+.chat-thread {
+  flex: 1; overflow-y: auto; padding: 20px 0 8px;
+  display: none; flex-direction: column; gap: 18px;
+}
+.chat-thread.visible { display: flex; }
+.chat-msg { display: flex; gap: 10px; padding: 0 24px; max-width: 780px; width: 100%; align-self: center; box-sizing: border-box; }
+.chat-msg.user { justify-content: flex-end; }
+.chat-msg.astra { justify-content: flex-start; align-items: flex-start; }
+.chat-bubble-user {
+  max-width: 72%; padding: 10px 15px; border-radius: 18px 18px 4px 18px;
+  background: linear-gradient(180deg,#6b85ff,#2d48c8);
+  color: #fff; font-size: 13.5px; line-height: 1.55; letter-spacing: -0.005em;
+  box-shadow: 0 2px 12px rgba(45,72,200,0.35);
+  animation: logIn .25s var(--ease) both;
+}
+.chat-av {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; margin-top: 2px;
+  background: rgba(82,108,255,0.15); border: 1px solid rgba(82,108,255,0.22);
+  display: grid; place-items: center;
+}
+.chat-av-mark { width: 16px; height: 16px; background: white; -webkit-mask: url('logo.png') center/contain no-repeat; mask: url('logo.png') center/contain no-repeat; }
+.chat-bubble-astra {
+  max-width: 78%; padding: 10px 15px; border-radius: 4px 18px 18px 18px;
+  background: var(--s2); border: 1px solid var(--bd);
+  font-size: 13.5px; line-height: 1.6; color: var(--fg-dim); letter-spacing: -0.005em;
+  animation: logIn .25s var(--ease) both;
+}
+.chat-bubble-astra strong { color: var(--text); font-weight: 600; }
+.chat-typing { display: flex; gap: 4px; align-items: center; padding: 4px 2px; }
+.chat-typing span {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--fg-mute);
+  animation: typingDot 1.2s ease-in-out infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: .15s; }
+.chat-typing span:nth-child(3) { animation-delay: .30s; }
+@keyframes typingDot { 0%,60%,100%{opacity:.25;transform:scale(1)} 30%{opacity:1;transform:scale(1.3)} }
+
+.dash-composer { flex-shrink: 0; padding: 0 24px 24px; width: 100%; max-width: 780px; align-self: center; }
+
+/* ── Real AstraCopilotComposer CSS ─────────────── */
+.astra-composer-shell {
+  position: relative; width: 100%; min-height: 132px; padding: 4px;
+  border: 1px solid var(--apple-glass-border); border-radius: 24px;
+  background: var(--apple-glass-bg-strong);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  box-shadow: var(--apple-glass-shadow); overflow: visible; isolation: isolate;
+  transition: border-color .28s var(--apple-ease-out), box-shadow .28s var(--apple-ease-out), transform .28s var(--apple-ease-out);
+}
+.astra-composer-shell:focus-within {
+  border-color: rgba(82,108,255,0.45);
+  box-shadow: var(--apple-glass-shadow-hover);
+  transform: translateY(-1px);
+}
+.astra-composer-shell textarea {
+  display: block; width: 100%; min-height: 72px; max-height: 200px;
+  resize: none; border: 0; outline: 0; padding: 18px 18px 6px;
+  background: transparent; color: var(--text);
+  font: 14.5px/1.55 'Hanken Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.005em; box-sizing: border-box;
+  border-radius: 20px 20px 0 0;
+}
+.astra-composer-shell textarea::placeholder { color: rgba(237,241,251,0.36); }
+.astra-composer-footer {
+  min-height: 50px; display: flex; align-items: center;
+  justify-content: space-between; gap: 10px; padding: 6px 12px 10px 16px;
+}
+.astra-composer-tools { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-2); }
+.astra-composer-tools > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; color: var(--text-3); }
+.astra-composer-tools > small { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-3); }
+.astra-composer-submit {
+  height: 36px; padding: 0 6px 0 14px;
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  border: 0; border-radius: 999px;
+  background: linear-gradient(180deg,#6b85ff 0%,#2d48c8 100%);
+  color: #fff; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(45,72,200,0.45), inset 0 1px 0 rgba(255,255,255,0.30);
+  transition: transform .25s var(--apple-ease-spring), box-shadow .25s var(--apple-ease-smooth), opacity .25s;
+}
+.astra-composer-submit-label { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
+.astra-composer-submit:hover:not(:disabled) {
+  background: linear-gradient(180deg,#7d95ff 0%,#3859e0 100%);
+  transform: translateY(-1px) scale(1.06);
+  box-shadow: 0 6px 20px rgba(45,72,200,0.55), inset 0 1px 0 rgba(255,255,255,0.40);
+}
+.astra-composer-submit:active:not(:disabled) { transform: scale(0.94); }
+.astra-composer-submit:disabled { background: var(--apple-glass-bg-soft); color: var(--text-3); box-shadow: none; cursor: default; opacity: 0.6; }
+
+/* ══ SCREEN 2 — run / session ════════════════════ */
+.run-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.run-body {
+  flex: 1; overflow-y: auto;
+  padding: 16px 22px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+/* agent card */
+.ag {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .35s var(--ease), transform .35s var(--ease), border-color .3s;
+}
+.ag.visible { opacity: 1; transform: translateY(0); }
+.ag.adjusted { border-color: rgba(125,143,255,0.3); }
+
+.ag-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+}
+.ag-sym {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  display: grid; place-items: center;
+  font-size: 14px; flex-shrink: 0;
+  font-family: var(--mono);
+}
+.ag-sym.c  { background: rgba(125,143,255,0.12); color: var(--blue); }
+.ag-sym.g  { background: rgba(34,197,94,0.1); color: var(--mint); }
+.ag-sym.p  { background: rgba(255,43,191,0.1); color: var(--pink); }
+.ag-sym.o  { background: rgba(251,191,36,0.1); color: #fbbf24; }
+
+.ag-info { flex: 1; min-width: 0; }
+.ag-name { font-size: 12.5px; font-weight: 600; }
+.ag-instr { font-size: 11px; color: var(--fg-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+.ag-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+/* circular progress */
+.ag-ring { position: relative; width: 34px; height: 34px; flex-shrink: 0; }
+.ag-ring svg { transform: rotate(-90deg); }
+.ag-ring-pct {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font: 600 8.5px var(--mono); color: var(--fg-mute);
+}
+.ag-ring-pct.done { color: var(--mint); }
+
+.ag-status {
+  font-size: 10.5px; font-weight: 600; font-family: var(--mono);
+  letter-spacing: 0.05em; text-transform: uppercase;
+}
+.ag-status.running  { color: var(--blue); }
+.ag-status.done     { color: var(--mint); }
+.ag-status.adjusted { color: var(--blue); }
+
+/* progress bar under header */
+.ag-bar-wrap { height: 2px; background: rgba(255,255,255,0.05); }
+.ag-bar {
+  height: 100%;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 1.2s var(--ease);
+}
+
+/* action pill */
+.ag-action {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 14px;
+  font-size: 11px; color: var(--fg-dim);
+  border-top: 1px solid var(--bd);
+  background: rgba(0,0,0,0.15);
+  min-height: 32px;
+}
+.ag-action-dot { display: none; }
+.ag-action-text {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--fg-dim);
+}
+.ag-action.done { background: rgba(34,197,94,0.05); }
+.ag-action.done .ag-action-text { color: var(--mint); }
+
+/* log stream */
+.ag-log {
+  padding: 8px 14px 10px;
+  max-height: 88px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--bd);
+}
+.ag-log-line {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--fg-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  animation: logIn .25s var(--ease) forwards;
+}
+.ag-log-line.c-blue  { color: var(--blue); }
+.ag-log-line.c-mint  { color: var(--mint); }
+.ag-log-line.c-red   { color: var(--red); }
+.ag-log-line.c-white { color: var(--fg-dim); }
+@keyframes logIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+
+/* copilot steer bar */
+.copilot-bar {
+  border-top: 1px solid var(--bd);
+  padding: 10px 18px 14px;
+  background: var(--sb-bg);
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .35s var(--ease), transform .35s var(--ease);
+}
+.copilot-bar.visible { opacity: 1; transform: translateY(0); }
+.cop-label { font-size: 10.5px; font-weight: 600; color: var(--fg-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 7px; }
+.cop-row {
+  display: flex; align-items: center; gap: 9px;
+  background: var(--s2); border: 1px solid var(--bd2);
+  border-radius: 11px; padding: 9px 10px 9px 15px;
+  transition: border-color .2s, box-shadow .2s;
+}
+.cop-row:focus-within { border-color: rgba(125,143,255,0.35); box-shadow: 0 0 0 3px rgba(125,143,255,0.08); }
+.cop-input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: 13px 'Hanken Grotesk',system-ui,sans-serif; }
+.cop-input::placeholder { color: var(--fg-mute); }
+.cop-send {
+  padding: 5px 13px; border-radius: 7px; border: 0;
+  background: rgba(125,143,255,0.15); color: var(--blue);
+  font: 600 12px 'Hanken Grotesk',system-ui,sans-serif;
+  cursor: pointer; transition: background .15s, transform .15s var(--ease); flex-shrink: 0;
+}
+.cop-send:hover { background: rgba(125,143,255,0.25); transform: scale(1.03); }
+.cop-send:active { transform: scale(0.96); }
+
+/* ══ SCREEN 3 — automations ══════════════════════ */
+.auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 18px 22px; }
+.auto-card {
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 15px;
+  opacity: 0; transform: translateY(6px) scale(0.98);
+  transition: opacity .35s var(--ease), transform .35s var(--ease);
+}
+.auto-card.visible { opacity: 1; transform: translateY(0) scale(1); }
+.auto-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.auto-sym { font-family: var(--mono); font-size: 14px; color: var(--blue); width: 24px; text-align: center; }
+.auto-name { font-size: 12.5px; font-weight: 600; }
+.auto-chip { margin-left: auto; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+.auto-chip.live { background: var(--mint-dim); color: var(--mint); border: 1px solid rgba(34,197,94,0.18); }
+.auto-chip.done { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(125,143,255,0.18); }
+.auto-bar-wrap { height: 3px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-bottom: 8px; }
+.auto-bar { height: 100%; border-radius: 2px; transform: scaleX(0); transform-origin: left; transition: transform 1.8s var(--ease); }
+.auto-desc { font-size: 11.5px; color: var(--fg-mute); line-height: 1.5; }
+.auto-stats { display: flex; gap: 0; margin: 9px 0 4px; border-top: 1px solid var(--bd); padding-top: 8px; }
+.auto-stat { flex: 1; text-align: center; }
+.auto-stat + .auto-stat { border-left: 1px solid var(--bd); }
+.auto-stat-n { display: block; font-size: 14px; font-weight: 700; font-family: var(--mono); color: var(--text); letter-spacing: -0.02em; }
+.auto-stat-l { display: block; font-size: 9.5px; color: var(--fg-mute); margin-top: 1px; }
+.auto-sub { font-family: var(--mono); font-size: 10px; color: var(--fg-mute); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--bd); }
+
+/* ══ SCREEN 4 — library ══════════════════════════ */
+.lib-wrap { padding: 18px 22px; }
+.lib-section { font-size: 11px; font-weight: 600; color: var(--fg-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; }
+.lib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.lib-card {
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 13px; padding: 15px;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .38s var(--ease), transform .38s var(--ease), border-color .2s, box-shadow .2s;
+  cursor: default;
+}
+.lib-card.visible { opacity: 1; transform: translateY(0); }
+.lib-card:hover { border-color: var(--bd2); box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+.lib-sym { font-family: var(--mono); font-size: 16px; margin-bottom: 9px; color: var(--blue); }
+.lib-title { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+.lib-desc { font-size: 11px; color: var(--fg-mute); line-height: 1.5; }
+.lib-tag {
+  display: inline-flex; align-items: center;
+  margin-top: 10px; padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 600;
+}
+.lib-tag.blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(125,143,255,0.2); }
+.lib-tag.mint { background: var(--mint-dim); color: var(--mint); border: 1px solid rgba(34,197,94,0.18); }
+.lib-tag.pink { background: rgba(255,43,191,0.1); color: var(--pink); border: 1px solid rgba(255,43,191,0.18); }
+.lib-tag.dim  { background: rgba(255,255,255,0.04); color: var(--fg-mute); border: 1px solid var(--bd); }
+.lib-card.wide {
+  grid-column: 1/-1;
+  background: linear-gradient(135deg,rgba(125,143,255,0.06) 0%,rgba(255,43,191,0.03) 100%);
+  border-color: rgba(125,143,255,0.15);
+}
+.lib-wide-h { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.4; margin-bottom: 5px; }
+.lib-wide-s { font-size: 12.5px; color: var(--fg-dim); }
+
+/* ══ TOAST ═══════════════════════════════════════ */
+.steer-toast {
+  position: fixed;
+  top: 60px; right: 20px;
+  z-index: 100;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(20,20,28,0.96);
+  border: 1px solid rgba(125,143,255,0.35);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 1px rgba(125,143,255,0.08);
+  backdrop-filter: blur(20px);
+  font-size: 12.5px; font-weight: 500; color: var(--text);
+  opacity: 0; transform: translateY(-6px) scale(0.97);
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+  pointer-events: none;
+}
+.steer-toast.show { opacity: 1; transform: translateY(0) scale(1); }
+.steer-toast-icon { font-family: var(--mono); color: var(--blue); font-size: 14px; }
+.steer-toast-sub { font-size: 11px; color: var(--fg-mute); margin-top: 1px; }
+
+/* ══ BRAIN BANNER ════════════════════════════════ */
+.brain-banner {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 9px 12px 10px;
+  border-radius: 10px;
+  background: rgba(125,143,255,0.06);
+  border: 1px solid rgba(125,143,255,0.14);
+  margin-bottom: 4px;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .4s var(--ease), transform .4s var(--ease);
+}
+.brain-banner.visible { opacity: 1; transform: translateY(0); }
+.brain-sym { font-family: var(--mono); font-size: 13px; color: var(--blue); padding-top: 1px; flex-shrink: 0; }
+.brain-content { flex: 1; min-width: 0; }
+.brain-title { font-size: 11px; color: var(--fg-dim); margin-bottom: 5px; }
+.brain-title strong { color: var(--blue); font-weight: 600; }
+.brain-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.brain-chip {
+  font-size: 10px; font-family: var(--mono); padding: 2px 8px; border-radius: 999px;
+  background: rgba(125,143,255,0.1); border: 1px solid rgba(125,143,255,0.2);
+  color: var(--blue);
+  opacity: 0; animation: logIn .3s var(--ease) forwards;
+}
+.brain-chip.mint { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); color: var(--mint); }
+.brain-chip.dim  { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--fg-mute); }
+
+/* ══ ADJUST FLASH ════════════════════════════════ */
+@keyframes adjustFlash {
+  0%   { border-color: rgba(125,143,255,0.7); box-shadow: 0 0 0 2px rgba(125,143,255,0.25); }
+  50%  { border-color: rgba(125,143,255,0.9); box-shadow: 0 0 0 4px rgba(125,143,255,0.18); }
+  100% { border-color: rgba(125,143,255,0.3); box-shadow: none; }
+}
+.ag.flash { animation: adjustFlash .6s var(--ease) forwards; }
+.ag-status.adjusting { color: #fbbf24; }
+
+/* ══ LIVE FEED ═══════════════════════════════════ */
+.live-feed {
+  padding: 0 22px 18px;
+}
+.live-feed-label { font-size: 10.5px; font-weight: 600; color: var(--fg-mute); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+.live-feed-log {
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 10px;
+  padding: 10px 14px;
+  max-height: 120px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.live-feed-line {
+  font-family: var(--mono); font-size: 10.5px; color: var(--fg-mute);
+  display: flex; gap: 10px;
+  opacity: 0; animation: logIn .25s var(--ease) forwards;
+}
+.live-feed-line .ts { color: var(--fg-mute); opacity: 0.5; flex-shrink: 0; }
+.live-feed-line .ev { color: var(--fg-dim); }
+.live-feed-line .ev.ok { color: var(--mint); }
+.live-feed-line .ev.info { color: var(--blue); }
+
+/* ══ CHAT INLINE AGENTS ═════════════════════════ */
+.chat-msg.agents, .chat-msg.outputs { max-width: 100%; padding: 0 24px; align-items: flex-start; }
+.chat-av-top { align-self: flex-start; margin-top: 2px; }
+.chat-agents-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
+.chat-outputs-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; min-width: 0; }
+.chat-output-card {
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 13px 14px;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity .35s var(--ease), transform .35s var(--ease);
+}
+.chat-output-card.visible { opacity: 1; transform: translateY(0); }
+.chat-output-sym { font-family: var(--mono); font-size: 15px; color: var(--blue); margin-bottom: 7px; }
+.chat-output-name { font-size: 11.5px; font-weight: 600; margin-bottom: 3px; color: var(--text); }
+.chat-output-desc { font-size: 10.5px; color: var(--fg-mute); line-height: 1.45; margin-bottom: 8px; }
+
+/* Astra text bubble — flat, no card */
+.chat-bubble-astra { background: transparent; border: none; padding: 2px 0; font-size: 13.5px; line-height: 1.6; color: var(--fg-dim); letter-spacing: -0.005em; }
+.chat-bubble-astra strong { color: var(--text); font-weight: 600; }
+
+/* ══ GLOW ════════════════════════════════════════ */
+.glow { position:fixed; pointer-events:none; z-index:-1; border-radius:50%; filter:blur(130px); opacity:.08; }
+.glow-a { width:500px; height:500px; background:#2d48ff; top:-180px; right:-80px; }
+.glow-b { width:350px; height:350px; background:#ff2bbf; bottom:-120px; left:-80px; }
+</style>
+</head>
+<body>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<!-- SIDEBAR -->
+<aside class="sb">
+  <div class="sb-logo">
+    <div class="sb-logo-mark"></div>
+    <div>
+      <div class="sb-logo-text">Astra</div>
+      <div class="sb-logo-sub">Your Company</div>
+    </div>
+  </div>
+
+  <nav class="sb-nav">
+    <div class="sb-link active" id="n-dash">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Dashboard
+    </div>
+    <div class="sb-link" id="n-goals">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      Checklist
+    </div>
+    <div class="sb-link" id="n-out">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
+      Outreach
+    </div>
+    <div class="sb-link" id="n-brain">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9Z"/></svg>
+      Company Brain
+    </div>
+    <div class="sb-link" id="n-lib" onclick="window.canLib && goLib()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z"/></svg>
+      Library
+    </div>
+    <div class="sb-link" id="n-int">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2v4M15 2v4M6 10h12l-1 4a5 5 0 0 1-10 0l-1-4ZM10 22v-4M14 22v-4"/></svg>
+      Integrations
+    </div>
+    <div class="sb-link" id="n-auto">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+      Automations
+    </div>
+  </nav>
+
+  <div class="sb-run" id="sb-run" onclick="goScreen('s-run')">
+    <div class="sb-run-top"><span class="sb-run-dot"></span><span class="sb-run-label">1 run active</span></div>
+    <div class="sb-run-name">Market validation &amp; launch prep</div>
+  </div>
+
+  <div class="sb-bottom">
+    <div class="user-row">
+      <div class="user-av">YC</div>
+      <div><div class="user-name">Your Company</div><div class="user-role">Founder</div></div>
+    </div>
+  </div>
+</aside>
+
+<!-- STEER TOAST -->
+<div class="steer-toast" id="steerToast">
+  <div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="steer-toast-icon">↺</span>
+      <span>Steering applied — team adjusting</span>
+    </div>
+    <div class="steer-toast-sub">All 4 agents received the new direction</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- S1: Dashboard / chat -->
+  <div id="s-goal" class="screen active">
+    <div class="dash-hero">
+      <div class="dash-hero-greeting">Let's get to work.</div>
+      <div class="dash-hero-sub">Ask Copilot to kick off your first run.</div>
+    </div>
+    <div class="dash-body">
+
+      <!-- empty state -->
+      <div class="dash-empty" id="dashEmpty">
+        <div class="dash-logo-icon"><div class="dash-logo-mark"></div></div>
+        <div style="text-align:center;">
+          <div class="dash-empty-h">What do you want to accomplish?</div>
+          <div class="dash-empty-s">Astra will spin up a full team and get to work.</div>
+        </div>
+        <div class="dash-chips">
+          <div class="dash-chip" onclick="fillGoal('Validate my market and get me ready to launch.')">Validate my market &amp; launch</div>
+          <div class="dash-chip" onclick="fillGoal('Find and close my first 10 enterprise customers.')">Find my first 10 enterprise customers</div>
+          <div class="dash-chip" onclick="fillGoal('Build and ship a landing page for my product.')">Ship a landing page</div>
+        </div>
+      </div>
+
+      <!-- chat thread (hidden until first message) -->
+      <div class="chat-thread" id="chatThread"></div>
+
+      <!-- composer always at bottom -->
+      <div class="dash-composer">
+        <div class="astra-composer-shell" id="compShell">
+          <textarea id="compTa" rows="2" placeholder="Tell Astra what you want to accomplish…" aria-label="Message Astra"></textarea>
+          <div class="astra-composer-footer">
+            <div class="astra-composer-tools">
+              <span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>
+                mention an agent
+              </span>
+              <small>Grounded in Company Brain</small>
+            </div>
+            <button type="button" class="astra-composer-submit" id="submitBtn">
+              <span class="astra-composer-submit-label">Ask Astra</span>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- S3: Automations -->
+  <div id="s-autos" class="screen">
+    <div class="top-bar">
+      <span class="top-bar-title">Run</span>
+      <span class="top-bar-sep">·</span>
+      <span class="top-bar-sub">Market validation &amp; launch prep</span>
+      <div class="tb-right"><div class="badge running">Ongoing</div></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;">
+      <div class="auto-grid">
+        <div class="auto-card" id="ac1" onclick="">
+          <div class="auto-head">
+            <span class="auto-sym">⊕</span>
+            <span class="auto-name">Sales Pipeline</span>
+            <span class="auto-chip live">Active</span>
+          </div>
+          <div class="auto-bar-wrap"><div class="auto-bar" id="ab1" style="background:linear-gradient(90deg,var(--mint),#86efac);"></div></div>
+          <div class="auto-desc">Sourcing Fortune 1000 ops leads, enterprise outreach sequences queued</div>
+          <div class="auto-stats">
+            <div class="auto-stat"><span class="auto-stat-n" id="statLeads">47</span><span class="auto-stat-l">leads</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">81%</span><span class="auto-stat-l">verified</span></div>
+            <div class="auto-stat"><span class="auto-stat-n" id="statEmails">3</span><span class="auto-stat-l">emails sent</span></div>
+          </div>
+          <div class="auto-sub">find_leads · enrich_lead · build_outreach_sequence</div>
+        </div>
+        <div class="auto-card" id="ac2">
+          <div class="auto-head">
+            <span class="auto-sym">◎</span>
+            <span class="auto-name">Web &amp; Landing Page</span>
+            <span class="auto-chip live">↗ Live</span>
+          </div>
+          <div class="auto-bar-wrap"><div class="auto-bar" id="ab2" style="background:linear-gradient(90deg,var(--pink),#f9a8d4);"></div></div>
+          <div class="auto-desc">Enterprise copy deployed — ROI framing, compliance badges, mobile pass</div>
+          <div class="auto-stats">
+            <div class="auto-stat"><span class="auto-stat-n" id="statSignups">3</span><span class="auto-stat-l">signups</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">100%</span><span class="auto-stat-l">uptime</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">2.1s</span><span class="auto-stat-l">load time</span></div>
+          </div>
+          <div class="auto-sub">generate_landing_page_html · vercel_deploy</div>
+        </div>
+        <div class="auto-card" id="ac3">
+          <div class="auto-head">
+            <span class="auto-sym">◈</span>
+            <span class="auto-name">Market Analysis</span>
+            <span class="auto-chip done">✓ Done</span>
+          </div>
+          <div class="auto-bar-wrap"><div class="auto-bar" id="ab3" style="background:linear-gradient(90deg,var(--blue),#a5b4fc);transform:scaleX(1);"></div></div>
+          <div class="auto-desc">$4.2B TAM, 3 weak incumbents, enterprise buyer journey mapped</div>
+          <div class="auto-stats">
+            <div class="auto-stat"><span class="auto-stat-n">43</span><span class="auto-stat-l">sources</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">$4.2B</span><span class="auto-stat-l">TAM</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">2</span><span class="auto-stat-l">PDFs</span></div>
+          </div>
+          <div class="auto-sub">deep_research · generate_pdf · obsidian_log</div>
+        </div>
+        <div class="auto-card" id="ac4">
+          <div class="auto-head">
+            <span class="auto-sym">◆</span>
+            <span class="auto-name">Competitor Intel</span>
+            <span class="auto-chip done">✓ Done</span>
+          </div>
+          <div class="auto-bar-wrap"><div class="auto-bar" id="ab4" style="background:linear-gradient(90deg,var(--blue),#a5b4fc);transform:scaleX(1);"></div></div>
+          <div class="auto-desc">Enterprise gaps mapped — SAP, ServiceNow, Oracle blind spots documented</div>
+          <div class="auto-stats">
+            <div class="auto-stat"><span class="auto-stat-n">39</span><span class="auto-stat-l">sources</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">6</span><span class="auto-stat-l">competitors</span></div>
+            <div class="auto-stat"><span class="auto-stat-n">2</span><span class="auto-stat-l">reports</span></div>
+          </div>
+          <div class="auto-sub">web_search · deep_research · generate_pdf</div>
+        </div>
+      </div>
+      <div class="live-feed">
+        <div class="live-feed-label">Live activity</div>
+        <div class="live-feed-log" id="liveFeedLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- S4: Library -->
+  <div id="s-lib" class="screen">
+    <div class="top-bar">
+      <span class="top-bar-title">Library</span>
+      <div class="tb-right"><div class="badge done">9 outputs · this run</div></div>
+    </div>
+    <div style="flex:1;overflow-y:auto;">
+      <div class="lib-wrap">
+        <div class="lib-section">Outputs from this run</div>
+        <div class="lib-grid">
+          <div class="lib-card" id="lc1">
+            <div class="lib-sym">◈</div>
+            <div class="lib-title">market_brief.md</div>
+            <div class="lib-desc">Enterprise AI ops — $4.2B TAM, 3 weak incumbents, ICP enterprise wedge, buyer journey</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">8.7 kb</span>
+              <span class="lib-tag mint">PDF exported</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc2">
+            <div class="lib-sym">◆</div>
+            <div class="lib-title">competitor_analysis_enterprise.md</div>
+            <div class="lib-desc">SAP, ServiceNow, Oracle pricing gaps. Enterprise tier blind spots mapped across 39 sources</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">9.4 kb</span>
+              <span class="lib-tag blue">39 sources</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc3">
+            <div class="lib-sym">◎</div>
+            <div class="lib-title">landing_page.html</div>
+            <div class="lib-desc">Enterprise hero, ROI framing, compliance badges — deployed to Vercel, 3 signups</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag pink">↗ yourcompany.vercel.app</span>
+              <span class="lib-tag mint">15.8 kb</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc4">
+            <div class="lib-sym">⊕</div>
+            <div class="lib-title">outreach_sequence.csv</div>
+            <div class="lib-desc">47 Fortune 1000 leads — Director+, VP Ops. 3-touch enterprise cadence queued in CRM</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">47 leads</span>
+              <span class="lib-tag mint">81% verified</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc5">
+            <div class="lib-sym">◈</div>
+            <div class="lib-title">icp_enterprise.md</div>
+            <div class="lib-desc">Buyer profile — Director/VP Ops, 500+ employees, Fortune 1000, US. Budget cycles, evaluation triggers, objection map</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">6.1 kb</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc6">
+            <div class="lib-sym">◆</div>
+            <div class="lib-title">competitor_analysis.md</div>
+            <div class="lib-desc">Notion, Linear, Monday, ClickUp — pricing, trust signals, feature gaps vs your roadmap</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">11.2 kb</span>
+              <span class="lib-tag blue">18 sources</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc7">
+            <div class="lib-sym">⊕</div>
+            <div class="lib-title">sarah_chen_outreach.md</div>
+            <div class="lib-desc">Personalised 3-touch sequence — Salesforce VP Ops. Touch 1 opened (3 min ago)</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag mint">Opened</span>
+              <span class="lib-tag blue">3-touch</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc8">
+            <div class="lib-sym">◎</div>
+            <div class="lib-title">brand_palette.json</div>
+            <div class="lib-desc">4 color tokens extracted from Company Brain — primary, accent, surface, ink</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag blue">0.8 kb</span>
+              <span class="lib-tag dim">Design system</span>
+            </div>
+          </div>
+          <div class="lib-card" id="lc9">
+            <div class="lib-sym">≡</div>
+            <div class="lib-title">entity_formation.md</div>
+            <div class="lib-desc">Delaware C-Corp checklist, EIN 82-4917203, Mercury bank intro sent to founder@yourco.com</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <span class="lib-tag mint">Filed</span>
+              <span class="lib-tag mint">Email sent</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── screen navigation (for library / automations tabs) ────────────────────────
+function goScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const s = document.getElementById(id);
+  if (s) { s.classList.add('active'); void s.offsetWidth; }
+}
+function setNav(id) {
+  document.querySelectorAll('.sb-link').forEach(l => l.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+// ring helper: pct 0-100
+function setRing(id, pct, color) {
+  const circ = 81.7;
+  const c = document.getElementById(id);
+  if (!c) return;
+  c.style.strokeDashoffset = circ * (1 - pct / 100);
+  if (color) c.setAttribute('stroke', color);
+}
+function setPct(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = pct + '%';
+}
+function setBar(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.style.transform = `scaleX(${pct/100})`;
+}
+
+function addLog(logId, text, cls) {
+  const log = document.getElementById(logId);
+  if (!log) return;
+  const line = document.createElement('div');
+  line.className = 'ag-log-line' + (cls ? ' ' + cls : '');
+  line.textContent = text;
+  log.appendChild(line);
+  // keep only last 5 visible
+  while (log.children.length > 5) log.removeChild(log.firstChild);
+}
+function setAction(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+function setStatus(id, txt, cls) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = txt; el.className = 'ag-status ' + cls; }
+}
+function markDone(agId, barId, ringId, stId, actId, actTxtId, pctId, ringColor) {
+  setStatus(stId, 'done', 'done');
+  setBar(barId, 100);
+  setRing(ringId, 100, ringColor || '#22c55e');
+  setPct(pctId, 100);
+  const actEl = document.getElementById(actId);
+  if (actEl) { actEl.className = 'ag-action done'; }
+  setAction(actTxtId, '✓ Done');
+  const pctEl = document.getElementById(pctId);
+  if (pctEl) pctEl.classList.add('done');
+}
+
+// ── chat helpers ──────────────────────────────────────────────────────────────
+const thread = () => document.getElementById('chatThread');
+const scroll = () => { const t = thread(); t.scrollTop = t.scrollHeight; };
+
+function fillGoal(text) {
+  const ta = document.getElementById('compTa');
+  ta.value = text; ta.focus();
+}
+
+function appendUserMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg user';
+  div.innerHTML = `<div class="chat-bubble-user">${text}</div>`;
+  thread().appendChild(div); scroll();
+}
+
+function appendTyping(id) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg astra'; div.id = id || 'astraTyping';
+  div.innerHTML = `<div class="chat-av"><div class="chat-av-mark"></div></div>
+    <div class="chat-bubble-astra"><div class="chat-typing"><span></span><span></span><span></span></div></div>`;
+  thread().appendChild(div); scroll();
+}
+
+function streamText(id, text, cb) {
+  const msg = document.getElementById(id);
+  if (!msg) return;
+  const bubble = msg.querySelector('.chat-bubble-astra');
+  bubble.innerHTML = '';
+  let i = 0;
+  (function t() {
+    if (i < text.length) {
+      bubble.innerHTML = text.slice(0, ++i).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      scroll();
+      setTimeout(t, 14 + Math.random() * 8);
+    } else { if (cb) setTimeout(cb, 300); }
+  })();
+}
+
+function astraMsg(text, cb) {
+  const id = 'aMsg_' + Date.now();
+  appendTyping(id);
+  setTimeout(() => streamText(id, text, cb), 600);
+}
+
+// ── agent card builder ────────────────────────────────────────────────────────
+const SPEC = {
+  ci:  { sym:'◆', cls:'c', name:'Competitor Intel',   instr:'Map pricing, trust signals, and feature gaps', color:'#7d8fff', bar:'linear-gradient(90deg,var(--blue),#a5b4fc)' },
+  ma:  { sym:'◈', cls:'c', name:'Market Analysis',    instr:'TAM/SAM/SOM, growth vectors, ICP validation',  color:'#7d8fff', bar:'linear-gradient(90deg,var(--blue),#a5b4fc)' },
+  web: { sym:'◎', cls:'p', name:'Web & Landing Page', instr:'Build and deploy a live page in brand voice',   color:'#FF2BBF', bar:'linear-gradient(90deg,var(--pink),#f9a8d4)', dot:'background:var(--pink)' },
+  sp:  { sym:'⊕', cls:'g', name:'Sales Pipeline',     instr:'Source leads, build sequences, seed CRM',       color:'#22c55e', bar:'linear-gradient(90deg,var(--mint),#86efac)', dot:'background:var(--mint)' },
+};
+
+function buildCard(key) {
+  const s = SPEC[key];
+  return `<div class="ag" id="ag-${key}">
+    <div class="ag-head">
+      <div class="ag-sym ${s.cls}">${s.sym}</div>
+      <div class="ag-info"><div class="ag-name">${s.name}</div><div class="ag-instr">${s.instr}</div></div>
+      <div class="ag-right">
+        <div class="ag-ring" id="ring-${key}">
+          <svg width="34" height="34" viewBox="0 0 34 34">
+            <circle cx="17" cy="17" r="13" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2.5"/>
+            <circle cx="17" cy="17" r="13" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-dasharray="81.7" stroke-dashoffset="81.7" id="ring-${key}-c" style="transition:stroke-dashoffset 1s var(--ease);"/>
+          </svg>
+          <div class="ag-ring-pct" id="pct-${key}">0%</div>
+        </div>
+        <div class="ag-status running" id="st-${key}">running</div>
+      </div>
+    </div>
+    <div class="ag-bar-wrap"><div class="ag-bar" id="bar-${key}" style="background:${s.bar};"></div></div>
+    <div class="ag-action" id="act-${key}"><div class="ag-action-dot"></div><div class="ag-action-text" id="act-${key}-txt">Initialising…</div></div>
+    <div class="ag-log" id="log-${key}"></div>
+  </div>`;
+}
+
+// ── agent animation helpers ───────────────────────────────────────────────────
+function setRing(id, pct, color) {
+  const c = document.getElementById(id); if (!c) return;
+  c.style.strokeDashoffset = 81.7 * (1 - pct / 100);
+  if (color) c.setAttribute('stroke', color);
+}
+function setPct(id, pct) { const e = document.getElementById(id); if (e) e.textContent = pct + '%'; }
+function setBar(id, pct) { const e = document.getElementById(id); if (e) e.style.transform = `scaleX(${pct/100})`; }
+function setAction(id, text) { const e = document.getElementById(id); if (e) e.textContent = text; }
+function setStatus(id, txt, cls) { const e = document.getElementById(id); if (e) { e.textContent = txt; e.className = 'ag-status ' + cls; } }
+function addLog(logId, text, cls) {
+  const log = document.getElementById(logId); if (!log) return;
+  const line = document.createElement('div');
+  line.className = 'ag-log-line' + (cls ? ' ' + cls : '');
+  line.textContent = text; log.appendChild(line);
+  while (log.children.length > 5) log.removeChild(log.firstChild);
+  scroll();
+}
+function markDone(key, color) {
+  setStatus('st-'+key, 'done', 'done');
+  setBar('bar-'+key, 100); setRing('ring-'+key+'-c', 100, color); setPct('pct-'+key, 100);
+  const a = document.getElementById('act-'+key); if (a) a.className = 'ag-action done';
+  setAction('act-'+key+'-txt', '✓ Done');
+  const p = document.getElementById('pct-'+key); if (p) p.classList.add('done');
+}
+
+// ── agent data ────────────────────────────────────────────────────────────────
+const AGENTS = {
+  ci: {
+    delay: 200,
+    logs: [
+      [0,'· Started',''], [4400,'⚙ web_search: "notion linear monday pricing enterprise 2025"','c-blue'],
+      [10000,'✓ Read https://g2.com/compare/linear-vs-notion','c-mint'], [14400,'⚙ web_search: "AI ops tools feature comparison gaps"','c-blue'],
+      [20000,'✓ Read https://g2.com/categories/project-management','c-mint'], [26000,'⚙ deep_research: competitive landscape vs your roadmap','c-blue'],
+      [37600,'✓ Deep research — 18 sources','c-mint'], [43200,'▷ wrote competitor_analysis.md (11.2kb)','c-white'],
+    ],
+    actions: [[0,'web_search — notion linear pricing'],[10000,'web_search — AI ops feature gaps'],[26000,'deep_research — competitive landscape'],[43200,'generate_pdf — competitor analysis']],
+    pcts: [[4400,12],[10000,28],[20000,45],[26000,58],[37600,82],[44000,100]], done: 46000,
+  },
+  ma: {
+    delay: 450,
+    logs: [
+      [0,'· Started',''], [5800,'⚙ web_search: "enterprise AI ops market size TAM 2025"','c-blue'],
+      [11600,'✓ Read https://mordorintelligence.com/ai-operations','c-mint'], [17200,'⚙ news_search: "enterprise AI automation funding rounds"','c-blue'],
+      [23000,'✓ 14 sources — Crunchbase, Pitchbook, Bloomberg','c-mint'], [30200,'⚙ deep_research: TAM SAM SOM enterprise AI ops','c-blue'],
+      [43200,'✓ Deep research — 24 sources','c-mint'], [49000,'▷ wrote market_brief.md (8.7kb)','c-white'], [52000,'▷ generate_pdf → market_brief.pdf','c-white'],
+    ],
+    actions: [[0,'web_search — enterprise TAM 2025'],[17200,'news_search — AI automation funding'],[30200,'deep_research — TAM SAM SOM'],[52000,'generate_pdf — market brief']],
+    pcts: [[5800,10],[11600,24],[23000,40],[30200,55],[43200,80],[52000,100]], done: 53200,
+  },
+  web: {
+    delay: 700,
+    logs: [
+      [0,'· Started',''], [5000,'⚙ get_brand_voice — reading Company Brain','c-blue'],
+      [8400,'✓ Brand voice loaded — technical, precise, enterprise-ready','c-mint'], [10100,'⚙ generate_color_palette — extracting from Company Brain','c-blue'],
+      [12800,'✓ Palette extracted — 4 tokens','c-mint'], [15800,'⚙ generate_landing_page_html — enterprise hero, compliance badges','c-blue'],
+      [27400,'✓ generate_landing_page_html — custom HTML (14.2kb)','c-mint'], [31700,'⚙ vercel_deploy — pushing to production','c-blue'],
+      [38900,'✓ Deployed → https://yourcompany.vercel.app','c-mint'],
+    ],
+    actions: [[0,'get_brand_voice — Company Brain'],[10100,'generate_color_palette — brand tokens'],[15800,'generate_landing_page_html'],[31700,'vercel_deploy — production']],
+    pcts: [[5000,14],[10100,28],[15800,44],[27400,65],[38900,88],[41600,100]], done: 43900,
+  },
+  sp: {
+    delay: 1000,
+    logs: [
+      [0,'· Started',''], [4300,'⚙ web_search: "Fortune 1000 VP Operations AI tools 2025"','c-blue'],
+      [10100,'✓ 8 sources — LinkedIn, Hunter, Apollo','c-mint'], [14400,'⚙ find_leads: ICP — Director+, ops, Fortune 1000, US','c-blue'],
+      [23000,'✓ find_leads — 47 leads sourced','c-mint'], [27400,'⚙ enrich_lead × 47 — LinkedIn + Hunter verification','c-blue'],
+      [38900,'✓ enrich_lead — 38 verified (81%)','c-mint'], [42500,'⚙ build_outreach_sequence — 3-touch enterprise cadence','c-blue'],
+      [49000,'✓ build_outreach_sequence — queued','c-mint'],
+    ],
+    actions: [[0,'web_search — Fortune 1000 VP Ops'],[14400,'find_leads — Director+, Fortune 1000'],[27400,'enrich_lead × 47'],[42500,'build_outreach_sequence']],
+    pcts: [[4300,8],[10100,22],[23000,48],[38900,74],[49000,100]], done: 50400,
+  },
+};
+
+// ── main chat flow ────────────────────────────────────────────────────────────
+let chatState = 'goal'; // goal | running | steering | done
+
+function lockComposer() {
+  document.getElementById('compTa').disabled = true;
+  document.getElementById('submitBtn').disabled = true;
+}
+function unlockComposer(placeholder) {
+  const ta = document.getElementById('compTa');
+  ta.disabled = false; ta.value = '';
+  if (placeholder) ta.placeholder = placeholder;
+  document.getElementById('submitBtn').disabled = false;
+  ta.focus();
+}
+
+function sendChat() {
+  if (chatState === 'running') return;
+  const ta = document.getElementById('compTa');
+  const text = ta.value.trim(); if (!text) return;
+
+  if (chatState === 'goal') {
+    lockComposer();
+    document.getElementById('dashEmpty').style.display = 'none';
+    thread().classList.add('visible');
+    appendUserMsg(text);
+    chatState = 'running';
+
+    astraMsg(
+      `On it. Spinning up **4 agents** in parallel — **Competitor Intel**, **Market Analysis**, **Web & Landing Page**, and **Sales Pipeline**. I'll keep you updated as work comes in.`,
+      () => injectAgentCards()
+    );
+
+  } else if (chatState === 'steering') {
+    lockComposer();
+    appendUserMsg(text);
+    chatState = 'running';
+    applySteering();
+  }
+}
+
+function injectAgentCards() {
+  // brain banner message
+  const brainDiv = document.createElement('div');
+  brainDiv.className = 'chat-msg astra';
+  brainDiv.innerHTML = `<div class="chat-av"><div class="chat-av-mark"></div></div>
+    <div class="brain-banner visible" id="brainBanner">
+      <span class="brain-sym">◉</span>
+      <div class="brain-content">
+        <div class="brain-title"><strong>Company Brain</strong> — context injected into all agents</div>
+        <div class="brain-chips" id="brainChips"></div>
+      </div>
+    </div>`;
+  thread().appendChild(brainDiv);
+
+  const chipData = [['Brand voice: technical, precise',''],['Competitors: Notion, Linear, Monday',''],['ICP: B2B SaaS, Fortune 1000','mint'],['Roadmap: AI automation core','dim']];
+  const cc = document.getElementById('brainChips');
+  chipData.forEach(([label, cls], i) => setTimeout(() => {
+    const c = document.createElement('span');
+    c.className = 'brain-chip' + (cls ? ' ' + cls : ''); c.textContent = label; cc.appendChild(c);
+  }, 200 + i * 200));
+
+  // agent cards grid
+  const agDiv = document.createElement('div');
+  agDiv.className = 'chat-msg astra agents';
+  agDiv.innerHTML = `<div class="chat-av chat-av-top"><div class="chat-av-mark"></div></div>
+    <div class="chat-agents-grid">${['ci','ma','web','sp'].map(buildCard).join('')}</div>`;
+  thread().appendChild(agDiv); scroll();
+
+  document.getElementById('sb-run').style.display = 'block';
+
+  // animate cards in + start logs
+  ['ci','ma','web','sp'].forEach((key, i) => {
+    const ag = AGENTS[key];
+    setTimeout(() => {
+      document.getElementById('ag-'+key).classList.add('visible');
+      ag.logs.forEach(([dt, txt, cls]) => setTimeout(() => addLog('log-'+key, txt, cls), dt));
+      ag.actions.forEach(([dt, txt]) => setTimeout(() => setAction('act-'+key+'-txt', txt), dt));
+      ag.pcts.forEach(([dt, p]) => setTimeout(() => {
+        setBar('bar-'+key, p); setRing('ring-'+key+'-c', p, SPEC[key].color); setPct('pct-'+key, p);
+      }, dt));
+      setTimeout(() => { markDone(key, SPEC[key].color); addLog('log-'+key, '✓ Done', 'c-mint'); }, ag.done);
+    }, ag.delay);
+  });
+
+  // steer prompt at 25s
+  setTimeout(() => {
+    astraMsg(`The team is about 40% through. Want to redirect them? Type below — I'll pass it on immediately.`, () => {
+      chatState = 'steering';
+      unlockComposer('Redirect the team, add context…');
+      // auto-type steer suggestion
+      const ta = document.getElementById('compTa');
+      const steer = 'focus on enterprise, not small business';
+      let i = 0;
+      (function t() { if (i < steer.length) { ta.value += steer[i++]; setTimeout(t, 55 + Math.random()*30); } })();
+    });
+  }, 25000);
+}
+
+function applySteering() {
+  // toast + flash
+  const toast = document.getElementById('steerToast');
+  toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
+  ['ci','ma','web','sp'].forEach((key, i) => setTimeout(() => {
+    const c = document.getElementById('ag-'+key); if (!c) return;
+    c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1200);
+  }, i * 120));
+
+  astraMsg(`Got it — pivoting to **enterprise focus**. Dropping SMB targets, updating ICP, rewriting the landing page for Fortune 1000 buyers. All 4 agents adjusting now.`, () => {
+    const adjusts = {
+      ci: {
+        logs: [[900,'· Steering — enterprise focus applied','c-blue'],[3600,'⚙ web_search: "salesforce servicenow enterprise AI gaps 2025"','c-blue'],[7200,'✓ Read https://salesforce.com/editions-pricing','c-mint'],[10800,'⚙ deep_research: enterprise deals >$50K — SAP ServiceNow Oracle','c-blue'],[18000,'✓ Deep research — 21 sources, enterprise tier gaps mapped','c-mint'],[20700,'▷ wrote competitor_analysis_enterprise.md (9.4kb)','c-white']],
+        actions: [[900,'web_search — salesforce enterprise AI gaps'],[10800,'deep_research — enterprise deals >$50K'],[20700,'generate_pdf — enterprise analysis']],
+      },
+      ma: {
+        logs: [[1350,'· Steering — ICP pivot to enterprise','c-blue'],[4050,'⚙ web_search: "enterprise AI ops buyers Director VP CTO budget"','c-blue'],[7650,'✓ 11 sources — Gartner, Forrester, IDC','c-mint'],[12600,'⚙ deep_research: enterprise AI ops buyer journey','c-blue'],[19800,'✓ Deep research — 19 sources','c-mint'],[22500,'▷ wrote icp_enterprise.md (6.1kb)','c-white']],
+        actions: [[1350,'web_search — enterprise buyers'],[12600,'deep_research — buyer journey'],[22500,'obsidian_log — ICP updated']],
+      },
+      web: {
+        logs: [[450,'· Steering — rewriting hero for enterprise buyer','c-blue'],[3150,'⚙ generate_landing_page_html — ROI framing, compliance badges','c-blue'],[9900,'✓ generate_landing_page_html — revised (15.8kb)','c-mint'],[11700,'⚙ vercel_deploy — redeploying enterprise copy','c-blue'],[15300,'✓ Deployed → https://yourcompany.vercel.app (enterprise)','c-mint']],
+        actions: [[450,'generate_landing_page_html — enterprise copy'],[11700,'vercel_deploy — redeploy']],
+      },
+      sp: {
+        logs: [[1800,'· Steering — replacing ICP with Fortune 1000','c-blue'],[4500,'⚙ find_leads: Director+, VP Ops, Fortune 1000, >500 emp','c-blue'],[10800,'✓ find_leads — 47 enterprise leads sourced','c-mint'],[13500,'⚙ enrich_lead × 47 — LinkedIn Sales Nav + Apollo','c-blue'],[20700,'✓ enrich_lead — 41 verified (87%)','c-mint'],[22950,'⚙ build_outreach_sequence — enterprise 3-touch cadence','c-blue'],[27000,'✓ build_outreach_sequence — queued','c-mint']],
+        actions: [[1800,'find_leads — Fortune 1000 Director+'],[13500,'enrich_lead × 47'],[22950,'build_outreach_sequence — enterprise']],
+      },
+    };
+
+    ['ci','ma','web','sp'].forEach((key, i) => {
+      setTimeout(() => {
+        const adj = adjusts[key]; const color = SPEC[key].color;
+        const card = document.getElementById('ag-'+key); if (card) card.classList.add('adjusted');
+        setStatus('st-'+key, 'running', 'running');
+        setBar('bar-'+key, 5); setRing('ring-'+key+'-c', 5, color); setPct('pct-'+key, 5);
+        const logEl = document.getElementById('log-'+key); if (logEl) logEl.innerHTML = '';
+        adj.logs.forEach(([dt, txt, cls]) => setTimeout(() => addLog('log-'+key, txt, cls), dt));
+        adj.actions.forEach(([dt, txt]) => setTimeout(() => setAction('act-'+key+'-txt', txt), dt));
+        [[2000,15],[6500,30],[12500,52],[19000,71],[25000,88],[29000,100]].forEach(([dt, p]) =>
+          setTimeout(() => { setBar('bar-'+key, p); setRing('ring-'+key+'-c', p, color); setPct('pct-'+key, p); }, dt));
+        setTimeout(() => { markDone(key, color); addLog('log-'+key, '✓ Done', 'c-mint'); }, 32000);
+      }, i * 500);
+    });
+
+    // outputs at 35s
+    setTimeout(showOutputs, 35000);
+  });
+}
+
+function showOutputs() {
+  const outputs = [
+    { sym:'◈', name:'market_brief.md', desc:'$4.2B TAM, 3 weak incumbents, enterprise buyer journey', tag:'8.7 kb', cls:'blue' },
+    { sym:'◆', name:'competitor_analysis_enterprise.md', desc:'SAP, ServiceNow, Oracle gaps — 39 sources', tag:'9.4 kb', cls:'blue' },
+    { sym:'◎', name:'landing_page.html', desc:'Enterprise hero deployed → yourcompany.vercel.app', tag:'↗ Live', cls:'pink' },
+    { sym:'⊕', name:'outreach_sequence.csv', desc:'47 Fortune 1000 leads, 81% verified, 3-touch queued', tag:'47 leads', cls:'mint' },
+    { sym:'◈', name:'icp_enterprise.md', desc:'Director/VP Ops, 500+ employees, Fortune 1000', tag:'6.1 kb', cls:'blue' },
+    { sym:'◆', name:'competitor_analysis.md', desc:'Notion, Linear, Monday, ClickUp gaps mapped', tag:'11.2 kb', cls:'blue' },
+  ];
+
+  astraMsg(`All done. Here's everything that was produced:`, () => {
+    const outDiv = document.createElement('div');
+    outDiv.className = 'chat-msg astra outputs';
+    outDiv.innerHTML = `<div class="chat-av chat-av-top"><div class="chat-av-mark"></div></div>
+      <div class="chat-outputs-grid">${outputs.map((o,i) => `
+        <div class="chat-output-card" id="oc${i}">
+          <div class="chat-output-sym">${o.sym}</div>
+          <div class="chat-output-name">${o.name}</div>
+          <div class="chat-output-desc">${o.desc}</div>
+          <span class="lib-tag ${o.cls}">${o.tag}</span>
+        </div>`).join('')}
+      </div>`;
+    thread().appendChild(outDiv); scroll();
+
+    outputs.forEach((_, i) => setTimeout(() => {
+      const el = document.getElementById('oc'+i); if (el) el.classList.add('visible');
+    }, i * 100));
+
+    // unlock library
+    window.canLib = true;
+    setTimeout(() => {
+      const lib = document.getElementById('n-lib');
+      lib.style.color = 'var(--blue)';
+      lib.style.background = 'rgba(125,143,255,0.08)';
+      lib.style.borderLeftColor = 'var(--blue)';
+      astraMsg(`Everything's saved to your **Library**. Click Library in the sidebar to review all outputs.`);
+    }, 1500);
+
+    chatState = 'done';
+  });
+}
+
+// ── init composer ─────────────────────────────────────────────────────────────
+(function() {
+  const ta = document.getElementById('compTa');
+  const btn = document.getElementById('submitBtn');
+  const goal = 'Validate my market and get me ready to launch.';
+  setTimeout(() => {
+    ta.focus(); let i = 0;
+    (function t() { if (i < goal.length) { ta.value += goal[i++]; setTimeout(t, 38 + Math.random()*20); } })();
+  }, 500);
+  btn.addEventListener('click', sendChat);
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+})();
+
+// ── sidebar library / automations (still navigable) ──────────────────────────
+function goLib() {
+  goScreen('s-lib'); setNav('n-lib');
+  ['lc1','lc2','lc3','lc4','lc5','lc6','lc7','lc8','lc9'].forEach((id, i) =>
+    setTimeout(() => { const e = document.getElementById(id); if (e) e.classList.add('visible'); }, i * 80));
+}
+window.goLib = goLib;
+</script>
+</body>
+</html>
