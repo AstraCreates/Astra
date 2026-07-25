@@ -1904,6 +1904,7 @@ def run_mvp_loop(
     founder_id: str = "",
     agent: str = "technical",
     model: str = "",
+    progress_callback=None,
 ) -> dict:
     """Build a complete MVP product end-to-end: plans, codes, build-checks, and deploys."""
     if required_files is None:
@@ -1976,6 +1977,11 @@ def run_mvp_loop(
                                           "kind": "phase", "text": text, **extra})
             except Exception:
                 pass
+            if progress_callback:
+                try:
+                    progress_callback(text, **extra)
+                except Exception:
+                    logger.debug("coding-agent progress callback failed", exc_info=True)
 
         try:
             from backend.core.events import publish_sync
