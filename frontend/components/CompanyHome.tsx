@@ -237,6 +237,7 @@ export default function CompanyHome() {
   const [artifactError, setArtifactError] = useState("");
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const [retryingTaskId, setRetryingTaskId] = useState("");
+  const [chatTerminalTaskId, setChatTerminalTaskId] = useState("");
   const [railOpen, setRailOpen] = useState(true);
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
   const [workbenchSquadId, setWorkbenchSquadId] = useState("");
@@ -747,8 +748,9 @@ export default function CompanyHome() {
                             const sitesVisited = squad.tasks.reduce((sum, task) => sum + (task.searchCount ?? 0), 0);
                             const anyActive = squad.tasks.some(task => task.status === "active");
                             const allDone = squad.tasks.length > 0 && squad.tasks.every(task => task.status === "complete");
+                            const openTerminalTask = squad.tasks.find(task => task.id === chatTerminalTaskId);
                             return (
-                              <div className="ch-chat-bubble" style={{ maxWidth: "min(420px, 84%)" }}>
+                              <div className="ch-chat-bubble" style={{ maxWidth: openTerminalTask ? "min(640px, 92%)" : "min(420px, 84%)" }}>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg)", marginBottom: 10, letterSpacing: "-0.005em" }}>{squad.name}</div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                                   {squad.tasks.map(task => (
@@ -763,11 +765,24 @@ export default function CompanyHome() {
                                         ) : task.note ? (
                                           <small style={{ display: "block", marginTop: 2, color: "var(--fm)", fontSize: 11 }}>{task.note}</small>
                                         ) : null}
-                                        {task.status === "blocked" && (
-                                          <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
-                                            onClick={() => void handleRetryTask(task.id)} style={{ marginTop: 5 }}>
-                                            {retryingTaskId === task.id ? "Retrying…" : "Retry"}
-                                          </button>
+                                        <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                                          {task.status === "blocked" && (
+                                            <button type="button" className="btn sm" disabled={retryingTaskId === task.id}
+                                              onClick={() => void handleRetryTask(task.id)}>
+                                              {retryingTaskId === task.id ? "Retrying…" : "Retry"}
+                                            </button>
+                                          )}
+                                          {task.terminalSessionId && (
+                                            <button type="button" className="btn sm"
+                                              onClick={() => setChatTerminalTaskId(chatTerminalTaskId === task.id ? "" : task.id)}>
+                                              {chatTerminalTaskId === task.id ? "Hide terminal" : "Open build terminal"}
+                                            </button>
+                                          )}
+                                        </div>
+                                        {chatTerminalTaskId === task.id && task.terminalSessionId && (
+                                          <div style={{ marginTop: 8 }}>
+                                            <TerminalPane sessionId={task.terminalSessionId} onClose={() => setChatTerminalTaskId("")} />
+                                          </div>
                                         )}
                                       </div>
                                     </div>

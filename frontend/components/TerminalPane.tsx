@@ -16,7 +16,16 @@ export function terminalWsUrl(sessionId: string, token: string): string {
   let base = API;
   if (base.startsWith("https://")) base = "wss://" + base.slice(8);
   else if (base.startsWith("http://")) base = "ws://" + base.slice(7);
-  else base = (typeof window !== "undefined" && window.location.protocol === "https:" ? "wss://" : "ws://") + base;
+  else {
+    // NEXT_PUBLIC_API_URL is "/api" in production (relative, same-origin) --
+    // naively prepending "wss://" onto a leading-slash path produces
+    // "wss:///api" (empty host, invalid URL) and the socket fails instantly
+    // with no request ever reaching the backend. Resolve it against the
+    // current page's own origin instead.
+    const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = typeof window !== "undefined" ? window.location.host : "";
+    base = `${proto}//${host}${base.startsWith("/") ? base : `/${base}`}`;
+  }
   return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
 }
 
