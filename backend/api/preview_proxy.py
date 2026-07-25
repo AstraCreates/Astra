@@ -145,17 +145,10 @@ async def _proxy(slug: str, path: str, request: Request, port: int | None) -> St
     )
 
 
-@router.api_route("/preview-route/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
-async def preview_proxy_path(path: str, request: Request):
-    # Extract slug from Host header (set by nginx from the subdomain)
-    host = request.headers.get("host", "")
-    # Only extract slug from subdomain requests (host must contain a dot)
-    slug = host.split(".")[0] if "." in host else ""
-    if not slug:
-        raise HTTPException(status_code=400, detail="Missing preview slug")
+async def _serve_preview(slug: str, path: str, request: Request) -> StreamingResponse:
+    """Authorize once, recover if needed, then proxy a known preview slug."""
     from backend.tools.local_preview import get_port_for_slug, recover_preview_for_slug
-    # Authorize against either the live registry or the durable seven-day
-    # record *before* recovery starts a local process.
+
     port = get_port_for_slug(slug)
     _authorize_preview(slug, request, port)
     if port is None:
@@ -167,6 +160,26 @@ async def preview_proxy_path(path: str, request: Request):
                 "action": "rebuild_preview",
             })
     return await _proxy(slug, path, request, port)
+
+
+@router.api_route("/preview/{slug}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
+@router.api_route("/preview/{slug}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
+async def signed_preview_proxy(request: Request, slug: str, path: str = ""):
+    """Same-origin HTTPS proxy used by Company Home's inline preview."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", slug):
+        raise HTTPException(status_code=404, detail="Preview not found")
+    return await _serve_preview(slug, path, request)
+
+
+@router.api_route("/preview-route/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
+async def preview_proxy_path(path: str, request: Request):
+    # Extract slug from Host header (set by nginx from the subdomain)
+    host = request.headers.get("host", "")
+    # Only extract slug from subdomain requests (host must contain a dot)
+    slug = host.split(".")[0] if "." in host else ""
+    if not slug:
+        raise HTTPException(status_code=400, detail="Missing preview slug")
+    return await _serve_preview(slug, path, request)
 
 
 @router.api_route("/preview-route", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])

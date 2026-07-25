@@ -828,6 +828,13 @@ def _make_env() -> dict:
     # OPENAI_BASE_URL and would otherwise hit api.openai.com).
     env["OPENROUTER_API_KEY"] = or_key
     env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
+    # Caveman creates hidden checkpoint commits while it works. These stable
+    # service identities keep that internal safety mechanism from interrupting
+    # a build with Git's interactive "who are you" prompt.
+    env["GIT_AUTHOR_NAME"] = env.get("GIT_AUTHOR_NAME") or "Astra Coding Agent"
+    env["GIT_AUTHOR_EMAIL"] = env.get("GIT_AUTHOR_EMAIL") or "coding-agent@astracreates.local"
+    env["GIT_COMMITTER_NAME"] = env.get("GIT_COMMITTER_NAME") or env["GIT_AUTHOR_NAME"]
+    env["GIT_COMMITTER_EMAIL"] = env.get("GIT_COMMITTER_EMAIL") or env["GIT_AUTHOR_EMAIL"]
     # Persistent, shared npm cache so `npm install` (run by every build pass and every
     # session) pulls packages from local disk instead of re-downloading — the biggest
     # chunk of build time. prefer-offline = use the cache whenever possible.
@@ -1303,6 +1310,10 @@ def _run_caveman(local: str, prompt: str, session_id: str = None, timeout: int =
             "npm_config_prefer_offline": "true",
             "npm_config_audit": "false",
             "npm_config_fund": "false",
+            "GIT_AUTHOR_NAME": env["GIT_AUTHOR_NAME"],
+            "GIT_AUTHOR_EMAIL": env["GIT_AUTHOR_EMAIL"],
+            "GIT_COMMITTER_NAME": env["GIT_COMMITTER_NAME"],
+            "GIT_COMMITTER_EMAIL": env["GIT_COMMITTER_EMAIL"],
         }
         with _sudo_env_command(sudo_env, cave_args + [full_prompt]) as cmd:
             return _stream_caveman_events(cmd, local, timeout, env, founder_id, app_session_id, agent)

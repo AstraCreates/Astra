@@ -3702,10 +3702,12 @@ async def llc_stream(websocket: WebSocket, founder_id: str, company_name: str = 
 
 @router.websocket("/terminal/{session_id}")
 async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: str = ""):
-    """Interactive openclaude takeover for a technical/web run.
+    """Attach a browser terminal to a technical/web run's original PTY.
 
-    Resumes the agent's openclaude session inside a PTY and bridges it to an
-    xterm.js terminal in the browser. The founder grabs the keyboard mid-build.
+    Company OS creates the task record before spawning the coding process. A
+    terminal viewer can therefore arrive during that small gap. It must wait
+    for the original shared PTY rather than starting a second recovery agent,
+    otherwise the real coding process loses its only terminal slot.
 
     SECURITY: this exposes RCE as the `astra` user. Authenticate the founder and
     verify the run belongs to them BEFORE spawning the PTY. Fail closed.
@@ -3757,13 +3759,22 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
         # to that PTY instead of starting a resumed agent, so chat shows the exact
         # commands/output the coding process is using.
         term = await asyncio.to_thread(pty_terminal.get_terminal, session_id)
+        # The task record is intentionally published before the process starts
+        # so the UI can render immediately. Give the build a bounded window to
+        # create its authoritative PTY instead of taking over the workspace.
+        for _ in range(100):
+            if term:
+                break
+            await asyncio.sleep(0.1)
+            term = await asyncio.to_thread(pty_terminal.get_terminal, session_id)
         shared = bool(term and term.shared)
         if not term:
-            try:
-                cancellation.pause_session(session_id)
-            except Exception:
-                pass
-            term = await asyncio.to_thread(pty_terminal.open_takeover, session_id)
+            await websocket.send_text(json.dumps({
+                "t": "terminal_state", "state": "unavailable", "shared": False,
+                "message": "The build terminal did not start. Retry the build to create a fresh shared terminal.",
+            }))
+            await websocket.close(code=1013)
+            return
     except Exception as e:
         logger.error("terminal takeover spawn failed: %s", e)
         try:
@@ -3821,15 +3832,8 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
     finally:
         closed.set()
         term.unsubscribe(subscription)
-        if not shared:
-            try:
-                pty_terminal.close_takeover(session_id)
-            except Exception:
-                pass
-            try:
-                cancellation.resume_session(session_id)
-            except Exception:
-                pass
+        # Recovery terminals are no longer started implicitly from this route.
+        # The browser only ever attaches to the original shared build PTY.
 
 
 async def _safe_send_bytes(websocket: WebSocket, data: bytes) -> None:

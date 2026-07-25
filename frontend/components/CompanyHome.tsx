@@ -812,11 +812,11 @@ export default function CompanyHome() {
                                             <Loader2 size={12} className="company-home-spin" /> Starting the local preview. It will appear here as soon as the build server is healthy.
                                           </div>
                                         )}
-                                        {task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
+                                        {task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
                                           <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
                                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
                                               <span style={{ fontSize: 10.5, color: "var(--fm)", display: "flex", alignItems: "center", gap: 5 }}>
-                                                <Loader2 size={10} className="company-home-spin" /> Live preview — updating as the build progresses
+                                                {task.status === "active" ? <Loader2 size={10} className="company-home-spin" /> : <Check size={10} color="var(--green)" />} {task.status === "active" ? "Live preview — updating as the build progresses" : "Last live preview — available while you retry"}
                                               </span>
                                               <a href={task.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10.5, color: "var(--accent)", fontWeight: 500, flexShrink: 0, marginLeft: 8 }}>Open ↗</a>
                                             </div>

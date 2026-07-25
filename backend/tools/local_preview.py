@@ -13,6 +13,8 @@ dict is lost on restart, but the detached preview servers keep running).
 from __future__ import annotations
 
 import hashlib
+import base64
+import hmac
 import json
 import logging
 import os
@@ -267,7 +269,23 @@ def _public_host() -> str:
 
 
 def _preview_url(slug: str, port: int) -> str:
-    """Return the public URL for a preview. Subdomain if ASTRA_PUBLIC_HOST is set, else port-based."""
+    """Return a signed HTTPS preview URL when the public API is configured.
+
+    Embedding a plain HTTP nip.io subdomain inside HTTPS Company Home is mixed
+    content, and that subdomain cannot receive the authenticated app request.
+    The API proxy is HTTPS and accepts a scoped, expiring preview token instead.
+    """
+    proxy_base = os.environ.get("ASTRA_PREVIEW_PROXY_URL", "").rstrip("/")
+    if not proxy_base and _public_host() not in {"", "localhost"}:
+        proxy_base = "https://api.astracreates.com"
+    secret = os.environ.get("ASTRA_PREVIEW_SIGNING_SECRET", "")
+    if proxy_base and secret:
+        expiry = int(time.time()) + _PREVIEW_RETENTION_S
+        payload = f"{slug}.{expiry}".encode()
+        signature = base64.urlsafe_b64encode(hmac.new(secret.encode(), payload, hashlib.sha256).digest()).decode().rstrip("=")
+        return f"{proxy_base}/preview/{slug}?preview_token={expiry}.{signature}"
+
+    """Return the legacy public URL when no signed proxy is configured."""
     host = _public_host()
     if host and host != "localhost":
         return f"http://{slug}.{host}"
