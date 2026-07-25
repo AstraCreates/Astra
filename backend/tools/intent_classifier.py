@@ -439,5 +439,19 @@ def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
         if label in _SPECIAL_LABELS:
             return IntentClassification(kind=label, elapsed=elapsed)  # type: ignore[arg-type]
         if label in CAPABILITY_REGISTRY:
+            # A department with an _DEPARTMENT_SIGNAL_TERMS entry needs at
+            # least one of its own signal words somewhere in the whole
+            # message, not just the model's own restated `text` for this
+            # line -- a hallucinated line's `text` is often just as
+            # fabricated as its label. Confirmed live: a single call
+            # returned BOTH "...website..." :: product_technical AND
+            # "...website..." :: sales for a message with zero sales
+            # language anywhere, so a check gated on "no product_technical
+            # step yet" (the old _repair_missing_website_step guard) never
+            # even ran -- the bogus step needs rejecting here, at the
+            # source, not patched after the fact.
+            terms = _DEPARTMENT_SIGNAL_TERMS.get(label)
+            if terms is not None and not any(term in message.lower() for term in terms):
+                continue
             steps.append(IntentStep(text=text, department=label))
     return IntentClassification(kind="work", steps=steps, elapsed=elapsed)
