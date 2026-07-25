@@ -238,7 +238,15 @@ def _read_company_os_state_for_thread(company_id: str, thread_id: str) -> dict[s
 
 @router.get("/companies/{company_id}/os")
 async def get_company_os_route(company_id: str, founder_id: str, request: Request, thread_id: str = "default"):
-    _company(request, company_id, founder_id)
+    # _company() itself calls get_company_os() up to three times (via
+    # ensure_company_operations/_ensure_default_chat_thread_reflected), none
+    # of it going through _read_company_os_state's 2s cache -- called
+    # unwrapped here, this ran directly on the asyncio event loop thread on
+    # EVERY single GET /os request (the dashboard's hottest, most frequent
+    # endpoint), blocking that worker's ability to serve any other request
+    # for its duration. Live py-spy dump caught this in the act. Same fix as
+    # the read below it: hand the blocking work to a thread.
+    await asyncio.to_thread(_company, request, company_id, founder_id)
     return await asyncio.to_thread(_read_company_os_state_for_thread, company_id, thread_id)
 
 

@@ -219,6 +219,7 @@ export default function CompanyHome() {
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingText, setEditingText] = useState("");
   const [messageBusyId, setMessageBusyId] = useState("");
+  const [approvingId, setApprovingId] = useState("");
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
@@ -856,7 +857,23 @@ export default function CompanyHome() {
           {home.approvals.length === 0 ? (
             <p style={{ margin: 0, padding: 12, border: "1px dashed var(--bd)", borderRadius: "var(--radius)", color: "var(--fm)", fontSize: 11.5 }}>Nothing waiting on you.</p>
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small><button type="button" onClick={() => { void decideCompanyApproval({ founderId, companyId }, item.id, true).then(setHome).catch(error => setNotice(friendlyErrorMessage(error, "Approval failed."))); }} style={{ padding: "6px 9px", border: 0, borderRadius: 6, background: "var(--accent)", color: "#fff", cursor: "pointer", fontSize: 10 }}>Approve</button></div></article>)}</div>
+            <div style={{ display: "grid", gap: 8 }}>{home.approvals.map(item => {
+              const busy = approvingId === item.id;
+              return <article key={item.id} style={{ padding: 11, border: "1px solid var(--ab)", borderRadius: "var(--radius)", background: "var(--adim)" }}><div style={{ display: "flex", gap: 6, color: "var(--amber)" }}><ShieldCheck size={13} /><b style={{ fontSize: 11.5, color: "var(--fg)" }}>{item.title}</b></div><p style={{ margin: "6px 0", fontSize: 10.5, color: "var(--fd)" }}>{item.detail}</p><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><small style={{ color: "var(--amber)", fontSize: 10 }}>{item.squad}</small><button type="button" disabled={busy} onClick={() => {
+                // The decision route pays the same full-snapshot cost every
+                // other Company OS write does -- with no disabled/pending
+                // state here, a slow response reads as "nothing happened",
+                // and clicking again double-submits (confirmed live: the
+                // same approval recorded three separate decisions minutes
+                // apart). Guard by id, same convention as messageBusyId.
+                if (approvingId) return;
+                setApprovingId(item.id);
+                void decideCompanyApproval({ founderId, companyId }, item.id, true)
+                  .then(setHome)
+                  .catch(error => setNotice(friendlyErrorMessage(error, "Approval failed.")))
+                  .finally(() => setApprovingId(""));
+              }} style={{ padding: "6px 9px", border: 0, borderRadius: 6, background: "var(--accent)", color: "#fff", cursor: busy ? "default" : "pointer", fontSize: 10, opacity: busy ? 0.6 : 1 }}>{busy ? "Approving…" : "Approve"}</button></div></article>;
+            })}</div>
           )}
         </section>
 
