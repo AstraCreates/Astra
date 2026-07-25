@@ -164,23 +164,83 @@ body {
   --text-3: #5a607a;
 }
 
-/* ══ SCREEN 1 — dashboard / new run ══════════════ */
+/* ══ SCREEN 1 — dashboard hero ════════════════════ */
 .dash-hero {
   flex-shrink: 0;
-  padding: 28px 32px 26px;
-  background: linear-gradient(160deg, #0d1340 0%, #0a0f2e 45%, #060608 100%);
+  position: relative;
+  height: 132px;
+  overflow: hidden;
+  background: #0a1b6b;
+}
+.dash-hero-img {
+  position: absolute; inset: 0;
+  background: url('dash-hero.jpg') 50% 20%/cover no-repeat;
+}
+.dash-hero-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,rgba(5,7,14,.86) 0%,rgba(5,7,14,.5) 46%,rgba(5,7,14,.7) 100%);
+}
+.dash-hero-inner {
+  position: relative; z-index: 2;
+  height: 100%; padding: 24px 32px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+}
+.dash-hero-greeting { margin: 0 0 6px; font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: #EDF1FB; }
+.dash-hero-sub { font-size: 13.5px; color: rgba(237,241,251,.68); }
+.dash-hero-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-top: 2px; }
+.connected-pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px;
+  background: rgba(70,220,150,.12); border: 1px solid rgba(90,230,160,.35);
+  border-radius: 7px; font-size: 11.5px; font-weight: 700; letter-spacing: .04em; color: #7CFFC6;
+}
+.live-dot { width: 6px; height: 6px; border-radius: 2px; background: #4ADE93; flex-shrink: 0; }
+
+/* ══ CHAT TOOLBAR ════════════════════════════════ */
+.chat-toolbar {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 28px;
   border-bottom: 1px solid var(--bd);
-  position: relative; overflow: hidden;
 }
-.dash-hero::after {
-  content: '';
-  position: absolute; right: -40px; top: -60px;
-  width: 320px; height: 240px;
-  background: radial-gradient(ellipse, rgba(82,108,255,0.18) 0%, transparent 70%);
-  pointer-events: none;
+.chat-toolbar-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--bd);
+  border-radius: 8px; padding: 7px 12px;
+  color: var(--text); font-size: 12.5px; font-weight: 600;
 }
-.dash-hero-greeting { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 4px; }
-.dash-hero-sub { font-size: 13px; color: rgba(237,241,251,0.55); }
+.chat-toolbar-btn {
+  border: 0; background: rgba(255,255,255,.06); color: var(--fg-dim);
+  font: 600 12px 'Hanken Grotesk',system-ui,sans-serif;
+  padding: 7px 14px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--bd); transition: background .14s;
+}
+.chat-toolbar-btn:hover { background: rgba(255,255,255,.1); }
+
+/* ══ PROGRESS ROW ════════════════════════════════ */
+.progress-row {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 28px;
+  border-bottom: 1px solid var(--bd);
+}
+.progress-track {
+  flex: 1; display: flex; align-items: center; gap: 12px;
+  background: rgba(255,255,255,.03); border: 1px solid var(--bd);
+  border-radius: 10px; padding: 9px 14px;
+}
+.progress-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-mute); white-space: nowrap; }
+.progress-bar-wrap { flex: 1; height: 5px; border-radius: 3px; background: var(--bd); overflow: hidden; }
+.progress-bar { height: 100%; border-radius: 3px; background: var(--blue); transform: scaleX(0); transform-origin: left; transition: transform 1.2s var(--ease); }
+.progress-pct { font-size: 12px; font-weight: 700; color: var(--blue); white-space: nowrap; }
+.progress-tasks { font-size: 11px; color: var(--fg-mute); white-space: nowrap; }
+.new-squad-btn {
+  flex-shrink: 0; white-space: nowrap;
+  background: transparent; border: 1px dashed var(--bd2);
+  border-radius: 20px; padding: 7px 14px;
+  color: var(--fg-mute); font: 600 12px 'Hanken Grotesk',system-ui,sans-serif;
+  cursor: pointer;
+}
+.new-squad-btn:hover { border-color: var(--blue); color: var(--blue); }
 
 .dash-body {
   flex: 1; display: flex; flex-direction: column; overflow: hidden;
@@ -198,12 +258,6 @@ body {
   background: rgba(82,108,255,0.15); border: 1px solid rgba(82,108,255,0.22);
   display: grid; place-items: center; margin-bottom: 4px;
 }
-.dash-logo-mark {
-  width: 26px; height: 26px;
-  background: white;
-  -webkit-mask: url('logo.png') center/contain no-repeat;
-  mask: url('logo.png') center/contain no-repeat;
-}
 .dash-empty-h { font-size: 19px; font-weight: 700; letter-spacing: -0.025em; }
 .dash-empty-s { font-size: 13px; color: var(--fg-mute); margin-top: 2px; }
 .dash-chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
@@ -217,41 +271,45 @@ body {
 
 /* chat thread */
 .chat-thread {
-  flex: 1; overflow-y: auto; padding: 20px 0 8px;
-  display: none; flex-direction: column; gap: 18px;
+  flex: 1; overflow-y: auto; padding: 24px 20px 12px;
+  display: none; flex-direction: column; gap: 16px;
 }
 .chat-thread.visible { display: flex; }
-.chat-msg { display: flex; gap: 10px; padding: 0 24px; max-width: 780px; width: 100%; align-self: center; box-sizing: border-box; }
-.chat-msg.user { justify-content: flex-end; }
-.chat-msg.astra { justify-content: flex-start; align-items: flex-start; }
-.chat-bubble-user {
-  max-width: 72%; padding: 10px 15px; border-radius: 18px 18px 4px 18px;
-  background: linear-gradient(180deg,#6b85ff,#2d48c8);
-  color: #fff; font-size: 13.5px; line-height: 1.55; letter-spacing: -0.005em;
-  box-shadow: 0 2px 12px rgba(45,72,200,0.35);
-  animation: logIn .25s var(--ease) both;
+.ch-chat-row {
+  display: flex; align-items: flex-start; gap: 10px; max-width: 760px; width: 100%; align-self: center;
+  animation: appleRowIn .32s var(--apple-ease-spring) both;
 }
-.chat-av {
-  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; margin-top: 2px;
-  background: rgba(82,108,255,0.15); border: 1px solid rgba(82,108,255,0.22);
-  display: grid; place-items: center;
+.ch-chat-row.is-founder { justify-content: flex-end; }
+.ch-chat-avatar {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 9px;
+  background: linear-gradient(180deg,#6b85ff 0%,#2d48c8 100%); color: #fff;
+  box-shadow: 0 3px 8px rgba(45,72,200,0.32), inset 0 1px 0 rgba(255,255,255,0.30);
 }
-.chat-av-mark { width: 16px; height: 16px; background: white; -webkit-mask: url('logo.png') center/contain no-repeat; mask: url('logo.png') center/contain no-repeat; }
-.chat-bubble-astra {
-  max-width: 78%; padding: 10px 15px; border-radius: 4px 18px 18px 18px;
-  background: var(--s2); border: 1px solid var(--bd);
-  font-size: 13.5px; line-height: 1.6; color: var(--fg-dim); letter-spacing: -0.005em;
-  animation: logIn .25s var(--ease) both;
+.ch-chat-bubble {
+  max-width: min(640px,84%); padding: 12px 16px; border-radius: 20px;
+  background: var(--apple-glass-bg); border: 1px solid var(--apple-glass-border);
+  color: var(--text); font-size: 13.5px; line-height: 1.55; letter-spacing: -0.005em;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10), var(--apple-glass-highlight);
+  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
-.chat-bubble-astra strong { color: var(--text); font-weight: 600; }
-.chat-typing { display: flex; gap: 4px; align-items: center; padding: 4px 2px; }
-.chat-typing span {
-  width: 5px; height: 5px; border-radius: 50%; background: var(--fg-mute);
-  animation: typingDot 1.2s ease-in-out infinite;
+.ch-chat-row.is-founder .ch-chat-bubble {
+  background: linear-gradient(180deg,#4a6bff 0%,#1a3acc 100%);
+  border-color: rgba(255,255,255,.18); color: #fff;
+  border-bottom-right-radius: 6px;
+  box-shadow: 0 6px 18px rgba(11,49,255,0.32), inset 0 1px 0 rgba(255,255,255,0.20);
 }
-.chat-typing span:nth-child(2) { animation-delay: .15s; }
-.chat-typing span:nth-child(3) { animation-delay: .30s; }
-@keyframes typingDot { 0%,60%,100%{opacity:.25;transform:scale(1)} 30%{opacity:1;transform:scale(1.3)} }
+.ch-chat-row:not(.is-founder) .ch-chat-bubble { border-bottom-left-radius: 6px; }
+.ch-chat-bubble strong { font-weight: 600; }
+@keyframes appleRowIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.ch-thinking-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-2); margin: 0 2px;
+  animation: appleDot 1.18s ease-in-out infinite;
+}
+.ch-thinking-dot:nth-child(2) { animation-delay: .18s; }
+.ch-thinking-dot:nth-child(3) { animation-delay: .36s; }
+@keyframes appleDot { 0%,60%,100%{opacity:.28;transform:translateY(0)} 30%{opacity:1;transform:translateY(-3px)} }
 
 .dash-composer { flex-shrink: 0; padding: 0 24px 24px; width: 100%; max-width: 780px; align-self: center; }
 
@@ -583,8 +641,6 @@ body {
 .live-feed-line .ev.info { color: var(--blue); }
 
 /* ══ CHAT INLINE AGENTS ═════════════════════════ */
-.chat-msg.agents, .chat-msg.outputs { max-width: 100%; padding: 0 24px; align-items: flex-start; }
-.chat-av-top { align-self: flex-start; margin-top: 2px; }
 .chat-agents-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
 .chat-outputs-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; min-width: 0; }
 .chat-output-card {
@@ -597,9 +653,6 @@ body {
 .chat-output-name { font-size: 11.5px; font-weight: 600; margin-bottom: 3px; color: var(--text); }
 .chat-output-desc { font-size: 10.5px; color: var(--fg-mute); line-height: 1.45; margin-bottom: 8px; }
 
-/* Astra text bubble — flat, no card */
-.chat-bubble-astra { background: transparent; border: none; padding: 2px 0; font-size: 13.5px; line-height: 1.6; color: var(--fg-dim); letter-spacing: -0.005em; }
-.chat-bubble-astra strong { color: var(--text); font-weight: 600; }
 
 /* ══ GLOW ════════════════════════════════════════ */
 .glow { position:fixed; pointer-events:none; z-index:-1; border-radius:50%; filter:blur(130px); opacity:.08; }
@@ -682,22 +735,49 @@ body {
   <!-- S1: Dashboard / chat -->
   <div id="s-goal" class="screen active">
     <div class="dash-hero">
-      <div class="dash-hero-greeting">Let's get to work.</div>
-      <div class="dash-hero-sub">Ask Copilot to kick off your first run.</div>
+      <div class="dash-hero-img"></div>
+      <div class="dash-hero-overlay"></div>
+      <div class="dash-hero-inner">
+        <div>
+          <p class="dash-hero-greeting">Let's get to work, Jhinkesh.</p>
+          <div class="dash-hero-sub">Build something people want — your north star.</div>
+        </div>
+        <div class="dash-hero-right">
+          <div class="connected-pill"><span class="live-dot"></span>CONNECTED</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-toolbar">
+      <div class="chat-toolbar-label">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Company chat
+      </div>
+      <button class="chat-toolbar-btn">+ New chat</button>
+    </div>
+    <div class="progress-row">
+      <div class="progress-track">
+        <span class="progress-label">Progress to launch</span>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="launchBar"></div></div>
+        <span class="progress-pct" id="launchPct">0%</span>
+        <span class="progress-tasks">0 / 12 tasks</span>
+      </div>
+      <button class="new-squad-btn">+ New squad</button>
     </div>
     <div class="dash-body">
 
       <!-- empty state -->
       <div class="dash-empty" id="dashEmpty">
-        <div class="dash-logo-icon"><div class="dash-logo-mark"></div></div>
+        <div class="dash-logo-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#7d8fff"><path d="M12 3l1.8 5.4L19 10l-5.2 3.6L15.6 19 12 15.4 8.4 19l1.8-5.4L5 10l5.2-1.6z"/></svg>
+        </div>
         <div style="text-align:center;">
-          <div class="dash-empty-h">What do you want to accomplish?</div>
-          <div class="dash-empty-s">Astra will spin up a full team and get to work.</div>
+          <div class="dash-empty-h">How's Your Company doing?</div>
+          <div class="dash-empty-s">Build something people want — ask Astra anything.</div>
         </div>
         <div class="dash-chips">
-          <div class="dash-chip" onclick="fillGoal('Validate my market and get me ready to launch.')">Validate my market &amp; launch</div>
-          <div class="dash-chip" onclick="fillGoal('Find and close my first 10 enterprise customers.')">Find my first 10 enterprise customers</div>
-          <div class="dash-chip" onclick="fillGoal('Build and ship a landing page for my product.')">Ship a landing page</div>
+          <div class="dash-chip" onclick="fillGoal('What needs my attention?')">What needs my attention?</div>
+          <div class="dash-chip" onclick="fillGoal('Summarize where things stand.')">Summarize where things stand.</div>
+          <div class="dash-chip" onclick="fillGoal('What\'s blocked right now?')">What's blocked right now?</div>
         </div>
       </div>
 
@@ -974,23 +1054,23 @@ function fillGoal(text) {
 
 function appendUserMsg(text) {
   const div = document.createElement('div');
-  div.className = 'chat-msg user';
-  div.innerHTML = `<div class="chat-bubble-user">${text}</div>`;
+  div.className = 'ch-chat-row is-founder';
+  div.innerHTML = `<div class="ch-chat-bubble">${text}</div>`;
   thread().appendChild(div); scroll();
 }
 
 function appendTyping(id) {
   const div = document.createElement('div');
-  div.className = 'chat-msg astra'; div.id = id || 'astraTyping';
-  div.innerHTML = `<div class="chat-av"><div class="chat-av-mark"></div></div>
-    <div class="chat-bubble-astra"><div class="chat-typing"><span></span><span></span><span></span></div></div>`;
+  div.className = 'ch-chat-row'; div.id = id || 'astraTyping';
+  div.innerHTML = `<div class="ch-chat-avatar">A</div>
+    <div class="ch-chat-bubble"><span class="ch-thinking-dot"></span><span class="ch-thinking-dot"></span><span class="ch-thinking-dot"></span></div>`;
   thread().appendChild(div); scroll();
 }
 
 function streamText(id, text, cb) {
   const msg = document.getElementById(id);
   if (!msg) return;
-  const bubble = msg.querySelector('.chat-bubble-astra');
+  const bubble = msg.querySelector('.ch-chat-bubble');
   bubble.innerHTML = '';
   let i = 0;
   (function t() {
@@ -1158,8 +1238,8 @@ function sendChat() {
 function injectAgentCards() {
   // brain banner message
   const brainDiv = document.createElement('div');
-  brainDiv.className = 'chat-msg astra';
-  brainDiv.innerHTML = `<div class="chat-av"><div class="chat-av-mark"></div></div>
+  brainDiv.className = 'ch-chat-row';
+  brainDiv.innerHTML = `<div class="ch-chat-avatar">A</div>
     <div class="brain-banner visible" id="brainBanner">
       <span class="brain-sym">◉</span>
       <div class="brain-content">
@@ -1178,8 +1258,8 @@ function injectAgentCards() {
 
   // agent cards grid
   const agDiv = document.createElement('div');
-  agDiv.className = 'chat-msg astra agents';
-  agDiv.innerHTML = `<div class="chat-av chat-av-top"><div class="chat-av-mark"></div></div>
+  agDiv.className = 'ch-chat-row';
+  agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
     <div class="chat-agents-grid">${['ci','ma','web','sp'].map(buildCard).join('')}</div>`;
   thread().appendChild(agDiv); scroll();
 
@@ -1274,8 +1354,8 @@ function showOutputs() {
 
   astraMsg(`All done. Here's everything that was produced:`, () => {
     const outDiv = document.createElement('div');
-    outDiv.className = 'chat-msg astra outputs';
-    outDiv.innerHTML = `<div class="chat-av chat-av-top"><div class="chat-av-mark"></div></div>
+    outDiv.className = 'ch-chat-row';
+    outDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
       <div class="chat-outputs-grid">${outputs.map((o,i) => `
         <div class="chat-output-card" id="oc${i}">
           <div class="chat-output-sym">${o.sym}</div>
