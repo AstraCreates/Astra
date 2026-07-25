@@ -229,17 +229,31 @@ _DASHBOARD_HEAVY_FIELDS = {
     "research_metadata", "build_metadata", "discussion", "messages",
     "transcript", "tool_output", "prompt", "completion",
 }
+_DASHBOARD_FIELDS = {
+    "artifacts": {"artifact_id", "id", "name", "title", "source", "created_at", "updated_at", "url", "initiative_id", "state", "hosting", "hosting_status", "task_id", "squad_id"},
+    "context_records": {"record_id", "id", "scope", "scope_id", "key", "created_at", "updated_at", "source_count"},
+    "squad_meetings": {"meeting_id", "id", "company_id", "initiative_id", "squad_id", "mission_id", "task_id", "phase", "status", "created_at", "updated_at", "owner", "next_action", "blockers", "task_ids"},
+    "tasks": {"task_id", "id", "initiative_id", "squad_id", "mission_id", "role_id", "name", "title", "state", "status", "owner_agent", "department", "notes", "detail", "description", "progress_text", "activity", "search_count", "depends_on_task_ids", "dependency_ids", "parallel_lane", "parallel_group", "lane", "terminal_session_id", "build_session_id", "terminal_state", "workspace_state", "preview_state", "preview_url", "execution_profile", "blocked_reason", "updated_at", "created_at"},
+    "squads": {"squad_id", "id", "initiative_id", "name", "department", "lifecycle", "state", "role_ids", "meeting_ids", "squad_charter", "charter", "archived", "created_at", "updated_at"},
+    "missions": {"mission_id", "id", "initiative_id", "squad_id", "name", "department", "state", "status", "charter", "goal", "handoff_for", "created_at", "updated_at"},
+}
 
 
 def _dashboard_projection(state: dict[str, Any]) -> dict[str, Any]:
     """Build a small read projection without altering durable Company OS data."""
     result = {key: value for key, value in state.items() if key not in _DASHBOARD_EXCLUDED_COLLECTIONS}
-    for collection in ("artifacts", "context_records", "squad_meetings", "tasks", "squads", "missions"):
+    for collection, allowed in _DASHBOARD_FIELDS.items():
         compact: list[dict[str, Any]] = []
         for item in state.get(collection, []):
             if not isinstance(item, dict):
                 continue
-            compact.append({key: value for key, value in item.items() if key not in _DASHBOARD_HEAVY_FIELDS})
+            projected = {key: value for key, value in item.items() if key in allowed and key not in _DASHBOARD_HEAVY_FIELDS}
+            if collection == "context_records":
+                projected["source_count"] = len(item.get("source_references") or [])
+            if collection == "squad_meetings":
+                projected["decisions"] = [str(value)[:500] for value in (item.get("decisions") or [])[:4]]
+                projected["blockers"] = [str(value)[:300] for value in (item.get("blockers") or [])[:4]]
+            compact.append(projected)
         result[collection] = compact
     # Keep the current thread responsive even for long-lived permanent chats.
     # Older messages remain durable and can be fetched by a history endpoint

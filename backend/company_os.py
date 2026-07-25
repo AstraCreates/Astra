@@ -150,8 +150,32 @@ def company_os_version(company_id: str, *, root: str | Path | None = None) -> in
         loaded = _load_snapshot(directory)
         if loaded is None:
             return None
-        _, sequence = _replay(directory, loaded)
-        return sequence
+        # A cursor check must not replay every historical segment. The append
+        # log is strictly ordered, so the final complete JSONL record is the
+        # authoritative latest event; fall back to the snapshot cursor for a
+        # freshly-created/compacted company.
+        for segment in reversed(_segments(directory)):
+            try:
+                with segment.open("rb") as handle:
+                    handle.seek(0, os.SEEK_END)
+                    end = handle.tell()
+                    if not end:
+                        continue
+                    start = max(0, end - 131_072)
+                    handle.seek(start)
+                    lines = handle.read().splitlines()
+                for raw in reversed(lines):
+                    if not raw.strip():
+                        continue
+                    event = json.loads(raw)
+                    sequence = int(event.get("sequence", 0))
+                    if sequence:
+                        return sequence
+            except Exception:
+                # A torn tail is handled by the normal replay/recovery path;
+                # conditional reads conservatively use the snapshot cursor.
+                break
+        return int(loaded["last_sequence"])
 
 
 def company_recovery_lock(company_id: str, *, root: str | Path | None = None):
