@@ -1199,7 +1199,9 @@ const AGENTS = {
 let chatState = 'goal'; // goal | running | steering | done
 
 function lockComposer() {
-  document.getElementById('compTa').disabled = true;
+  const ta = document.getElementById('compTa');
+  ta.value = '';
+  ta.disabled = true;
   document.getElementById('submitBtn').disabled = true;
 }
 function unlockComposer(placeholder) {
@@ -1279,7 +1281,7 @@ function injectAgentCards() {
     }, ag.delay);
   });
 
-  // steer prompt at 25s
+  // steer prompt at 15s
   setTimeout(() => {
     astraMsg(`The team is about 40% through. Want to redirect them? Type below — I'll pass it on immediately.`, () => {
       chatState = 'steering';
@@ -1290,7 +1292,7 @@ function injectAgentCards() {
       let i = 0;
       (function t() { if (i < steer.length) { ta.value += steer[i++]; setTimeout(t, 55 + Math.random()*30); } })();
     });
-  }, 25000);
+  }, 15000);
 }
 
 function applySteering() {
