@@ -97,16 +97,29 @@ export default function SquadsPage() {
           <div className="empty-title">Loading squads…</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(320px, 1fr)", gap: 16, alignItems: "start" }}>
-          <SquadGraph squads={squads} brain={home.brain} selectedSquadId={selectedSquadId} onSelectSquad={setSelectedSquadId} />
-          <SquadDetailPanel
-            squad={selectedSquad}
-            artifacts={selectedSquadArtifacts}
-            retryingTaskId={retryingTaskId}
-            onRetryTask={handleRetryTask}
-            onDeleteSquad={handleDeleteSquad}
-          />
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            {squads.map((squad) => {
+              const active = squad.id === selectedSquadId;
+              const done = squad.tasks.filter(task => task.status === "complete").length;
+              return <button key={squad.id} type="button" onClick={() => setSelectedSquadId(squad.id)} style={{ textAlign: "left", padding: "14px 16px", border: `1px solid ${active ? "var(--accent)" : "var(--bd)"}`, borderRadius: "var(--radius-lg)", background: active ? "var(--bdim)" : "var(--bg-surface)", color: "var(--fg)", cursor: "pointer", boxShadow: active ? "0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)" : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{squad.name}</strong><span className="dc-badge que">{squad.lifecycle}</span></div>
+                <div style={{ marginTop: 8, color: "var(--fm)", fontSize: 11.5 }}>{squad.roster.length} members · {done}/{squad.tasks.length || 0} tasks complete</div>
+                <div style={{ height: 4, marginTop: 10, borderRadius: 99, background: "var(--bd)", overflow: "hidden" }}><div style={{ width: `${squad.tasks.length ? Math.round(done / squad.tasks.length * 100) : 0}%`, height: "100%", background: "var(--accent)" }} /></div>
+              </button>;
+            })}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.9fr)", gap: 16, alignItems: "start" }}>
+            <SquadGraph squads={squads} brain={home.brain} selectedSquadId={selectedSquadId} onSelectSquad={setSelectedSquadId} />
+            <SquadDetailPanel
+              squad={selectedSquad}
+              artifacts={selectedSquadArtifacts}
+              retryingTaskId={retryingTaskId}
+              onRetryTask={handleRetryTask}
+              onDeleteSquad={handleDeleteSquad}
+            />
+          </div>
+        </>
       )}
     </div>
   );

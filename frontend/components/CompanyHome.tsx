@@ -543,7 +543,12 @@ export default function CompanyHome() {
       }));
       return [squadOption, ...memberOptions];
     });
-    const fileOptions: CopilotMentionOption[] = libraryFiles.map((file) => ({
+    const files = [...libraryFiles, ...home.brain.artifacts.map((artifact) => ({
+      id: artifact.id,
+      filename: artifact.title,
+      department: artifact.source || "Company OS",
+    }))].filter((file, index, all) => all.findIndex((candidate) => candidate.id === file.id) === index);
+    const fileOptions: CopilotMentionOption[] = files.map((file) => ({
       kind: "library_file",
       id: file.id,
       token: uniqueToken("library_file", file.filename, file.id),
