@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Brain, Calendar, Check, ChevronDown, Circle, FileText, LayoutDashboard, Link2, Loader2, MessageCircle, PanelRightClose, PanelRightOpen, Pencil, Save, ShieldCheck, Sparkles, Trash2, Users, X } from "lucide-react";
 import AstraCopilotComposer from "@/components/AstraCopilotComposer";
+import TerminalPane from "@/components/TerminalPane";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
 import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
@@ -114,6 +115,7 @@ export function MeetingTimeline({ meetings, open, onToggle }: { meetings: Compan
 function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad: CompanyHomeSquad; onClose: () => void; onRetryTask: (taskId: string) => void; retryingTaskId: string }) {
   const [selectedId, setSelectedId] = useState(() => squad.tasks.find(t => t.status === "active")?.id ?? squad.tasks[0]?.id ?? "");
   const [meetingsOpen, setMeetingsOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const selected = squad.tasks.find(t => t.id === selectedId) ?? squad.tasks[0] ?? null;
   const lanes = squad.tasks.reduce<Record<string, typeof squad.tasks>>((groups, task) => ({ ...groups, [task.parallelLane]: [...(groups[task.parallelLane] ?? []), task] }), {});
   return <div role="dialog" aria-modal="true" aria-label={`${squad.name} workbench`} onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.72)" }}>
@@ -168,6 +170,17 @@ function SquadWorkbench({ squad, onClose, onRetryTask, retryingTaskId }: { squad
               </div>
             ) : (
               <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.7, color: "var(--fd)", whiteSpace: "pre-wrap" }}>{selected.note || "No additional detail recorded for this task yet."}</p>
+            )}
+            {selected.terminalSessionId && (
+              <section style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--bd)" }}>
+                {!terminalOpen ? (
+                  <button type="button" className="btn sm" onClick={() => setTerminalOpen(true)}>
+                    Open interactive build terminal
+                  </button>
+                ) : (
+                  <TerminalPane sessionId={selected.terminalSessionId} onClose={() => setTerminalOpen(false)} />
+                )}
+              </section>
             )}
           </>}
         </div>
