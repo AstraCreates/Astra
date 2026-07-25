@@ -818,7 +818,7 @@ def _company_os_context(args: dict) -> dict:
 
 def _company_research(args: dict) -> dict:
     from backend.company_os import get_company_os
-    from backend.tools.browser_research import run_comparison_research, run_research_pipeline
+    from backend.tools.browser_research import _comparison_subjects, run_comparison_research, run_research_pipeline
     from backend.tools.research_evidence import validate_deep_research, validate_quick_research
     from backend.config import settings
     import time
@@ -873,7 +873,19 @@ def _company_research(args: dict) -> dict:
                     squad_id=args.get("squad_id"), mission_id=args.get("mission_id"), task_id=task_id,
                 ))
             else:
-                evidence = (run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
+                # A blind "compare" in subject.lower() substring check used to
+                # decide this -- it also matched "compared"/"comparison"/
+                # "incomparable" etc., routing a plain question like "why are
+                # qwen llms so efficient compared to other models" (no two
+                # named subjects to compare, just the word "compared" in
+                # passing) into run_comparison_research, whose own subject
+                # extraction then failed outright ("comparison subjects could
+                # not be identified") for lack of the two-subject pattern it
+                # actually needs. Use that exact same extraction as the
+                # routing decision instead of a looser, separately-maintained
+                # heuristic -- if it can't find two subjects, this was never
+                # going to be a real comparison call regardless.
+                evidence = (run_comparison_research(subject, on_search=on_search) if _comparison_subjects(subject)
                             else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=5 if quick else 6, on_search=on_search))
             if task_id:
                 evidence.setdefault("search_count", counter.get("n", 0))

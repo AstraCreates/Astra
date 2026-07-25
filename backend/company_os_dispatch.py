@@ -220,9 +220,10 @@ def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     prompt = f"""A founder sent this message to their company's AI operating system: {intent!r}
 Extract a compact, structured description of the work this message is asking for.
 Available capabilities: {catalog}
-Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact department capability that owns the first deliverable, "required_capabilities": [exact department capabilities from the catalog], "required_role_capabilities": [exact role capabilities needed, if any], "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
+Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact department capability that owns the first deliverable, "required_capabilities": [exact department capabilities from the catalog], "required_role_capabilities": [exact role capabilities needed, if any], "research_specialists": [{{"title": string, "focus": string}}]|null, "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
 Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities, and do not invent a comparison, audience, or platform the founder never mentioned.
-A request to explain, describe, or research a specific named subject (a company, product, market, or person) is self-sufficient on its own -- proceed with the standard dimensions a competent analyst would cover (overview, business model, market position, competitors) rather than asking what to cover. Most requests are NOT ambiguous: default to reasonable assumptions and proceed. Only set clarification_question when the request is so vague the work genuinely cannot start at all (e.g. "build me an app" with no description of what it does) -- not to narrow scope, pick an emphasis, or confirm something you could reasonably infer. When you do ask, and the missing piece is naturally a short list of choices genuinely implied by the founder's own message, set clarification_options to 2-5 short answer strings drawn from that message; otherwise leave clarification_options null for an open-ended answer."""
+A request to explain, describe, or research a specific named subject (a company, product, market, or person) is self-sufficient on its own -- proceed with the standard dimensions a competent analyst would cover (overview, business model, market position, competitors) rather than asking what to cover. Most requests are NOT ambiguous: default to reasonable assumptions and proceed. Only set clarification_question when the request is so vague the work genuinely cannot start at all (e.g. "build me an app" with no description of what it does) -- not to narrow scope, pick an emphasis, or confirm something you could reasonably infer. When you do ask, and the missing piece is naturally a short list of choices genuinely implied by the founder's own message, set clarification_options to 2-5 short answer strings drawn from that message; otherwise leave clarification_options null for an open-ended answer.
+If this is fundamentally a research/investigation request (not a product build, marketing plan, etc.), name 1-3 specialist researcher roles genuinely suited to THIS SPECIFIC subject -- invent the title freely from the actual topic (e.g. "Ancient Trade Historian" and "Archaeological Evidence Analyst" for a question about Roman trade routes; "Model Architecture Analyst" for a question about why an AI model is efficient; "Angling Technique Specialist" for a fishing question; "Market Analyst" and "Competitive Analyst" for a genuine product/company comparison) rather than reusing generic labels like "Research Analyst" for everything. Use exactly one role for a narrow, single-topic question; use 2-3 only when the request genuinely spans distinct evidence dimensions that each need independent investigation (e.g. a real two-company comparison, or a question spanning technical AND market AND regulatory angles at once). Each role's "focus" is one sentence naming exactly what that role investigates, specific to this request -- not a restatement of the role title. Leave research_specialists null for non-research work."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
     known_role = {capability for roles in SQUAD_ROLE_REGISTRY.values() for role in roles for capability in role["capabilities"]}
     failures: list[str] = []
@@ -253,6 +254,26 @@ A request to explain, describe, or research a specific named subject (a company,
             clarification_question = payload.get("clarification_question") if isinstance(payload.get("clarification_question"), str) and payload.get("clarification_question").strip() else None
             raw_options = payload.get("clarification_options")
             clarification_options = [str(value) for value in raw_options if isinstance(value, str) and value.strip()] if isinstance(raw_options, list) else None
+            # Genuinely dynamic per-request specialist roles -- not a lookup
+            # into SQUAD_ROLE_REGISTRY's fixed catalog. Letting the classifier
+            # pick from a handful of fixed archetypes (Market Analyst,
+            # Technical Analyst, ...) meant EVERY request got squeezed into
+            # whichever one scored highest even when none actually fit
+            # (confirmed live: "ancient Roman trade routes" and "bass fishing
+            # techniques" both got assigned "Technical & Scientific Analyst",
+            # because that role's own capability tags happen to include
+            # "evidence research", which is on nearly every research request
+            # regardless of subject). Here the model instead names the role
+            # itself, freely, from the actual topic.
+            raw_specialists = payload.get("research_specialists")
+            research_specialists: list[dict[str, str]] | None = None
+            if isinstance(raw_specialists, list):
+                cleaned = [
+                    {"title": str(item.get("title")).strip(), "focus": str(item.get("focus") or "").strip()}
+                    for item in raw_specialists
+                    if isinstance(item, dict) and str(item.get("title") or "").strip()
+                ][:3]
+                research_specialists = cleaned or None
             return {"version": 1, "objective": str(payload.get("objective") or intent).strip(), "outcome": str(payload.get("objective") or intent).strip(),
                     "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
                     "acceptance_criteria": [str(value) for value in payload.get("acceptance_criteria", []) if isinstance(value, str)],
@@ -260,7 +281,8 @@ A request to explain, describe, or research a specific named subject (a company,
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
                     "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
                     "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities),
-                    "required_role_capabilities": sorted(role_capabilities), "confidence": min(confidence, 1.0),
+                    "required_role_capabilities": sorted(role_capabilities), "research_specialists": research_specialists,
+                    "confidence": min(confidence, 1.0),
                     "requires_clarification": clarification_question is not None,
                     "clarification_question": clarification_question,
                     "clarification_options": clarification_options or None,
@@ -329,11 +351,50 @@ def choose_department(intent: str) -> tuple[str, str]:
     return route["department"], route["squad_name"]
 
 
+def _slugify_role_key(title: str, index: int, taken: set[str]) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_") or f"specialist_{index}"
+    candidate = slug
+    suffix = 2
+    while candidate in taken:
+        candidate = f"{slug}_{suffix}"
+        suffix += 1
+    return candidate
+
+
 def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any]:
     """Select a lead and at most three specialists from the actual request."""
+    definitions = SQUAD_ROLE_REGISTRY[lead]
+    # Research specialists are named by the classifier itself, per request --
+    # see _extract_work_request_with_model's research_specialists field. This
+    # is deliberately NOT a lookup into a fixed role catalog: scoring against
+    # even a broader fixed set of archetypes (Market/Technical/Policy/...
+    # Analyst) still squeezed every request into whichever one scored
+    # highest, including subjects none of them actually fit (confirmed live:
+    # "ancient Roman trade routes" and "bass fishing techniques" both landed
+    # on "Technical & Scientific Analyst" purely because that role's own
+    # capability tags include "evidence research", present on nearly every
+    # research request regardless of topic). The lead role stays the one
+    # fixed, structural role; every specialist below it is invented for this
+    # specific request.
+    research_specialists = request.get("research_specialists") if lead == "research" else None
+    if lead == "research" and research_specialists:
+        lead_role = dict(definitions[0])
+        selected: list[dict[str, Any]] = [lead_role]
+        taken = {lead_role["role_key"]}
+        for index, spec in enumerate(research_specialists):
+            title = str((spec or {}).get("title") or "").strip()
+            if not title:
+                continue
+            role_key = _slugify_role_key(title, index, taken)
+            taken.add(role_key)
+            selected.append({"role_key": role_key, "title": title, "capabilities": set(),
+                             "focus": str((spec or {}).get("focus") or "").strip()})
+        selected = selected[:4]
+        return {"version": SQUAD_PROFILE_VERSION, "department": lead, "lead_role": selected[0]["role_key"],
+                "role_keys": [role["role_key"] for role in selected], "roles": selected}
+
     capabilities = {str(value).lower() for value in request.get("required_capabilities") or []}
     role_capabilities = {str(value).lower() for value in request.get("required_role_capabilities") or []}
-    definitions = SQUAD_ROLE_REGISTRY[lead]
     selected = [definitions[0]]
     scored = [(len((capabilities | role_capabilities) & {str(value).lower() for value in role["capabilities"]}), index, role) for index, role in enumerate(definitions[1:])]
     selected.extend(role for score, _index, role in sorted(scored, key=lambda item: (-item[0], item[1])) if score > 0)
@@ -386,10 +447,17 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
         # intentionally different from a research squad's final synthesis.
         research_tool = "astra_quick_search" if len(specialist_roles) == 1 else "astra_company_research"
         for specialist_role in specialist_roles:
-            role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
+            role_def = next(item for item in profile["roles"] if item["role_key"] == specialist_role)
+            role_title = role_def["title"]
             key = f"research-{specialist_role}"
             evidence_keys.append(key)
-            role_purpose = {
+            # A dynamically-named role (see select_squad_profile's
+            # research_specialists path) carries its own request-specific
+            # "focus" text straight from the classifier -- use that verbatim
+            # instead of a generic title-based sentence. The fixed dict below
+            # only still applies to the handful of legacy static archetypes
+            # (no "focus" field) for backward compatibility.
+            role_purpose = (role_def.get("focus") or "").strip() or {
                 "market_analyst": "Analyze market position, alternatives, adoption, and competitive evidence.",
                 "company_analyst": "Establish the subject's products, business model, strategy, and primary-source facts.",
                 "technical_researcher": "Analyze architecture, training methods, benchmarks, reasoning behavior, and inference efficiency.",
