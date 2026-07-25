@@ -748,7 +748,30 @@ def _active_segment(directory: Path) -> Path:
 
 def _events_after(directory: Path, sequence: int) -> Iterable[dict[str, Any]]:
     expected = sequence + 1
-    for segment in _segments(directory):
+    segments = _segments(directory)
+
+    # Segments are appended in strictly increasing sequence order and never
+    # rewritten once rotated, so once a segment's FIRST event is already
+    # past the snapshot cursor, every earlier segment is guaranteed fully
+    # consumed and can be skipped without opening it at all. Without this,
+    # a cold read replayed from the very first segment ever written every
+    # time -- confirmed on one real company: 174 segments, 43k+ events
+    # fully re-parsed AND re-checksummed (each checksum recomputed via a
+    # full json.dumps+json.loads round trip) on every uncached GET /os,
+    # for what the snapshot should have made a replay of a handful of
+    # trailing events. Peeking one event per segment is comparatively
+    # negligible next to fully parsing+checksumming every event in every
+    # segment ever written.
+    start = 0
+    for index, segment in enumerate(segments):
+        first_event = next(iter(_read_segment(segment)), None)
+        if first_event is None:
+            continue
+        if first_event["sequence"] > sequence:
+            break
+        start = index
+
+    for segment in segments[start:]:
         for event in _read_segment(segment):
             if event["sequence"] <= sequence:
                 continue
