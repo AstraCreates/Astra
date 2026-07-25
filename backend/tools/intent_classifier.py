@@ -307,6 +307,16 @@ def classify_intent(message: str, *, max_attempts: int = 2) -> IntentClassificat
                                 elapsed=time.perf_counter() - started)
 
 
+_DEPARTMENT_SIGNAL_TERMS = {
+    "sales": ("sales", "pipeline", "lead", "leads", "deal", "prospect", "outreach", "quota", "crm"),
+    "marketing": ("marketing", "campaign", "brand", "positioning", "audience", "ad copy", "advertis"),
+    "finance": ("budget", "financial", "forecast", "pricing", "revenue model", "cost"),
+    "legal": ("legal", "compliance", "contract", "privacy", "terms of service", "regulatory"),
+    "operations": ("process", "vendor", "scheduling", "operations", "workflow"),
+    "design": ("design", "visual", "ux", "prototype", "branding"),
+}
+
+
 def _repair_missing_website_step(classification: IntentClassification, message: str) -> IntentClassification:
     """Provider fallback for the exact live failure mode: the model keeps the
     research step but swallows an explicit website/build clause into that
@@ -319,8 +329,23 @@ def _repair_missing_website_step(classification: IntentClassification, message: 
     build_requested = any(term in lowered for term in ("create", "build", "make", "host", "publish", "deploy"))
     if not (website_requested and build_requested):
         return classification
-    split = _extract_website_clause(message)
     steps = list(classification.steps)
+    # A department with zero of its own signal words in the message (e.g.
+    # "sales" for a message that only mentions research + a website) means
+    # the classifier hallucinated the WHOLE step, not just swallowed the
+    # website clause into a legitimate one -- confirmed live: "use the
+    # research on qwen models and create a website" came back labeled
+    # sales-only, so route_work_request made Revenue the primary department
+    # and demoted the real product_technical work to a handoff. Repurpose
+    # the implausible step instead of layering a second department on top
+    # of a fabricated one. "research" has no entry here and is left alone --
+    # it's always a defensible precursor to a build.
+    for i, step in enumerate(steps):
+        terms = _DEPARTMENT_SIGNAL_TERMS.get(step.department)
+        if terms is not None and not any(term in lowered for term in terms):
+            steps[i] = IntentStep(text=step.text, department="product_technical")
+            return IntentClassification(kind="work", steps=steps, elapsed=classification.elapsed)
+    split = _extract_website_clause(message)
     steps.append(IntentStep(text=split, department="product_technical"))
     return IntentClassification(kind="work", steps=steps, elapsed=classification.elapsed)
 
