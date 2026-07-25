@@ -532,6 +532,11 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                              company_id=company_id, workspace_id=company_id, kind="company_os_build", visible=False)
         except Exception:
             logger.debug("Could not register Company OS coding session", exc_info=True)
+        # Keep the authenticated PTY identity on the Company OS task. The
+        # Company Home workbench uses this field to expose the terminal inline.
+        update_task(company_id, str(task.get("task_id") or ""),
+                    terminal_session_id=session_id, build_session_id=session_id,
+                    execution_profile="technical_agent")
         last_progress = {"text": ""}
 
         def progress(text: str, **_extra: Any) -> None:
@@ -539,6 +544,7 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                 return
             last_progress["text"] = text
             update_task(company_id, str(task.get("task_id") or ""), state="working",
+                        terminal_session_id=session_id, build_session_id=session_id,
                         progress_text=text, activity=text, last_progress_at=datetime.now(timezone.utc).isoformat())
 
         handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
