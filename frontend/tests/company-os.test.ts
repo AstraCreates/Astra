@@ -2,12 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // @ts-expect-error Node's TypeScript runner intentionally imports the source extension.
-import { companyScopedUrl, getCompanyHomeData, normalizeCompanyHomeData, updateInitiative } from "../lib/company-os.ts";
+import { companyScopedUrl, getCompanyHomeData, normalizeCompanyHomeData, sendCopilotMessage, updateInitiative } from "../lib/company-os.ts";
 
 test("companyScopedUrl carries both company scope identifiers", () => {
   const url = new URL(companyScopedUrl("/missions", { founderId: "founder one", companyId: "company/two" }));
   assert.equal(url.searchParams.get("founder_id"), "founder one");
   assert.equal(url.searchParams.get("company_id"), "company/two");
+});
+
+test("sendCopilotMessage serializes structured squad, member, and Library mentions", async () => {
+  let request: Request | undefined;
+  const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({ message: "queued", company: { name: "Northstar", initiatives: [], squads: [], tasks: [], missions: [], approvals: [], context_records: [], artifacts: [], conversation: [] } }), { status: 200 });
+  };
+  await sendCopilotMessage({ founderId: "f1", companyId: "c1" }, "Review this", [], "thread-1", [
+    { kind: "squad", id: "s1", label: "Insights" },
+    { kind: "member", id: "s1:Market Analyst:Maya", label: "Maya", squadId: "s1", role: "Market Analyst" },
+    { kind: "library_file", id: "file-1", label: "Brief.md" },
+  ], fetcher as typeof fetch);
+  assert.deepEqual((await request?.json()), {
+    founder_id: "f1",
+    message: "Review this",
+    attachments: [],
+    thread_id: "thread-1",
+    mentions: [
+      { kind: "squad", id: "s1", label: "Insights" },
+      { kind: "member", id: "s1:Market Analyst:Maya", label: "Maya", squadId: "s1", role: "Market Analyst" },
+      { kind: "library_file", id: "file-1", label: "Brief.md" },
+    ],
+  });
 });
 
 test("normalizeCompanyHomeData accepts nested API payloads and normalizes task lifecycle", () => {

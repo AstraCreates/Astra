@@ -6,8 +6,9 @@ import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
 import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
-import { ingestAttachment } from "@/lib/api";
+import { getLibraryFiles, ingestAttachment, type LibraryFile } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
+import { mentionToken, type CopilotMention, type CopilotMentionOption } from "@/lib/copilot-mentions";
 
 const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [], squadLinks: [] }, conversation: [], chats: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
@@ -222,6 +223,7 @@ export default function CompanyHome() {
   const [approvingId, setApprovingId] = useState("");
   const [questionDrafts, setQuestionDrafts] = useState<Record<string, string>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [libraryFiles, setLibraryFiles] = useState<LibraryFile[]>([]);
   const [attaching, setAttaching] = useState(false);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
@@ -317,6 +319,15 @@ export default function CompanyHome() {
     // restart the poll with the new thread_id, same as ChatGPT/Claude
     // fetching a different conversation's history when you switch to it.
   }, [founderId, companyId, activeThreadId]);
+
+  useEffect(() => {
+    let live = true;
+    if (!founderId) return () => { live = false; };
+    void getLibraryFiles(founderId)
+      .then((files) => { if (live) setLibraryFiles(files); })
+      .catch(() => { if (live) setLibraryFiles([]); });
+    return () => { live = false; };
+  }, [founderId]);
 
   // Autoscroll to the newest message, like every real chat product does.
   useEffect(() => {
@@ -447,7 +458,7 @@ export default function CompanyHome() {
     }
   };
 
-  const submitToCopilot = async (value: string) => {
+  const submitToCopilot = async (value: string, mentions: CopilotMention[] = []) => {
     const pending = attachments;
     setMessage("");
     setAttachments([]);
@@ -470,7 +481,7 @@ export default function CompanyHome() {
     pendingMessagesRef.current.set(echoId, echo);
     setHome(prev => ({ ...prev, conversation: [...prev.conversation, echo] }));
     try {
-      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), threadId);
+      const result = await sendCopilotMessage({ founderId, companyId }, value, pending.filter(a => !a.error).map(a => ({ name: a.name, content: a.content })), threadId, mentions);
       pendingMessagesRef.current.delete(echoId);
       setHome(result.data);
       setNotice(result.message);
@@ -510,13 +521,38 @@ export default function CompanyHome() {
   const primarySquad = home.squads[0] ?? null;
   const chatTurns = home.conversation.filter(turn => turn.kind !== "status"
     && (turn.threadId === activeThreadId || (!turn.threadId && activeThreadId === "default")));
-  // @mention insertion writes this id as literal visible text into the
-  // composer (AstraCopilotComposer.selectAgent) -- it must be a readable
-  // slug of the squad's name, never the raw internal squad_id. A founder
-  // who mentioned a squad once had "@squad_f00c7e5..." inserted verbatim,
-  // which then got sent to the copilot as the actual message text and
-  // corrupted classification/research-subject extraction downstream.
-  const agentOptions = home.squads.map((s, index) => ({ id: s.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `squad${index + 1}`, label: s.name, status: s.lifecycle.toLowerCase() }));
+  const mentionOptions = (() => {
+    const usedTokens = new Map<string, number>();
+    const uniqueToken = (kind: CopilotMentionOption["kind"], label: string, id: string) => {
+      const base = mentionToken(kind, label);
+      const occurrence = (usedTokens.get(base) ?? 0) + 1;
+      usedTokens.set(base, occurrence);
+      return occurrence === 1 ? base : `${base}_${occurrence}`;
+    };
+    const squadOptions: CopilotMentionOption[] = home.squads.flatMap((squad) => {
+      const squadOption: CopilotMentionOption = { kind: "squad", id: squad.id, token: uniqueToken("squad", squad.name, squad.id), label: squad.name, group: "Squads", subtitle: squad.lifecycle };
+      const memberOptions = squad.roster.map((member) => ({
+        kind: "member" as const,
+        id: `${squad.id}:${member.role}:${member.name}`,
+        token: uniqueToken("member", member.name, `${squad.id}:${member.role}:${member.name}`),
+        label: member.name,
+        group: "Squad members",
+        subtitle: `${member.role} · ${squad.name}`,
+        squadId: squad.id,
+        role: member.role,
+      }));
+      return [squadOption, ...memberOptions];
+    });
+    const fileOptions: CopilotMentionOption[] = libraryFiles.map((file) => ({
+      kind: "library_file",
+      id: file.id,
+      token: uniqueToken("library_file", file.filename, file.id),
+      label: file.filename,
+      group: "Library",
+      subtitle: file.department || "File",
+    }));
+    return [...squadOptions, ...fileOptions];
+  })();
   const workbenchSquad = home.squads.find(s => s.id === workbenchSquadId) ?? null;
   const workspaceInitiative = home.initiatives.find(item => item.id === workspaceInitiativeId) ?? null;
 
@@ -766,8 +802,9 @@ export default function CompanyHome() {
             value={message}
             onChange={setMessage}
             disabled={sending}
-            onSubmit={submitToCopilot}
-            agents={agentOptions}
+            onSubmitMentions={submitToCopilot}
+            agents={[]}
+            mentionOptions={mentionOptions}
             contextLabel={sending ? "Copilot is coordinating your squad" : "Grounded in Company Brain"}
             placeholder=""
             founderId={founderId}

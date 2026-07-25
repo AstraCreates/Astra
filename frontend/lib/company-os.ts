@@ -1,5 +1,6 @@
 // @ts-expect-error Node's direct TypeScript test runner requires the extension.
 import { apiFetch } from "./api.ts";
+import type { CopilotMention } from "./copilot-mentions.ts";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -329,10 +330,10 @@ export async function getCompanyHomeData(scope: CompanyScope, threadId = "defaul
   return normalizeCompanyOS(await response.json());
 }
 
-export async function sendCopilotMessage(scope: CompanyScope, message: string, attachments: { name: string; content: string }[] = [], threadId = "default", fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
+export async function sendCopilotMessage(scope: CompanyScope, message: string, attachments: { name: string; content: string }[] = [], threadId = "default", mentions: CopilotMention[] = [], fetcher: typeof apiFetch = apiFetch): Promise<{ message: string; data: CompanyHomeData }> {
   const response = await fetcher(`${BASE}/companies/${encodeURIComponent(scope.companyId)}/os/copilot`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: scope.founderId, message, attachments, thread_id: threadId }),
+    body: JSON.stringify({ founder_id: scope.founderId, message, attachments, thread_id: threadId, mentions }),
   });
   if (!response.ok) throw new Error(await response.text());
   const payload = record(await response.json());

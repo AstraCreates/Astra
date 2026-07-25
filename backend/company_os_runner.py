@@ -387,8 +387,9 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
                                    {"content": _website_preview(mission_name, sources, website_context), "sources": sources,
                                     "generation_context": website_context}, source="local website", internal=False)
         if task_key == "product-architecture":
-            return _store_artifact(company_id, task, f"Website architecture — {_short_title(mission_name)}",
-                                   {"content": _website_architecture(mission_name, website_context)}, source="internal analysis", internal=True)
+            # Planning is squad context, not a founder-facing Library artifact.
+            # The preview task consumes the durable task/meeting state directly.
+            return {"status": "planned", "content": _website_architecture(mission_name, website_context)}
         if task_key == "product-review" or "publication decision" in str(task.get("name") or "").lower() or "publish approval" in str(task.get("name") or "").lower():
             # specialist_task_plan always queues a Vercel publish task directly
             # after this one (company_os_dispatch.py:359-360) -- it is never a
@@ -398,9 +399,8 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
             # request one (real incident: the founder saw this text and, in
             # the same breath, a "waiting on your approval" status for that
             # exact publish request).
-            return _store_artifact(company_id, task, f"Website review — {_short_title(mission_name)}", {"content": "## Local preview ready\n\nThe local website preview is available in the Library. Publishing to Vercel has been queued and is waiting on your approval -- check Approvals in the sidebar when you're ready to make it public."}, source="internal analysis")
-        return _store_artifact(company_id, task, f"Website brief — {_short_title(mission_name)}",
-                               {"content": _website_brief(mission_name, website_context)}, source="internal analysis", internal=True)
+            return {"status": "reviewed", "content": "Local preview reviewed; publication remains approval-gated."}
+        return {"status": "briefed", "content": _website_brief(mission_name, website_context)}
 
     evidence = _latest_research_artifact(company_id, mission.get("mission_id"))
     if mission.get("department") == "research" and task.get("task_key") == "research-review":
@@ -753,6 +753,56 @@ def _website_preview(request: str, sources: list[Mapping[str, Any]] | None = Non
     generated = _generated_website_html(request, brand, domain, sources, context or {})
     if generated:
         return generated
+    try:
+        copy_data = _website_copy(request, brand, sources)
+        if copy_data != _GENERIC_WEBSITE_COPY and copy_data.get("headline_plain"):
+            return _request_specific_website(request, brand, domain, sources, context or {}, copy_data)
+    except Exception:
+        logger.warning("Request-specific website copy failed; using subject renderer", exc_info=True)
+    # A provider failure must not turn a bespoke request into the old Astra
+    # shell. Keep the preview useful and visibly tied to the founder's subject
+    # even when the design model is unavailable.
+    return _request_specific_website(request, brand, domain, sources, context or {})
+
+
+def _request_specific_website(request: str, brand: str, domain: str,
+                              sources: list[Mapping[str, Any]] | None,
+                              context: Mapping[str, Any],
+                              copy_data: Mapping[str, Any] | None = None) -> str:
+    subject = str(context.get("objective") or request).strip()
+    subject = re.sub(r"^(?:build\s+(?:a\s+)?website\s+(?:for|about|comparing)|compare)\s*", "", subject, flags=re.IGNORECASE).strip() or subject
+    subject = re.sub(r"\s+and\s+create\s+a\s+website.*$", "", subject, flags=re.IGNORECASE).strip() or subject
+    entities = [str(item) for item in context.get("entities") or [] if str(item).strip()]
+    source_cards = [item for item in (sources or [])[:6] if isinstance(item, Mapping) and item.get("url")]
+    handoff_text = " ".join(str(item.get("content") or "") for item in context.get("handoffs") or [])
+    # Keep source-backed text short and safe; this is a resilient renderer, not
+    # a second synthesis pass that could invent claims.
+    evidence_note = (f"Informed by {len(source_cards)} cited research source{'s' if len(source_cards) != 1 else ''} attached to this initiative."
+                     if source_cards else "This concept is awaiting verified source material before factual claims are published.")
+    copy_data = copy_data or {}
+    title = html.escape(brand)
+    headline = html.escape(str(copy_data.get("headline_plain") or brand))
+    emphasis = html.escape(str(copy_data.get("headline_emphasis") or "has a point of view."))
+    lede = html.escape(str(copy_data.get("lede") or subject))
+    supporting_copy = html.escape(str(copy_data.get("section2_body") or "The page keeps the requested subject, supporting evidence, and next action in one clear narrative."))
+    entity_line = html.escape(" · ".join(entities) if entities else subject[:120])
+    cards = []
+    for index, source in enumerate(source_cards, 1):
+        source_title = html.escape(str(source.get("title") or source.get("url") or "Source"))
+        source_url = html.escape(str(source.get("url")), quote=True)
+        cards.append(f'<article><span>0{index}</span><h3>{source_title}</h3><a href="{source_url}">Open source</a></article>')
+    if not cards:
+        cards = [
+            '<article><span>01</span><h3>Clarify the decision</h3><p>Turn the request into a focused, reviewable outcome.</p></article>',
+            '<article><span>02</span><h3>Show the evidence</h3><p>Keep the important inputs visible instead of hiding them in a generic template.</p></article>',
+            '<article><span>03</span><h3>Make the next move</h3><p>Give visitors one clear action that matches the subject of this site.</p></article>',
+        ]
+    return f'''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} | {html.escape(subject[:72])}</title>
+<style>
+:root{{--ink:#17202a;--paper:#f4efe6;--hot:#d64b2f;--line:#c9bdaa}}*{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font-family:Georgia,serif}}header,main,footer{{max-width:1180px;margin:auto;padding:28px clamp(22px,5vw,72px)}}header{{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);font:700 12px/1.2 system-ui;letter-spacing:.12em;text-transform:uppercase}}.kicker{{color:var(--hot);font:700 13px system-ui;letter-spacing:.16em;text-transform:uppercase;margin-top:110px}}h1{{font-size:clamp(52px,9vw,126px);line-height:.9;max-width:950px;margin:18px 0 28px;letter-spacing:-.07em}}.lede{{font-size:clamp(20px,2.5vw,32px);line-height:1.25;max-width:720px}}.subject{{margin:70px 0 0;padding:18px 0;border-top:3px solid var(--ink);font:600 14px system-ui}}section{{padding:90px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 2fr;gap:50px}}h2{{font-size:clamp(34px,5vw,68px);line-height:.95;margin:0;letter-spacing:-.05em}}.grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}}article{{border:1px solid var(--line);padding:22px;min-height:180px;background:#fffaf2}}article span{{color:var(--hot);font:700 13px system-ui}}h3{{font-size:22px;line-height:1.05}}p{{font:16px/1.5 system-ui;color:#56616b}}a{{color:var(--hot);font:700 13px system-ui}}.note{{font:15px/1.6 system-ui;max-width:620px}}footer{{border-top:1px solid var(--line);display:flex;justify-content:space-between;font:600 11px system-ui;letter-spacing:.1em;text-transform:uppercase}}@media(max-width:700px){{header,footer{{display:block}}header span,footer span{{display:block;margin-bottom:8px}}.kicker{{margin-top:70px}}section{{display:block}}.grid{{grid-template-columns:1fr}}}}
+</style></head><body><header><strong>{title}</strong><span>{html.escape(domain)} / original concept</span></header><main><div class="kicker">A site built for this request</div><h1>{headline}<br><i>{emphasis}</i></h1><p class="lede">{lede}</p><div class="subject">{entity_line}</div><section><h2>{html.escape(str(copy_data.get("section2_heading") or "What this page is here to show."))}</h2><div><p class="note">{supporting_copy} {html.escape(evidence_note)} The composition, language, and content are specific to the requested subject and are ready for review before publication.</p><div class="grid">{"".join(cards)}</div></div></section></main><footer><span>{title}</span><span>Local preview / subject-specific build</span></footer></body></html>'''
     evidence_count = len(sources or [])
     source_note = f"Informed by {evidence_count} cited research source{'s' if evidence_count != 1 else ''} gathered for this initiative." if evidence_count else "Built as a local concept; product claims remain pending verified comparison evidence."
     copy_data = _website_copy(request, brand, sources)
@@ -805,7 +855,7 @@ Return ONLY JSON: {{"html":"<!doctype html>..."}}. The HTML must include respons
                 and all(token not in candidate.lower() for token in blocked)):
             return candidate
     except Exception:
-        logger.info("Bespoke website generation fell back to the resilient themed renderer", exc_info=True)
+        logger.warning("Bespoke website generation failed; using request-specific renderer", exc_info=True)
     return None
 
 

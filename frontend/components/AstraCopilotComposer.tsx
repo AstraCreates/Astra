@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ArrowUp, AtSign, LoaderCircle, Mic, MicOff, Paperclip } from "lucide-react";
 import { transcribeAudio } from "@/lib/api";
+import { extractCopilotMentions, type CopilotMention, type CopilotMentionOption } from "@/lib/copilot-mentions";
 
 export type CopilotAgentOption = {
   id: string;
@@ -20,7 +21,9 @@ export default function AstraCopilotComposer({
   value,
   onChange,
   onSubmit,
+  onSubmitMentions,
   agents,
+  mentionOptions = [],
   disabled = false,
   placeholder = "Ask Astra or @mention an agent",
   contextLabel,
@@ -31,8 +34,10 @@ export default function AstraCopilotComposer({
 }: {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: (value: string, mentionedAgents: string[]) => void | Promise<void>;
+  onSubmit?: (value: string, mentionedAgents: string[]) => void | Promise<void>;
+  onSubmitMentions?: (value: string, mentions: CopilotMention[]) => void | Promise<void>;
   agents: CopilotAgentOption[];
+  mentionOptions?: CopilotMentionOption[];
   disabled?: boolean;
   placeholder?: string;
   contextLabel?: string;
@@ -51,15 +56,25 @@ export default function AstraCopilotComposer({
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState("");
 
-  const filteredAgents = useMemo(() => {
+  const legacyMentionOptions = useMemo<CopilotMentionOption[]>(() => agents.map((agent) => ({
+    kind: "squad",
+    id: agent.id,
+    token: agent.id,
+    label: agent.label,
+    group: "Agents",
+    subtitle: agent.id,
+  })), [agents]);
+  const allMentionOptions = mentionOptions.length > 0 ? mentionOptions : legacyMentionOptions;
+
+  const filteredMentionOptions = useMemo(() => {
     if (mentionQuery === null) return [];
     const query = mentionQuery.toLowerCase();
-    return agents
-      .filter((agent) => agent.id.toLowerCase().includes(query) || agent.label.toLowerCase().includes(query))
+    return allMentionOptions
+      .filter((option) => option.token.toLowerCase().includes(query) || option.label.toLowerCase().includes(query) || option.subtitle?.toLowerCase().includes(query))
       .slice(0, 8);
-  }, [agents, mentionQuery]);
+  }, [allMentionOptions, mentionQuery]);
 
-  const mentions = useMemo(() => extractAgentMentions(value, agents), [agents, value]);
+  const mentions = useMemo(() => extractCopilotMentions(value, allMentionOptions), [allMentionOptions, value]);
 
   function updateMentionState(next: string, caret: number) {
     const before = next.slice(0, caret);
@@ -74,16 +89,16 @@ export default function AstraCopilotComposer({
     setActiveIndex(0);
   }
 
-  function selectAgent(agent: CopilotAgentOption) {
+  function selectMention(option: CopilotMentionOption) {
     const input = inputRef.current;
     const caret = input?.selectionStart ?? value.length;
     const start = mentionStart >= 0 ? mentionStart : caret;
-    const next = `${value.slice(0, start)}@${agent.id} ${value.slice(caret)}`;
+    const next = `${value.slice(0, start)}@${option.token} ${value.slice(caret)}`;
     onChange(next);
     setMentionQuery(null);
     setMentionStart(-1);
     requestAnimationFrame(() => {
-      const nextCaret = start + agent.id.length + 2;
+      const nextCaret = start + option.token.length + 2;
       inputRef.current?.focus();
       inputRef.current?.setSelectionRange(nextCaret, nextCaret);
     });
@@ -92,7 +107,9 @@ export default function AstraCopilotComposer({
   function submit() {
     const clean = value.trim();
     if (!clean || disabled) return;
-    void onSubmit(clean, extractAgentMentions(clean, agents));
+    const structured = extractCopilotMentions(clean, allMentionOptions);
+    if (onSubmitMentions) void onSubmitMentions(clean, structured);
+    else void onSubmit?.(clean, structured.filter((mention) => mention.kind === "squad").map((mention) => mention.id));
     setMentionQuery(null);
   }
 
@@ -161,34 +178,33 @@ export default function AstraCopilotComposer({
 
   return (
     <div className="astra-composer-shell">
-      {filteredAgents.length > 0 && (
-        <div className="astra-mention-menu" role="listbox" aria-label="Mention an Astra agent">
-          <div className="astra-mention-heading">Direct this to</div>
-          {filteredAgents.map((agent, index) => (
+      {filteredMentionOptions.length > 0 && (
+        <div className="astra-mention-menu" role="listbox" aria-label="Mention a squad, squad member, or Library file">
+          <div className="astra-mention-heading">Mention a squad, teammate, or Library file</div>
+          {filteredMentionOptions.map((option, index) => (
             <button
-              key={agent.id}
+              key={`${option.kind}:${option.id}`}
               type="button"
               role="option"
               aria-selected={index === activeIndex}
               className={`astra-mention-option${index === activeIndex ? " is-active" : ""}`}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectAgent(agent)}
+              onClick={() => selectMention(option)}
             >
-              <span className="astra-agent-mark">{agent.label.slice(0, 1).toUpperCase()}</span>
+              <span className="astra-agent-mark">{option.kind === "library_file" ? "#" : option.label.slice(0, 1).toUpperCase()}</span>
               <span>
-                <b>{agent.label}</b>
-                <small>@{agent.id}</small>
+                <b>{option.label}</b>
+                <small>{option.group}{option.subtitle ? ` · ${option.subtitle}` : ""}</small>
               </span>
-              {agent.status && <em className={`is-${agent.status}`}>{agent.status}</em>}
             </button>
           ))}
         </div>
       )}
 
       {mentions.length > 0 && (
-        <div className="astra-composer-targets" aria-label="Mentioned agents">
-          {mentions.map((id) => (
-            <span key={id}><AtSign size={11} />{agents.find((agent) => agent.id === id)?.label ?? id}</span>
+        <div className="astra-composer-targets" aria-label="Selected mentions">
+          {mentions.map((mention) => (
+            <span key={`${mention.kind}:${mention.id}`}><AtSign size={11} />{mention.label}</span>
           ))}
         </div>
       )}
@@ -207,20 +223,20 @@ export default function AstraCopilotComposer({
         }}
         onClick={(event) => updateMentionState(value, event.currentTarget.selectionStart)}
         onKeyDown={(event) => {
-          if (filteredAgents.length > 0 && mentionQuery !== null) {
+          if (filteredMentionOptions.length > 0 && mentionQuery !== null) {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setActiveIndex((index) => (index + 1) % filteredAgents.length);
+              setActiveIndex((index) => (index + 1) % filteredMentionOptions.length);
               return;
             }
             if (event.key === "ArrowUp") {
               event.preventDefault();
-              setActiveIndex((index) => (index - 1 + filteredAgents.length) % filteredAgents.length);
+              setActiveIndex((index) => (index - 1 + filteredMentionOptions.length) % filteredMentionOptions.length);
               return;
             }
             if (event.key === "Enter" || event.key === "Tab") {
               event.preventDefault();
-              selectAgent(filteredAgents[activeIndex]);
+              selectMention(filteredMentionOptions[activeIndex]);
               return;
             }
             if (event.key === "Escape") {
@@ -249,7 +265,7 @@ export default function AstraCopilotComposer({
               {transcribing ? <LoaderCircle size={16} className="astra-composer-spin" /> : recording ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
           )}
-          <span><AtSign size={13} /> mention an agent</span>
+          <span><AtSign size={13} /> mention a squad, teammate, or file</span>
           {contextLabel && <small>{contextLabel}</small>}
         </div>
         <button type="button" className="astra-composer-submit" onClick={submit} disabled={disabled || !value.trim()} aria-label="Send message">
