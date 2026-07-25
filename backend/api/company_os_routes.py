@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
-from backend.company_os import append_message, create_company_os, create_thread, ensure_company_operations, ensure_default_chat_thread, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task, update_thread
+from backend.company_os import append_message, company_os_version, create_company_os, create_thread, ensure_company_operations, ensure_default_chat_thread, get_company_os, on_mutation, reconcile_initiatives, update_artifact, update_approval, update_initiative, update_message, update_mission, update_squad, update_task, update_thread
 from backend.company_os_copilot import coordinate_turn
 from backend.company_os_dispatch import scheduler_tick
 from backend.core.lt_cache import ttl_cache, bump as cache_bump
@@ -154,20 +154,49 @@ def _ensure_default_chat_thread_reflected(company: dict[str, Any], company_id: s
         company["chat_threads"] = company.get("chat_threads", []) + [thread]
 
 
-def _company(request: Request, company_id: str, founder_id: str, *, operator: bool = False) -> dict[str, Any]:
+def _company(request: Request, company_id: str, founder_id: str, *, operator: bool = False,
+             initialize: bool = True) -> dict[str, Any]:
     """Authorize access, then lazily create the local Company OS for a new company."""
     require_founder_access(request, founder_id, min_role="operator" if operator else "viewer")
     company = get_company_os(company_id)
     if company:
         if company["founder_id"] != founder_id:
             raise HTTPException(status_code=404, detail="Company not found")
-        ensure_company_operations(company_id)
-        _ensure_default_chat_thread_reflected(company, company_id)
+        if initialize:
+            ensure_company_operations(company_id)
+            _ensure_default_chat_thread_reflected(company, company_id)
         return company
     created = create_company_os(company_id, founder_id, "Company")
     ensure_company_operations(company_id)
     _ensure_default_chat_thread_reflected(created, company_id)
     return created
+
+
+@ttl_cache(ttl_seconds=60)
+def _company_founder(company_id: str) -> str | None:
+    """Tiny authorization projection for Company Home reads.
+
+    The founder identity is immutable for the local-first Company OS. Keeping
+    it separate prevents every tab poll from replaying/reconciling the entire
+    company just to answer the authorization question.
+    """
+    company = get_company_os(company_id)
+    return str(company.get("founder_id") or "") if company else None
+
+
+def _authorize_company_read(request: Request, company_id: str, founder_id: str) -> None:
+    require_founder_access(request, founder_id, min_role="viewer")
+    owner = _company_founder(company_id)
+    if owner is None:
+        # First visit is an explicit creation boundary, not a recurring read
+        # side effect. Subsequent dashboard reads use the owner projection.
+        create_company_os(company_id, founder_id, "Company")
+        ensure_company_operations(company_id)
+        ensure_default_chat_thread(company_id)
+        cache_bump(_company_founder, company_id)
+        return
+    if owner != founder_id:
+        raise HTTPException(status_code=404, detail="Company not found")
 
 
 @router.post("/company-os")
@@ -210,7 +239,12 @@ def _read_company_os_state(company_id: str) -> dict[str, Any]:
 # response replaced local state, then reappearing once the cache expired.
 # Hooking company_os.on_mutation() instead of a per-route cache_bump call
 # means this can't be forgotten again by a route added later.
-on_mutation(lambda company_id: cache_bump(_read_company_os_state, company_id))
+def _on_company_os_mutation(company_id: str) -> None:
+    cache_bump(_read_company_os_state, company_id)
+    cache_bump(_dashboard_version, company_id)
+
+
+on_mutation(_on_company_os_mutation)
 
 
 def _read_company_os_state_for_thread(company_id: str, thread_id: str) -> dict[str, Any]:
@@ -236,8 +270,20 @@ def _read_company_os_state_for_thread(company_id: str, thread_id: str) -> dict[s
     return result
 
 
+@ttl_cache(ttl_seconds=0.25)
+def _dashboard_version(company_id: str) -> int:
+    """Version used by Company Home conditional reads.
+
+    This does not call reconciliation or lifecycle initialization.  A cursor
+    miss therefore costs one locked snapshot/tail read instead of serializing
+    the entire Company OS every few seconds for every open browser tab.
+    """
+    return int(company_os_version(company_id) or 0)
+
+
 @router.get("/companies/{company_id}/os")
-async def get_company_os_route(company_id: str, founder_id: str, request: Request, thread_id: str = "default"):
+async def get_company_os_route(company_id: str, founder_id: str, request: Request, thread_id: str = "default",
+                               cursor: int | None = None):
     # _company() itself calls get_company_os() up to three times (via
     # ensure_company_operations/_ensure_default_chat_thread_reflected), none
     # of it going through _read_company_os_state's 2s cache -- called
@@ -246,8 +292,30 @@ async def get_company_os_route(company_id: str, founder_id: str, request: Reques
     # endpoint), blocking that worker's ability to serve any other request
     # for its duration. Live py-spy dump caught this in the act. Same fix as
     # the read below it: hand the blocking work to a thread.
-    await asyncio.to_thread(_company, request, company_id, founder_id)
-    return await asyncio.to_thread(_read_company_os_state_for_thread, company_id, thread_id)
+    started = time.perf_counter()
+    # Reads only authorize. Company creation, the standing Operations
+    # initiative, and default-chat repair happen on explicit writes/repair
+    # jobs, never in the dashboard's polling hot path.
+    await asyncio.to_thread(_authorize_company_read, request, company_id, founder_id)
+    auth_ms = (time.perf_counter() - started) * 1000
+    version = await asyncio.to_thread(_dashboard_version, company_id)
+    if cursor is not None and cursor == version:
+        headers = {
+            "X-Astra-Company-Version": str(version),
+            "Cache-Control": "private, max-age=0, must-revalidate",
+            "Server-Timing": f"auth;dur={auth_ms:.1f}, version;dur={(time.perf_counter() - started) * 1000 - auth_ms:.1f}",
+        }
+        return Response(status_code=204, headers=headers)
+    read_started = time.perf_counter()
+    state = await asyncio.to_thread(_read_company_os_state_for_thread, company_id, thread_id)
+    state["_company_os_version"] = version
+    headers = {
+        "ETag": f'"company-{company_id}-{thread_id}-{version}"',
+        "X-Astra-Company-Version": str(version),
+        "Cache-Control": "private, max-age=0, must-revalidate",
+        "Server-Timing": f"auth;dur={auth_ms:.1f}, read;dur={(time.perf_counter() - read_started) * 1000:.1f}, total;dur={(time.perf_counter() - started) * 1000:.1f}",
+    }
+    return JSONResponse(state, headers=headers)
 
 
 @router.patch("/companies/{company_id}/os/initiatives/{initiative_id}")

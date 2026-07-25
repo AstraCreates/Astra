@@ -556,7 +556,9 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
         # Company Home workbench uses this field to expose the terminal inline.
         update_task(company_id, str(task.get("task_id") or ""),
                     terminal_session_id=session_id, build_session_id=session_id,
-                    execution_profile="technical_agent")
+                    execution_profile="technical_agent", terminal_state="starting",
+                    workspace_state="preparing", preview_state="starting",
+                    progress_text="Preparing the shared coding terminal and local preview.")
         last_progress = {"text": ""}
 
         def progress(text: str, **extra: Any) -> None:

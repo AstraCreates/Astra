@@ -38,7 +38,7 @@ _FORWARD_HEADERS = {
 }
 
 
-def _preview_owner(slug: str, port: int) -> tuple[str, str] | None:
+def _preview_owner(slug: str, port: int | None) -> tuple[str, str] | None:
     """Resolve the preview's durable session metadata, never client input.
 
     ``port`` is the single snapshot the caller already resolved for this
@@ -47,7 +47,7 @@ def _preview_owner(slug: str, port: int) -> tuple[str, str] | None:
     docstring describes, just one level deeper."""
     try:
         from backend.tools import local_preview
-        sessions = [session_id for session_id, value in local_preview._registry_load().items() if value == port]
+        sessions = [session_id for session_id, value in local_preview._registry_load().items() if port is not None and value == port]
         if not sessions:
             _session_id, record = local_preview._record_for_slug(slug)
             if record and record.get("founder_id"):
@@ -93,15 +93,6 @@ def _authorize_preview(slug: str, request: Request, port: int | None) -> None:
     authorize" decision was made against a now-stale, no-longer-true snapshot
     of the registry."""
     if _valid_signed_token(slug, request.query_params.get("preview_token", "")):
-        return
-    if port is None:
-        # No live process for this slug at all (most commonly: the dev-server
-        # was evicted, or died when the backend container was redeployed) --
-        # this is not an ownership decision, it's "there's nothing running".
-        # Let _proxy()'s own 404 (with the accurate, actionable message) fire
-        # instead of masking it behind a misleading "ownership could not be
-        # verified" 403 -- confirmed live: a real founder hit exactly that
-        # 403 for a preview whose registry entry had simply expired.
         return
     owner = _preview_owner(slug, port)
     if not owner:
@@ -162,9 +153,19 @@ async def preview_proxy_path(path: str, request: Request):
     slug = host.split(".")[0] if "." in host else ""
     if not slug:
         raise HTTPException(status_code=400, detail="Missing preview slug")
-    from backend.tools.local_preview import get_port_for_slug
-    port = get_port_for_slug(slug)  # resolved once, shared by both calls below -- see _authorize_preview's docstring
+    from backend.tools.local_preview import get_port_for_slug, recover_preview_for_slug
+    # Authorize against either the live registry or the durable seven-day
+    # record *before* recovery starts a local process.
+    port = get_port_for_slug(slug)
     _authorize_preview(slug, request, port)
+    if port is None:
+        port = recover_preview_for_slug(slug)
+        if port is None:
+            raise HTTPException(status_code=503, detail={
+                "state": "failed",
+                "message": "Preview could not be recovered. Rebuild the preview from its Company OS task.",
+                "action": "rebuild_preview",
+            })
     return await _proxy(slug, path, request, port)
 
 

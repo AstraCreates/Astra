@@ -27,7 +27,7 @@ export function terminalWsUrl(sessionId: string, token: string): string {
   return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
 }
 
-export default function TerminalPane({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+export default function TerminalPane({ sessionId, onClose, compact = false }: { sessionId: string; onClose: () => void; compact?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"connecting" | "live" | "closed" | "error">("connecting");
   const [shared, setShared] = useState(false);
@@ -131,7 +131,7 @@ export default function TerminalPane({ sessionId, onClose }: { sessionId: string
           Release ✕
         </button>
       </div>
-      <div ref={hostRef} style={{ background: "#0c0d10", borderRadius: 8, padding: 8, height: "60vh", overflow: "hidden" }} />
+      <div ref={hostRef} style={{ background: "#0c0d10", borderRadius: 8, padding: 8, height: compact ? 300 : "60vh", overflow: "hidden" }} />
     </div>
   );
 }

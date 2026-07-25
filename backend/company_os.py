@@ -136,6 +136,24 @@ def get_company_os(company_id: str, *, root: str | Path | None = None) -> dict[s
         return state
 
 
+def company_os_version(company_id: str, *, root: str | Path | None = None) -> int | None:
+    """Return the latest durable event cursor without reconciling projections.
+
+    Company Home uses this as a cheap conditional-read validator.  It is
+    intentionally derived under the same shared lock as normal reads so a
+    caller never observes a cursor ahead of the materialized event stream.
+    """
+    directory = _company_dir(company_id, root)
+    if not directory.exists():
+        return None
+    with _reader_lock(directory):
+        loaded = _load_snapshot(directory)
+        if loaded is None:
+            return None
+        _, sequence = _replay(directory, loaded)
+        return sequence
+
+
 def company_recovery_lock(company_id: str, *, root: str | Path | None = None):
     """Return the cross-worker lock used while recovering one company."""
     return cross_process_file_lock(_company_dir(company_id, root) / ".recovery.lock")

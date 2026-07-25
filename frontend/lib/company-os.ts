@@ -56,6 +56,7 @@ export type CompanyHomeMessage = { id: string; author: string; message: string; 
 export type CompanyChatThread = { id: string; title: string; updatedAt: string };
 
 export type CompanyHomeData = {
+  version: number;
   companyName: string;
   northStar: string;
   initiatives: CompanyHomeInitiative[];
@@ -304,6 +305,7 @@ export function normalizeCompanyHomeData(payload: unknown, companyName = "Your c
     };
   });
   return {
+    version: Number(root._company_os_version ?? root.company_os_version ?? 0),
     companyName: text(root.company_name ?? root.companyName, companyName),
     northStar: text(goal.north_star ?? goal.company_goal, "Set a clear company direction to focus the work."),
     initiatives,
@@ -328,6 +330,16 @@ export async function getCompanyHomeData(scope: CompanyScope, threadId = "defaul
   // company_id already, so `&thread_id=...` is always safe to append.
   const url = `${companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os`, scope)}&thread_id=${encodeURIComponent(threadId)}`;
   const response = await fetcher(url);
+  if (!response.ok) throw new Error(await response.text());
+  return normalizeCompanyOS(await response.json());
+}
+
+/** Fetch only when Company OS has a newer durable event cursor. */
+export async function getCompanyHomeUpdate(scope: CompanyScope, threadId: string, cursor: number,
+  fetcher: typeof apiFetch = apiFetch): Promise<CompanyHomeData | null> {
+  const url = `${companyScopedUrl(`/companies/${encodeURIComponent(scope.companyId)}/os`, scope)}&thread_id=${encodeURIComponent(threadId)}&cursor=${encodeURIComponent(cursor)}`;
+  const response = await fetcher(url);
+  if (response.status === 204) return null;
   if (!response.ok) throw new Error(await response.text());
   return normalizeCompanyOS(await response.json());
 }
@@ -470,6 +482,7 @@ function normalizeCompanyOS(payload: unknown): CompanyHomeData {
   }
   const squadLinks: CompanyHomeBrainLink[] = Array.from(squadLinkCounts, ([squadId, recordCount]) => ({ squadId, recordCount }));
   return {
+    version: Number(root._company_os_version ?? root.company_os_version ?? 0),
     companyName: text(root.name, "Your company"),
     northStar: text(brainRecords.find(item => item.key === "north_star")?.value, "Ask Copilot to form your first initiative."),
     initiatives: initiatives

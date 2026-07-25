@@ -6,14 +6,14 @@ import AstraCopilotComposer from "@/components/AstraCopilotComposer";
 import TerminalPane from "@/components/TerminalPane";
 import { useCompany } from "@/lib/company-context";
 import { useDevUser } from "@/lib/use-dev-user";
-import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
+import { decideCompanyApproval, deleteArtifact, deleteInitiative, deleteMessage, deleteSquad, editMessage, friendlyErrorMessage, getCompanyArtifact, getCompanyHomeData, getCompanyHomeUpdate, retryTask, sendCopilotMessage, updateInitiative, type CompanyArtifactDetail, type CompanyHomeData, type CompanyHomeInitiative, type CompanyHomeSquad, type InitiativeBriefUpdate } from "@/lib/company-os";
 import { getLibraryFiles, ingestAttachment, type LibraryFile } from "@/lib/api";
 import { readAttachment, type Attachment } from "@/lib/attachments";
 import { mentionToken, type CopilotMention, type CopilotMentionOption } from "@/lib/copilot-mentions";
 
-const EMPTY: CompanyHomeData = { companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [], squadLinks: [] }, conversation: [], chats: [] };
+const EMPTY: CompanyHomeData = { version: 0, companyName: "Your company", northStar: "Set a clear company direction to focus the work.", initiatives: [], squads: [], approvals: [], brain: { summary: "Company knowledge is ready to ground each decision.", sourceCount: 0, recordCount: 0, artifacts: [], squadLinks: [] }, conversation: [], chats: [] };
 const STATUS_COLOR = { planned: "#8e8e8e", active: "var(--accent)", waiting: "#b45309", complete: "#15803d", blocked: "#b91c1c" };
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 1500;
 const POLL_MAX_BACKOFF_MS = 60000;
 const STARTER_PROMPTS = ["What needs my attention?", "Summarize where things stand.", "What's blocked right now?"];
 const DEFAULT_RAIL_WIDTH = 420;
@@ -320,11 +320,13 @@ export default function CompanyHome() {
     let timer = 0;
     let consecutiveFailures = 0;
     const refresh = () => {
-      void getCompanyHomeData({ founderId, companyId }, activeThreadId)
+      void getCompanyHomeUpdate({ founderId, companyId }, activeThreadId, home.version)
         .then((data) => {
           if (!live) return;
-          setHome(applyPendingDeletes(data));
-          setChats(data.chats);
+          if (data) {
+            setHome(applyPendingDeletes(data));
+            setChats(data.chats);
+          }
           setNotice("");
           consecutiveFailures = 0;
           schedule(POLL_INTERVAL_MS);
@@ -344,7 +346,7 @@ export default function CompanyHome() {
     // _read_company_os_state_for_thread), so switching threads has to
     // restart the poll with the new thread_id, same as ChatGPT/Claude
     // fetching a different conversation's history when you switch to it.
-  }, [founderId, companyId, activeThreadId]);
+  }, [founderId, companyId, activeThreadId, home.version]);
 
   useEffect(() => {
     let live = true;
@@ -780,9 +782,9 @@ export default function CompanyHome() {
                                             </button>
                                           )}
                                         </div>
-                                        {chatTerminalTaskId === task.id && task.terminalSessionId && (
+                                        {(chatTerminalTaskId === task.id || task.status === "active") && task.terminalSessionId && (
                                           <div style={{ marginTop: 8 }}>
-                                            <TerminalPane sessionId={task.terminalSessionId} onClose={() => setChatTerminalTaskId("")} />
+                                            <TerminalPane sessionId={task.terminalSessionId} compact onClose={() => setChatTerminalTaskId("")} />
                                           </div>
                                         )}
                                         {/* While this task is actually building, auto-show the
@@ -790,6 +792,11 @@ export default function CompanyHome() {
                                             together rather than only appearing once finished --
                                             the terminal stays a deliberate click (it's an
                                             interactive RCE shell, not something to auto-connect). */}
+                                        {task.status === "active" && !task.previewUrl && task.terminalSessionId && (
+                                          <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, padding: "10px 12px", color: "var(--fm)", fontSize: 11, display: "flex", alignItems: "center", gap: 7 }}>
+                                            <Loader2 size={12} className="company-home-spin" /> Starting the local preview. It will appear here as soon as the build server is healthy.
+                                          </div>
+                                        )}
                                         {task.status === "active" && task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
                                           <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
                                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
@@ -852,6 +859,30 @@ export default function CompanyHome() {
                       </div>
                     );
                   })}
+                  {/* A technical squad can begin after a research plan card. It still
+                      needs a first-class chat surface even when dispatch did not
+                      append a second plan message for that downstream squad. */}
+                  {home.squads
+                    .filter(squad => !chatTurns.some(turn => turn.kind === "plan" && turn.squadId === squad.id))
+                    .flatMap(squad => squad.tasks.filter(task => task.status === "active" && (task.terminalSessionId || /website|preview|frontend|build/i.test(task.title))).map(task => ({ squad, task })))
+                    .map(({ squad, task }) => (
+                      <div key={`live-build-${task.id}`} className="ch-chat-row">
+                        <span className="ch-chat-avatar"><Sparkles size={13} /></span>
+                        <div className="ch-chat-bubble" style={{ maxWidth: "min(760px, 94%)" }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 650, color: "var(--fg)", marginBottom: 4 }}>{squad.name} is building</div>
+                          <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 10 }}>{task.title}{task.note ? ` - ${task.note}` : ""}</div>
+                          {task.terminalSessionId ? <TerminalPane sessionId={task.terminalSessionId} compact onClose={() => setChatTerminalTaskId("")} /> : (
+                            <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--fm)", fontSize: 11 }}><Loader2 size={12} className="company-home-spin" /> Allocating the shared coding terminal...</div>
+                          )}
+                          {task.previewUrl && isSafeHttpUrl(task.previewUrl) ? (
+                            <div style={{ marginTop: 10, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 9px", background: "var(--bg-sunken)", fontSize: 11, color: "var(--fm)" }}><span>Live preview</span><a href={task.previewUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Open ↗</a></div>
+                              <iframe src={task.previewUrl} title={`${squad.name} live preview`} loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms" referrerPolicy="no-referrer" style={{ width: "100%", height: 320, border: 0, display: "block" }} />
+                            </div>
+                          ) : <div style={{ marginTop: 10, color: "var(--fm)", fontSize: 11, display: "flex", gap: 7, alignItems: "center" }}><Loader2 size={11} className="company-home-spin" /> Preview is starting and will be embedded here automatically.</div>}
+                        </div>
+                      </div>
+                    ))}
                   {sending && (
                     <div className="ch-chat-row">
                       <span className="ch-chat-avatar"><Sparkles size={13} /></span>

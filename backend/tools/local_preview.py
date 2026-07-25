@@ -188,7 +188,12 @@ def _slug_registry_set(slug: str, port: int) -> None:
 
 
 def get_port_for_slug(slug: str) -> int | None:
-    """Return the preview port for a company slug, or None if not running."""
+    """Return a running preview port without starting a stopped preview.
+
+    The proxy must authorize against the durable record before a recovery can
+    consume CPU or reveal whether a workspace exists.  Call
+    :func:`recover_preview_for_slug` only after that authorization succeeds.
+    """
     if slug in _slug_to_port:
         port = _slug_to_port[slug]
         if not _port_is_free(port):
@@ -200,6 +205,18 @@ def get_port_for_slug(slug: str) -> int | None:
     if port:
         _slug_to_port[slug] = port
         return port
+    return None
+
+
+def recover_preview_for_slug(slug: str) -> int | None:
+    """Restart a known preview from its seven-day durable record.
+
+    Authorization is deliberately the caller's responsibility; this function
+    has no request context and must only be reached by the authenticated proxy.
+    """
+    live = get_port_for_slug(slug)
+    if live:
+        return live
     # The process may have been evicted or a backend release may have replaced
     # it. Recreate it from the durable workspace record while preserving its slug.
     session_id, record = _record_for_slug(slug)
