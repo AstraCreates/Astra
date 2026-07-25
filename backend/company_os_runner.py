@@ -349,10 +349,22 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         company = get_company_os(company_id) or {}
         artifact = next((item for item in reversed(company.get("artifacts", []))
                          if item.get("task_id") and item.get("initiative_id") == mission.get("initiative_id")
-                         and str(item.get("name") or "").lower().startswith("website preview")
+                         and (str(item.get("name") or "").lower().startswith("website build")
+                              or str(item.get("name") or "").lower().startswith("website preview"))
                          and item.get("state") != "archived"), None)
         if not artifact or not str(artifact.get("content") or "").strip():
             raise RuntimeError("The website preview artifact is missing; nothing was published.")
+        build_metadata = artifact.get("build_metadata") or {}
+        # The coding agent's server preview is already a real, reviewable build.
+        # Do not send its markdown status summary to the HTML deploy endpoint.
+        # If no Vercel-connected repository exists, approval promotes this
+        # server-hosted preview instead of pretending a document was published.
+        preview_url = artifact.get("url")
+        if preview_url and (artifact.get("hosting") == "local_preview" or build_metadata.get("local_preview")):
+            update_artifact(company_id, str(artifact["artifact_id"]),
+                            hosting="server", hosting_status="deployed")
+            return {"deployed": True, "url": preview_url, "hosting": "server",
+                    "artifact_id": artifact["artifact_id"]}
         domain, _brand = _website_identity(mission_name)
         project_slug = re.sub(r"[^a-z0-9-]+", "-", domain.split(".", 1)[0].lower()).strip("-") or "astra-site"
         result = invoke_mcp(
@@ -396,9 +408,13 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         website_context = _website_generation_context(company_id, mission, task)
         if task_key == "product-frontend_engineer" or "local website preview" in str(task.get("name") or "").lower():
             sources = _initiative_evidence(company_id, mission.get("initiative_id"))
-            return _store_artifact(company_id, task, f"Website preview — {_short_title(mission_name)}",
-                                   {"content": _website_preview(mission_name, sources, website_context), "sources": sources,
-                                    "generation_context": website_context}, source="local website", internal=False)
+            build = _run_coding_website_agent(company_id, mission, task, website_context, sources)
+            if build.get("url"):
+                return _store_artifact(company_id, task, f"Website build — {_short_title(mission_name)}", {
+                    "content": build["summary"], "sources": sources, "url": build["url"],
+                    "hosting": "local_preview", "hosting_status": "ready", "build_metadata": build,
+                }, source="technical coding agent", internal=False)
+            raise RuntimeError(f"Technical coding agent failed: {build.get('error') or 'no reviewable preview was produced'}")
         if task_key == "product-architecture":
             # Planning is squad context, not a founder-facing Library artifact.
             # The preview task consumes the durable task/meeting state directly.
@@ -436,6 +452,8 @@ def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result
                                research_status=result.get("research_status"), research_metadata=result.get("research_metadata"),
                                evidence_validation=result.get("evidence_validation"),
                                deep_research_supervisor=bool(result.get("deep_research_supervisor")),
+                               url=result.get("url"), hosting=result.get("hosting"),
+                               hosting_status=result.get("hosting_status"), build_metadata=result.get("build_metadata"),
                                state="archived" if internal else "active")
     return {"artifact_id": artifact["artifact_id"], "source_count": len(result.get("sources", [])),
             "research_metadata": result.get("research_metadata"),
@@ -448,6 +466,45 @@ def _latest_research_artifact(company_id: str, mission_id: object) -> Mapping[st
     task_ids = {task.get("task_id") for task in company.get("tasks", []) if task.get("mission_id") == mission_id}
     artifacts = [artifact for artifact in company.get("artifacts", []) if artifact.get("task_id") in task_ids]
     return artifacts[0] if artifacts else {}
+
+
+def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any],
+                              context: Mapping[str, Any], sources: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Use the persistent coding-agent loop for real Product Delivery builds."""
+    try:
+        from backend.tools.git_tools import run_mvp_loop
+        company = get_company_os(company_id) or {}
+        founder_id = str(company.get("founder_id") or company_id)
+        objective = str(context.get("objective") or mission.get("name") or "Build the requested website")
+        handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
+        source_lines = "\n".join(f"- {item.get('title') or 'Source'}: {item.get('url')}" for item in sources[:12])
+        build_context = f"""Company OS website brief:\n{objective}\n\nEntities: {context.get('entities') or []}\nDeliverables: {context.get('deliverables') or []}\nAcceptance criteria: {context.get('acceptance_criteria') or []}\n\nResearch handoffs:\n{handoffs[:24000] or '(none)'}\n\nVerified source URLs:\n{source_lines or '(none)'}"""
+        result = run_mvp_loop(
+            goal=(f"Build a complete, original, responsive website for this request: {objective}. "
+                  "Use the research handoffs as the content source. Do not make a generic SaaS template. "
+                  "Visibly present the researched facts, relevant sections, and source links. "
+                  "This is a reviewable local build; do not publish externally."),
+            session_id=str(task.get("task_id") or mission.get("mission_id") or "company-os-website"),
+            context=build_context,
+            required_files=["package.json", "app/page.tsx", "app/layout.tsx", "README.md"],
+            founder_id=founder_id,
+            agent="web",
+        ) or {}
+        if result.get("error"):
+            return {"ok": False, "error": result["error"], "result": result}
+        if result.get("build_passes") is False:
+            return {"ok": False, "error": "The coding agent did not produce a passing build.", "result": result}
+        url = result.get("deploy_url") or result.get("preview_url")
+        if not url:
+            return {"ok": False, "error": result.get("error") or "Coding agent did not produce a reviewable preview.", "result": result}
+        summary = (f"## Website build ready\n\nThe persistent coding agent created a real project and started a reviewable preview.\n\n"
+                   f"- **Preview:** {url}\n- **Files:** {result.get('files_in_repo', 0)}\n"
+                   f"- **Build:** {'passed' if result.get('build_passes') else 'needs review'}\n")
+        return {"ok": True, "url": url, "summary": summary, "files_in_repo": result.get("files_in_repo"),
+                "build_passes": result.get("build_passes"), "result": result}
+    except Exception as exc:
+        logger.exception("Company OS coding website agent failed: company=%s mission=%s", company_id, mission.get("mission_id"))
+        return {"ok": False, "error": str(exc)}
 
 
 def _initiative_evidence(company_id: str, initiative_id: object) -> list[Mapping[str, Any]]:
