@@ -86,13 +86,26 @@ async def run_mission(company_id: str, mission_id: str) -> None:
     mission = _find(company.get("missions", []), "mission_id", mission_id)
     if not mission:
         return
+    squad = _find(company.get("squads", []), "squad_id", mission["squad_id"])
     dependencies = _mission_dependencies(mission)
     completed = {item.get("mission_id") for item in company.get("missions", []) if item.get("state") == "done"}
     if not dependencies.issubset(completed):
+        dependency_missions = [item for item in company.get("missions", []) if item.get("mission_id") in dependencies]
+        blocked_dependencies = [
+            item for item in dependency_missions
+            if item.get("state") in {"blocked", "review", "waiting", "archived"}
+        ]
+        if blocked_dependencies:
+            names = ", ".join(str(item.get("name") or item.get("mission_id")) for item in blocked_dependencies[:3])
+            reason = f"Waiting on upstream mission review before this work can continue: {names}"
+            await asyncio.to_thread(update_mission, company_id, mission_id, state="review", blocked_reason=reason)
+            if squad:
+                await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state="review", lifecycle="review")
+            await asyncio.to_thread(append_message, company_id, f"{mission['name']} is blocked until upstream work is resolved: {names}", author="copilot", scope="initiative", scope_id=mission["initiative_id"], kind="status")
+            await asyncio.to_thread(reconcile_initiatives, company_id)
         # This is a dependency wait, not a failure or an approval. The
         # prerequisite's completion resumes the mission automatically.
         return
-    squad = _find(company.get("squads", []), "squad_id", mission["squad_id"])
     if squad:
         await asyncio.to_thread(update_squad, company_id, squad["squad_id"], state="working", lifecycle="working")
     await asyncio.to_thread(update_mission, company_id, mission_id, state="working")

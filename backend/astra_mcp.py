@@ -819,7 +819,7 @@ def _company_os_context(args: dict) -> dict:
 def _company_research(args: dict) -> dict:
     from backend.company_os import get_company_os
     from backend.tools.browser_research import run_comparison_research, run_research_pipeline
-    from backend.tools.research_evidence import validate_deep_research
+    from backend.tools.research_evidence import validate_deep_research, validate_quick_research
     from backend.config import settings
     import time
     import asyncio
@@ -897,7 +897,7 @@ def _company_research(args: dict) -> dict:
                         update_task(company_id, str(task_id), search_count=base_search_count + counter.get("n", 0))
                     except Exception:
                         pass
-            validation = validate_deep_research(evidence)
+            validation = validate_quick_research(evidence) if quick else validate_deep_research(evidence)
             # The supervisor path (run_open_deep_research) already stamps its own
             # "open_deep_research_langgraph" profile; keep that intact instead of
             # blanket-overwriting it, or downstream code can never tell a rich

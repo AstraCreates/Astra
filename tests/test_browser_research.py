@@ -565,6 +565,23 @@ def test_run_research_pipeline_reports_coverage_gaps(monkeypatch):
     assert "Evidence is thin" in result["next_step"]
 
 
+def test_quick_research_validation_ignores_deep_query_lane_gap():
+    from backend.tools.research_evidence import validate_deep_research, validate_quick_research
+
+    payload = {
+        "queries_run": 1,
+        "combined_formatted": "Fetched, source-backed explanation.",
+        "sources": [{"title": "Official docs", "url": "https://example.com/docs", "retrieved_at": "2026-01-01T00:00:00Z"}],
+        "structured": {"research": {"evidence": [{"retrieved_at": "2026-01-01T00:00:00Z"}]}},
+        "coverage": {"ready": False, "gaps": ["query_coverage_below_3"]},
+    }
+
+    assert validate_deep_research(payload)["ok"] is False
+    quick = validate_quick_research(payload)
+    assert quick["ok"] is True
+    assert quick["gaps"] == []
+
+
 def test_to_research_result_writes_evidence_artifacts_when_run_context_present(monkeypatch):
     written = []
 

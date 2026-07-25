@@ -27,6 +27,21 @@ _artifact_repo_lock = threading.Lock()
 
 def validate_deep_research(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Validate tool-produced evidence before any synthesis or artifact write."""
+    return _validate_research_payload(payload, honor_coverage=True)
+
+
+def validate_quick_research(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate fast lookup evidence without requiring deep-research coverage lanes.
+
+    Quick research is intentionally a narrow search/fetch pass. It must still
+    prove that tools ran and returned usable source-backed evidence, but it
+    should not inherit the supervisor-only "three query lanes" coverage gate.
+    """
+    return _validate_research_payload(payload, honor_coverage=False)
+
+
+def _validate_research_payload(payload: Mapping[str, Any], *, honor_coverage: bool) -> dict[str, Any]:
+    """Validate tool-produced evidence before any synthesis or artifact write."""
     sources = [item for item in (payload.get("sources") or []) if isinstance(item, Mapping)]
     urls = []
     for source in sources:
@@ -56,7 +71,12 @@ def validate_deep_research(payload: Mapping[str, Any]) -> dict[str, Any]:
             gaps.append("source retrieval metadata is missing")
     coverage = payload.get("coverage") or {}
     if coverage and coverage.get("ready") is False:
-        gaps.extend(str(gap) for gap in coverage.get("gaps") or [] if str(gap) not in gaps)
+        for gap in coverage.get("gaps") or []:
+            gap_text = str(gap)
+            if not honor_coverage and gap_text.startswith("query_coverage_below_"):
+                continue
+            if gap_text not in gaps:
+                gaps.append(gap_text)
     return {"ok": not gaps, "gaps": gaps, "source_urls": list(dict.fromkeys(urls)),
             "source_count": len(set(urls)), "domain_count": len(domains),
             "search_count": search_count, "evidence_count": len(evidence_rows),

@@ -357,6 +357,37 @@ async def test_document_synthesis_falls_back_to_raw_excerpt_when_llm_fails(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_handoff_mission_surfaces_blocked_upstream_dependency(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
+    monkeypatch.chdir(tmp_path)
+    company_os.create_company_os("acme", "founder", "Acme")
+    initiative = company_os.create_initiative("acme", "Research then website")
+    research_squad = company_os.create_squad("acme", initiative["initiative_id"], "Insights", department="research")
+    product_squad = company_os.create_squad("acme", initiative["initiative_id"], "Product Delivery", department="product_technical")
+    research = company_os.create_mission(
+        "acme", initiative["initiative_id"], research_squad["squad_id"], "Research source material",
+        mission_id="research-mission", department="research", state="review",
+    )
+    website = company_os.create_mission(
+        "acme", initiative["initiative_id"], product_squad["squad_id"], "Create website from source material",
+        mission_id="website-mission", department="product_technical", state="active",
+        depends_on_mission_ids=[research["mission_id"]],
+    )
+    company_os.create_task(
+        "acme", initiative["initiative_id"], product_squad["squad_id"], "Create a local website preview",
+        mission_id=website["mission_id"], state="pending",
+    )
+
+    await run_mission("acme", website["mission_id"])
+
+    state = company_os.get_company_os("acme")
+    updated = next(item for item in state["missions"] if item["mission_id"] == website["mission_id"])
+    assert updated["state"] == "review"
+    assert "Waiting on upstream mission review" in updated["blocked_reason"]
+    assert any("blocked until upstream work is resolved" in message["message"] for message in state["conversation"])
+
+
+@pytest.mark.asyncio
 async def test_dependency_ready_role_tasks_execute_in_parallel(tmp_path, monkeypatch):
     """Independent specialist lanes must not regress to the legacy serial loop."""
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
