@@ -404,7 +404,17 @@ def start_local_preview(local: str, session_id: str, company_name: str = "", *, 
     env["PORT"] = str(port)
     env["HOST"] = "0.0.0.0"
     env["NODE_OPTIONS"] = "--max-old-space-size=2048"
-    npm_cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
+    # Preview processes intentionally run as the unprivileged ``astra`` user.
+    # The shared production npm cache is often created by root during image
+    # builds, so using it here makes the first live preview fail before the
+    # coding agent has emitted anything. Give previews an isolated writable
+    # cache instead; the cache remains reusable within the backend container.
+    npm_cache = os.environ.get("ASTRA_PREVIEW_NPM_CACHE", "/tmp/astra-npm-cache")
+    Path(npm_cache).mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(npm_cache, 0o777)
+    except OSError:
+        pass
     log = f"/tmp/preview_{session_id[:8]}_{port}.log"
 
     def _wrap(inner_sh: str) -> list[str]:

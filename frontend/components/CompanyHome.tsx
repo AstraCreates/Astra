@@ -541,6 +541,9 @@ export default function CompanyHome() {
   };
 
   const tasks = home.squads.flatMap(squad => squad.tasks);
+  const activeBuilds = home.squads.flatMap(squad => squad.tasks
+    .filter(task => task.status === "active" && (task.terminalSessionId || /website|preview|frontend|build/i.test(task.title)))
+    .map(task => ({ squad, task })));
   const board = ["planned", "active", "waiting", "complete"] as const;
   const companyName = activeCompany?.name ?? home.companyName;
   const firstName = user?.fullName?.trim().split(/\s+/)[0] || "there";
@@ -669,6 +672,18 @@ export default function CompanyHome() {
         )}
         <button type="button" onClick={() => setMessage("Form a new squad to ")} style={{ flexShrink: 0, whiteSpace: "nowrap", background: "transparent", border: "1px dashed var(--bd)", borderRadius: 20, padding: "7px 14px", color: "var(--fm)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>+ New squad</button>
       </div>
+
+      {activeBuilds.length > 0 && (
+        <div style={{ flexShrink: 0, padding: "14px 30px", borderBottom: "1px solid var(--bd)", background: "linear-gradient(90deg, rgba(37,99,235,.07), transparent)" }}>
+          {activeBuilds.slice(0, 1).map(({ squad, task }) => (
+            <div key={`pinned-build-${task.id}`} style={{ maxWidth: 820, margin: "0 auto", border: "1px solid var(--accent)", borderRadius: 12, padding: 12, background: "var(--bg-surface)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}><div><b style={{ fontSize: 13, color: "var(--fg)" }}>{squad.name} live build</b><small style={{ display: "block", color: "var(--fm)", marginTop: 2 }}>{task.title}</small></div><button type="button" className="btn sm" onClick={() => setWorkbenchSquadId(squad.id)}>Open workbench</button></div>
+              {task.terminalSessionId ? <TerminalPane sessionId={task.terminalSessionId} compact onClose={() => undefined} /> : <div style={{ color: "var(--fm)", fontSize: 11, display: "flex", alignItems: "center", gap: 7 }}><Loader2 size={12} className="company-home-spin" /> Allocating the shared coding terminal…</div>}
+              {task.previewUrl && isSafeHttpUrl(task.previewUrl) ? <div style={{ marginTop: 10, border: "1px solid var(--bd)", borderRadius: 8, overflow: "hidden" }}><div style={{ padding: "6px 9px", fontSize: 11, background: "var(--bg-sunken)", display: "flex", justifyContent: "space-between" }}><span>Live preview</span><a href={task.previewUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Open ↗</a></div><iframe src={task.previewUrl} title="Live website preview" sandbox="allow-scripts allow-same-origin allow-forms" style={{ width: "100%", height: 280, border: 0, display: "block" }} /></div> : <div style={{ marginTop: 9, color: "var(--fm)", fontSize: 11 }}>Preview is waiting for the local server to become healthy.</div>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div ref={threadRef} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "24px 20px 12px" }}>
