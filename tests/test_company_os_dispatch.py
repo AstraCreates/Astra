@@ -93,7 +93,7 @@ def test_research_led_comparison_keeps_product_delivery_in_the_same_squad(monkey
     result = dispatch.dispatch_intent("co", "Compare products and build a website")
 
     assert result["department"] == "research"
-    assert result["squad_profile"]["role_keys"] == ["research_lead", "market_analyst", "scientific_analyst"]
+    assert result["squad_profile"]["role_keys"] == ["research_lead", "market_analyst", "company_analyst"]
     assert [mission["department"] for mission in result["handoff_missions"]] == ["product_technical"]
 
 
@@ -106,9 +106,9 @@ def test_research_handoff_gets_research_tasks_when_request_also_needs_website(mo
     }
     tasks = specialist_task_plan("research", "Compare products and build a website", request=request)
 
-    assert [task["task_key"] for task in tasks] == ["research-market_analyst", "research-scientific_analyst", "research-review", "research-brief"]
+    assert [task["task_key"] for task in tasks] == ["research-market_analyst", "research-company_analyst", "research-review", "research-brief"]
     assert all(task["mcp_tool"] == "astra_company_research" for task in tasks[:2])
-    assert tasks[2]["dependencies"] == ["research-market_analyst", "research-scientific_analyst"]
+    assert tasks[2]["dependencies"] == ["research-market_analyst", "research-company_analyst"]
 
 
 def test_research_tasks_are_per_subject_when_planner_extracts_entities():
@@ -136,18 +136,17 @@ def test_research_tasks_are_per_subject_when_planner_extracts_entities():
     descriptions = [task["description"] for task in tasks]
     # Every row must name the subject -- no row is just "Gather validated evidence" alone.
     assert all("Northrop Grumman" in title for title in titles), titles
-    # Titles must be distinct -- the bug was that all three were structurally identical.
-    assert len(set(titles)) == 4, titles
+    # Titles must be distinct -- the bug was that every row echoed the same raw intent.
+    assert len(set(titles)) == 3, titles
     # The redundant "Outcome: <intent>" suffix must be gone.
     for description in descriptions:
         assert "Outcome:" not in description, description
         assert intent not in description, description
     # MCP contract preserved.
-    assert tasks[0]["mcp_tool"] == "astra_company_research"
+    assert tasks[0]["mcp_tool"] == "astra_quick_search"
     assert tasks[0]["operation"] == "internal_analysis"
-    assert tasks[1]["operation"] == "internal_analysis"
-    assert tasks[2]["operation"] == "internal_review"
-    assert tasks[3]["operation"] == "draft"
+    assert tasks[1]["operation"] == "internal_review"
+    assert tasks[2]["operation"] == "draft"
 
 
 def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
@@ -167,8 +166,7 @@ def test_research_tasks_fall_back_to_generics_when_no_signal_extracted():
     titles = [task["title"] for task in tasks]
     # No length-noisy "... with no specifics" smearing in the titles.
     assert titles == [
-        "Market Analyst: gather validated evidence",
-        "Evidence Analyst: gather validated evidence",
+        "General Researcher: gather validated evidence",
         "Review evidence and resolve conflicts",
         "Produce a decision brief",
     ]
@@ -326,7 +324,20 @@ def test_role_profile_selects_relevant_specialists_and_caps_squad_size():
     assert profile["version"] == 1
     assert profile["role_keys"][0] == "research_lead"
     assert len(profile["role_keys"]) == 4
-    assert {"market_analyst", "scientific_analyst", "customer_regulatory_analyst"}.issubset(profile["role_keys"])
+    assert {"market_analyst", "company_analyst", "technical_researcher"}.issubset(profile["role_keys"])
+
+
+def test_research_profile_can_designate_policy_and_customer_specialists():
+    from backend.company_os_dispatch import select_squad_profile
+
+    profile = select_squad_profile({
+        "objective": "Assess buyer constraints and regulatory adoption risk",
+        "deliverables": ["policy memo", "customer evidence"],
+        "required_capabilities": ["policy research", "customer research", "source validation"],
+        "risk": "internal",
+    }, "research")
+
+    assert profile["role_keys"] == ["research_lead", "policy_researcher", "customer_regulatory_analyst"]
 
 
 def test_dispatch_persists_charter_role_records_and_task_contract(monkeypatch):
@@ -342,7 +353,7 @@ def test_dispatch_persists_charter_role_records_and_task_contract(monkeypatch):
 
     assert len(store.company["squad_meetings"]) == 2
     assert store.company["squad_meetings"][0]["meeting_type"] == "charter"
-    assert [role["role_key"] for role in store.company["squad_roles"]] == ["technical_lead", "frontend_engineer", "architect", "research_lead", "market_analyst", "scientific_analyst"]
+    assert [role["role_key"] for role in store.company["squad_roles"]] == ["technical_lead", "frontend_engineer", "architect", "research_lead", "market_analyst", "company_analyst"]
     for task in result["tasks"]:
         assert task["role_id"]
         assert task["purpose"] and task["deliverable"]

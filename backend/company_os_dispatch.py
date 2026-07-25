@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 CAPABILITY_REGISTRY: dict[str, dict[str, Any]] = {
-    "research": {"squad": "Insights", "capabilities": {"research", "compare", "evidence research", "market analysis", "competitive analysis", "synthesis"}, "capacity": 3},
+    "research": {"squad": "Insights", "capabilities": {"research", "compare", "evidence research", "market analysis", "competitive analysis", "company analysis", "technical research", "policy research", "customer research", "source validation", "synthesis"}, "capacity": 3},
     "marketing": {"squad": "Growth", "capabilities": {"positioning", "campaign development", "audience strategy", "content"}, "capacity": 3},
     "sales": {"squad": "Revenue", "capabilities": {"pipeline strategy", "account research", "sales materials", "outreach drafting"}, "capacity": 3},
     "product_technical": {"squad": "Product Delivery", "capabilities": {"product delivery", "software engineering", "website", "landing page", "website delivery", "local preview", "technical architecture"}, "capacity": 3},
@@ -37,38 +37,41 @@ _DEFAULT_DEPARTMENT = "operations"
 SQUAD_PROFILE_VERSION = 1
 SQUAD_ROLE_REGISTRY: dict[str, list[dict[str, Any]]] = {
     "research": [
-        {"role_key": "research_lead", "title": "Research Lead", "capabilities": {"research", "synthesis"}, "keywords": set()},
-        {"role_key": "market_analyst", "title": "Market Analyst", "capabilities": {"compare", "competitive analysis", "market analysis"}, "keywords": {"market", "competitor", "compare"}},
-        {"role_key": "scientific_analyst", "title": "Evidence Analyst", "capabilities": {"evidence research"}, "keywords": {"evidence", "scientific", "technical"}},
-        {"role_key": "customer_regulatory_analyst", "title": "Customer & Regulatory Analyst", "capabilities": set(), "keywords": {"customer", "regulatory", "compliance"}},
+        {"role_key": "research_lead", "title": "Research Lead", "capabilities": {"research", "synthesis"}},
+        {"role_key": "general_researcher", "title": "General Researcher", "capabilities": {"general research"}},
+        {"role_key": "market_analyst", "title": "Market Analyst", "capabilities": {"compare", "competitive analysis", "market analysis"}},
+        {"role_key": "company_analyst", "title": "Company Analyst", "capabilities": {"company analysis", "compare", "competitive analysis"}},
+        {"role_key": "technical_researcher", "title": "Technical Researcher", "capabilities": {"technical research", "evidence research"}},
+        {"role_key": "policy_researcher", "title": "Policy Researcher", "capabilities": {"policy research", "source validation"}},
+        {"role_key": "customer_regulatory_analyst", "title": "Customer & Regulatory Analyst", "capabilities": {"customer research", "policy research"}},
     ],
     "product_technical": [
-        {"role_key": "technical_lead", "title": "Technical Lead", "capabilities": {"product delivery"}, "keywords": set()},
-        {"role_key": "architect", "title": "Architect", "capabilities": {"technical architecture"}, "keywords": {"architecture", "system"}},
-        {"role_key": "backend_engineer", "title": "Backend Engineer", "capabilities": {"software engineering"}, "keywords": {"backend", "api", "database"}},
-        {"role_key": "frontend_engineer", "title": "Frontend Engineer", "capabilities": {"website", "landing page", "website delivery", "local preview"}, "keywords": {"website", "landing", "frontend", "ui"}},
+        {"role_key": "technical_lead", "title": "Technical Lead", "capabilities": {"product delivery"}},
+        {"role_key": "architect", "title": "Architect", "capabilities": {"technical architecture"}},
+        {"role_key": "backend_engineer", "title": "Backend Engineer", "capabilities": {"software engineering"}},
+        {"role_key": "frontend_engineer", "title": "Frontend Engineer", "capabilities": {"website", "landing page", "website delivery", "local preview"}},
     ],
     "design": [
-        {"role_key": "design_lead", "title": "Design Lead", "capabilities": {"visual design"}, "keywords": set()},
-        {"role_key": "ux_researcher", "title": "UX Researcher", "capabilities": {"user experience"}, "keywords": {"user", "ux", "research"}},
-        {"role_key": "interaction_designer", "title": "Product & Interaction Designer", "capabilities": {"interaction design"}, "keywords": {"interaction", "flow", "product"}},
-        {"role_key": "visual_designer", "title": "Visual & Prototype Designer", "capabilities": {"prototype"}, "keywords": {"visual", "brand", "prototype"}},
+        {"role_key": "design_lead", "title": "Design Lead", "capabilities": {"visual design"}},
+        {"role_key": "ux_researcher", "title": "UX Researcher", "capabilities": {"user experience"}},
+        {"role_key": "interaction_designer", "title": "Product & Interaction Designer", "capabilities": {"interaction design"}},
+        {"role_key": "visual_designer", "title": "Visual & Prototype Designer", "capabilities": {"prototype"}},
     ],
     "marketing": [
-        {"role_key": "marketing_lead", "title": "Marketing Lead", "capabilities": {"positioning"}, "keywords": set()},
-        {"role_key": "audience_strategist", "title": "Audience Strategist", "capabilities": {"audience strategy"}, "keywords": {"audience", "segment", "persona"}},
-        {"role_key": "content_specialist", "title": "Positioning & Content Specialist", "capabilities": {"content"}, "keywords": {"content", "copy", "positioning"}},
-        {"role_key": "campaign_analyst", "title": "Campaign Analyst", "capabilities": {"campaign development"}, "keywords": {"campaign", "launch", "channel"}},
+        {"role_key": "marketing_lead", "title": "Marketing Lead", "capabilities": {"positioning"}},
+        {"role_key": "audience_strategist", "title": "Audience Strategist", "capabilities": {"audience strategy"}},
+        {"role_key": "content_specialist", "title": "Positioning & Content Specialist", "capabilities": {"content"}},
+        {"role_key": "campaign_analyst", "title": "Campaign Analyst", "capabilities": {"campaign development"}},
     ],
     "sales": [
-        {"role_key": "sales_lead", "title": "Sales Lead", "capabilities": {"pipeline strategy"}, "keywords": set()},
-        {"role_key": "account_researcher", "title": "Account Researcher", "capabilities": {"account research"}, "keywords": {"account", "target", "prospect"}},
-        {"role_key": "pipeline_strategist", "title": "Pipeline Strategist", "capabilities": {"pipeline strategy"}, "keywords": {"pipeline", "funnel"}},
-        {"role_key": "sales_materials_specialist", "title": "Sales Materials Specialist", "capabilities": {"sales materials"}, "keywords": {"deck", "materials", "proposal"}},
+        {"role_key": "sales_lead", "title": "Sales Lead", "capabilities": {"pipeline strategy"}},
+        {"role_key": "account_researcher", "title": "Account Researcher", "capabilities": {"account research"}},
+        {"role_key": "pipeline_strategist", "title": "Pipeline Strategist", "capabilities": {"pipeline strategy"}},
+        {"role_key": "sales_materials_specialist", "title": "Sales Materials Specialist", "capabilities": {"sales materials"}},
     ],
-    "finance": [{"role_key": "finance_specialist", "title": "Finance Specialist", "capabilities": {"financial analysis", "budgeting", "forecasting", "pricing analysis"}, "keywords": set()}],
-    "legal": [{"role_key": "legal_specialist", "title": "Legal & Risk Specialist", "capabilities": {"legal analysis", "compliance review", "contract review", "privacy review"}, "keywords": set()}],
-    "operations": [{"role_key": "operations_specialist", "title": "Operations Specialist", "capabilities": {"operating systems", "process design", "scheduling", "vendor operations"}, "keywords": set()}],
+    "finance": [{"role_key": "finance_specialist", "title": "Finance Specialist", "capabilities": {"financial analysis", "budgeting", "forecasting", "pricing analysis"}}],
+    "legal": [{"role_key": "legal_specialist", "title": "Legal & Risk Specialist", "capabilities": {"legal analysis", "compliance review", "contract review", "privacy review"}}],
+    "operations": [{"role_key": "operations_specialist", "title": "Operations Specialist", "capabilities": {"operating systems", "process design", "scheduling", "vendor operations"}}],
 }
 
 _APPROVAL_TERMS = (
@@ -322,34 +325,18 @@ def choose_department(intent: str) -> tuple[str, str]:
 def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any]:
     """Select a lead and at most three specialists from the actual request."""
     capabilities = {str(value).lower() for value in request.get("required_capabilities") or []}
-    text = " ".join([str(request.get("objective") or ""), *(str(v) for v in request.get("deliverables") or [])]).lower()
     definitions = SQUAD_ROLE_REGISTRY[lead]
     selected = [definitions[0]]
-    scored = [(len(capabilities & role["capabilities"]) * 10 + sum(keyword in text for keyword in role["keywords"]), role)
-              for role in definitions[1:]]
-    selected.extend(role for score, role in sorted(scored, key=lambda item: (-item[0], item[1]["role_key"])) if score > 0)
+    scored = [(len(capabilities & {str(value).lower() for value in role["capabilities"]}), index, role) for index, role in enumerate(definitions[1:])]
+    selected.extend(role for score, _index, role in sorted(scored, key=lambda item: (-item[0], item[1])) if score > 0)
     # A website needs a structural design pass as well as implementation even
-    # when the model only labels it "website". A genuine market/competitive
-    # question needs independent evidence lanes instead of one generalist
-    # pretending to validate all dimensions. These are bounded defaults, not
-    # "all roles every time" -- "research"/"evidence research" deliberately
-    # excluded from the research trigger below: those two are on nearly
-    # every research-department request regardless of subject (the
-    # deterministic fallback in infer_work_request tags ANY request
-    # containing the word "research" with exactly {"research", "evidence
-    # research"}), so keying off them made this fire almost unconditionally.
-    # A narrow factual/technical question ("why are qwen models so
-    # knowledge-dense") has no market dimension at all -- assigning it a
-    # Market Analyst to "investigate the market analyst dimension" is
-    # nonsense, and it's genuinely wasteful (confirmed live: 171 site visits
-    # for a single-topic technical question). Only requests that actually
-    # signal a comparison/market angle get both lanes; anything else falls
-    # through to the scored keyword-matched roles above, which is usually
-    # just the lead alone -- a single specialist, which dispatch already
-    # favors astra_quick_search for.
+    # when the model only labels it "website". Research specialists are
+    # selected only from structured capability fit; the fallback below adds
+    # one generalist researcher for plain research so the squad still has a
+    # bounded worker without inventing an unrelated market/technical lane.
     defaults: list[str] = []
-    if lead == "research" and capabilities & {"compare", "competitive analysis", "market analysis"}:
-        defaults = ["market_analyst", "scientific_analyst"]
+    if lead == "research" and len(selected) == 1 and capabilities & {"research", "evidence research", "source validation"}:
+        defaults = ["general_researcher"]
     elif lead == "product_technical" and capabilities & {"website", "landing page", "website delivery", "local preview"}:
         defaults = ["architect", "frontend_engineer"]
     for role_key in defaults:
