@@ -353,6 +353,21 @@ def _overlap_with_message(candidate_text: str, message: str) -> float:
     return SequenceMatcher(None, candidate_text.lower(), message.lower()).ratio()
 
 
+_HOLD_OFF_PHRASES = ("hold off", "no need to", "not yet", "don't", "do not", "cancel", "never mind", "nevermind", "wait on that", "skip that", "skip this")
+
+
+def _looks_like_hold_off(message: str) -> bool:
+    """Sanity-check backstop for the "negated" label, not a replacement for
+    the LLM's own judgment -- these are the exact phrases the prompt itself
+    names ("says not to do something yet / hold off / no need to") plus
+    their obvious close synonyms. A real hold-off message will contain one
+    of these; a normal work request won't, so a "negated" label with none
+    of them present is a stronger signal of a hallucinated/misrouted
+    classification than of a genuine cancel instruction."""
+    lowered = message.lower()
+    return any(phrase in lowered for phrase in _HOLD_OFF_PHRASES)
+
+
 def _is_malformed(text: str) -> bool:
     """Confirmed live: a single call returned "is difference between
     blackstone blackrock create website highlighting differences'" for a
@@ -380,7 +395,22 @@ def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
         if not text or _is_malformed(text) or _overlap_with_message(text, message) < _MIN_OVERLAP_WITH_MESSAGE:
             continue
         if label == "negated":
-            return IntentClassification(kind="negated", elapsed=elapsed)
+            # "negated" is uniquely destructive to get wrong: it silently
+            # drops a real, actionable request while telling the founder
+            # "got it, holding off" -- so it sounds like they were heard.
+            # Confirmed live: the same message, same prompt, correctly
+            # classified as real work on a later call and "negated" on an
+            # earlier one -- provider-fallback variance (allow_fallbacks can
+            # route this call to a different backing model each time), not a
+            # deterministic bug in the classification rules. The prompt
+            # itself only asks for this label when the message says "not to
+            # do something yet / hold off / no need to" -- if the actual
+            # message contains none of that language, treat the label as a
+            # likely hallucination and fall through to normal parsing
+            # instead of trusting a single LLM call to silently drop work.
+            if _looks_like_hold_off(message):
+                return IntentClassification(kind="negated", elapsed=elapsed)
+            continue
         if label in _SPECIAL_LABELS:
             return IntentClassification(kind=label, elapsed=elapsed)  # type: ignore[arg-type]
         if label in CAPABILITY_REGISTRY:
