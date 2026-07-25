@@ -41,7 +41,7 @@ SQUAD_ROLE_REGISTRY: dict[str, list[dict[str, Any]]] = {
         {"role_key": "general_researcher", "title": "General Researcher", "capabilities": {"general research"}},
         {"role_key": "market_analyst", "title": "Market Analyst", "capabilities": {"compare", "competitive analysis", "market analysis"}},
         {"role_key": "company_analyst", "title": "Company Analyst", "capabilities": {"company analysis", "compare", "competitive analysis"}},
-        {"role_key": "technical_researcher", "title": "Technical Researcher", "capabilities": {"technical research", "evidence research"}},
+        {"role_key": "technical_researcher", "title": "Technical & Scientific Analyst", "capabilities": {"technical research", "scientific analysis", "model architecture", "training science", "benchmark analysis", "inference efficiency", "evidence research"}},
         {"role_key": "policy_researcher", "title": "Policy Researcher", "capabilities": {"policy research", "source validation"}},
         {"role_key": "customer_regulatory_analyst", "title": "Customer & Regulatory Analyst", "capabilities": {"customer research", "policy research"}},
     ],
@@ -389,8 +389,16 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
             role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
             key = f"research-{specialist_role}"
             evidence_keys.append(key)
+            role_purpose = {
+                "market_analyst": "Analyze market position, alternatives, adoption, and competitive evidence.",
+                "company_analyst": "Establish the subject's products, business model, strategy, and primary-source facts.",
+                "technical_researcher": "Analyze architecture, training methods, benchmarks, reasoning behavior, and inference efficiency.",
+                "policy_researcher": "Check policy, safety, licensing, governance, and regulatory constraints.",
+                "customer_regulatory_analyst": "Assess customer fit, adoption barriers, and regulatory implications.",
+                "general_researcher": "Gather broad, cited evidence across the dimensions required by the objective.",
+            }.get(specialist_role, f"Investigate the {role_title.lower()} dimension with fetched, cited sources.")
             add(specialist_role, key, f"{role_title}: gather validated evidence{suffix}",
-                f"Independently investigate the {role_title.lower()} dimension with fetched, cited sources.",
+                role_purpose,
                 f"{role_title} evidence pack", "internal_analysis", group="evidence-lanes", mcp_tool=research_tool)
         add(role(0), "research-review", f"Review evidence and resolve conflicts{suffix}",
             "Compare specialist evidence, validate coverage, and identify targeted follow-ups.",
