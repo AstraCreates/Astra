@@ -194,7 +194,16 @@ def infer_work_request(intent: str) -> dict[str, Any]:
     lowered = intent.lower()
     if _ENTITY_LOOKUP_PREFIX.match(intent.strip()) or any(term in lowered for term in ("research", "compare", "viability", "competitive analysis", "evidence")):
         capabilities = {"research", "evidence research"}
-        if "compare" in lowered or " versus " in lowered or " vs " in lowered:
+        # Word-boundary, not substring -- "compare" in lowered also matched
+        # "compared"/"comparison"/"incomparable" (the same bug already fixed
+        # in astra_mcp.py and company_os_runner.py). This path only runs when
+        # the LLM classifier call fails entirely, so it's rarely hit, but a
+        # false positive here still degrades role selection quality in that
+        # fallback (select_squad_profile has no research_specialists to work
+        # with in this path, so it falls back to the fixed-catalog scoring,
+        # where an incorrect "compare" tag can still pull in an ill-fitting
+        # Market/Company Analyst).
+        if re.search(r"\bcompare\b", lowered) or " versus " in lowered or " vs " in lowered:
             capabilities.add("compare")
         return {"version": 1, "objective": intent.strip(), "outcome": intent.strip(),
                 "deliverables": ["validated research brief"], "acceptance_criteria": ["cited evidence"],
