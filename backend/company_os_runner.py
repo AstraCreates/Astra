@@ -436,22 +436,56 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
         title, content = _synthesis(mission_name, evidence)
         return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
     if mission.get("department") not in {"research", "product_technical"}:
-        # Do not let a generic decision brief masquerade as work by a
-        # department whose specialist execution contract is not wired into
-        # Company OS yet. The task runner will mark this retryable/reviewable,
-        # preserving the founder's request instead of silently fabricating a
-        # completed marketing, sales, finance, legal, design, or operations
-        # deliverable.
         department = str(mission.get("department") or "unknown")
-        raise RuntimeError(
-            f"No Company OS execution adapter is registered for the {department} department; "
-            "the task was not executed as a generic substitute."
-        )
+        tool = str(task.get("mcp_tool") or "")
+        if not tool:
+            raise RuntimeError(f"No Company OS tool contract is registered for the {department} department.")
+        args = _department_tool_arguments(department, mission_name, company_id)
+        result = invoke_mcp(company_id, tool, args, task_id=str(task.get("task_id") or ""),
+                            mission_id=str(mission.get("mission_id") or ""),
+                            squad_id=str(mission.get("squad_id") or ""),
+                            initiative_id=str(mission.get("initiative_id") or ""))
+        if not isinstance(result, Mapping) or result.get("error"):
+            raise RuntimeError(f"{department.title()} specialist tool failed: {result.get('error') if isinstance(result, Mapping) else result}")
+        content = result.get("content") or result.get("formatted") or result.get("html") or result.get("report") or result
+        return _store_artifact(company_id, task, f"{department.title()} deliverable — {_short_title(mission_name)}",
+                               {"content": content, "sources": result.get("sources", []) if isinstance(result, Mapping) else []},
+                               source=f"{department} specialist tool")
     if task.get("name", "").lower().startswith("synthesize"):
         title, content = _synthesis(mission_name, evidence)
         return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
     title, content = _decision_brief(mission_name, evidence)
     return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis")
+
+
+def _department_tool_arguments(department: str, objective: str, company_id: str) -> dict[str, Any]:
+    """Build bounded, domain-specific MCP inputs for non-research squads."""
+    company = get_company_os(company_id) or {}
+    founder_id = str(company.get("founder_id") or "")
+    if department == "design":
+        return {"product_name": _short_title(objective), "brand_name": _short_title(objective),
+                "product_type": "website", "target_audience": "the audience described in the initiative",
+                "brand_vibe": "distinctive and editorial", "key_screens": ["homepage", "detail view", "contact"]}
+    if department == "marketing":
+        return {"subject": _short_title(objective), "body_paragraphs": [f"Campaign brief: {objective}",
+                "Use the initiative objective as the source of truth; do not invent proof points."],
+                "cta_text": "Learn more", "cta_url": "#", "sender_name": "Astra"}
+    if department == "sales":
+        return {"title": f"Sales execution brief: {_short_title(objective)}", "filename": "sales-execution-brief.md",
+                "sections": [{"heading": "Objective", "body": objective},
+                             {"heading": "Qualification plan", "body": "Define target accounts, buying triggers, qualification questions, and next actions from the initiative context."}],
+                "founder_id": founder_id, "company_name": _short_title(objective)}
+    if department == "finance":
+        return {"title": f"Financial planning brief: {_short_title(objective)}", "filename": "financial-planning-brief.md",
+                "sections": [{"heading": "Objective", "body": objective},
+                             {"heading": "Model requirements", "body": "Specify assumptions, revenue drivers, costs, scenarios, cash needs, and decision thresholds. Unknown values must remain explicit assumptions."}],
+                "founder_id": founder_id, "company_name": _short_title(objective)}
+    if department == "legal":
+        return {"doc_type": "legal_review", "company_name": _short_title(objective),
+                "content": f"Request: {objective}\n\nIdentify applicable obligations, risks, missing facts, and required approvals. This is not legal advice."}
+    if department == "operations":
+        return {"founder_id": founder_id}
+    return {}
 
 
 def _store_artifact(company_id: str, task: Mapping[str, Any], title: str, result: Mapping[str, Any], *, source: str, internal: bool = False) -> dict[str, Any]:

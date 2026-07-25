@@ -373,11 +373,10 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
     if department == "research":
         specialist_roles = role_keys[1:] or [role(0)]
         evidence_keys: list[str] = []
-        # Research squad evidence always uses the guarded deep-research
-        # contract. Quick lookup tools remain available to specialists, but a
-        # Company OS research deliverable must pass the evidence gate before
-        # it can create an artifact or advance the initiative.
-        research_tool = "astra_company_research"
+        # Broad evidence work uses the guarded deep-research contract. A
+        # single narrow lane stays on the bounded quick lookup path; this is
+        # intentionally different from a research squad's final synthesis.
+        research_tool = "astra_quick_search" if len(specialist_roles) == 1 else "astra_company_research"
         for specialist_role in specialist_roles:
             role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
             key = f"research-{specialist_role}"
@@ -414,7 +413,18 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
             add(role(0), "product-publish", f"Publish the website to Vercel{suffix}", "Publish only after approval is granted.", "Published website", "external_deploy", depends_on=["product-review"], group="release", mcp_tool="vercel_deploy")
     else:
         role_title = profile["roles"][0]["title"]
-        add(role(0), f"{department}-deliverable", f"Create {role_title.lower()} deliverable{suffix}", f"Produce the {role_title.lower()} contribution needed for the objective.", f"{role_title} deliverable", "draft", group="specialist")
+        department_tools = {
+            "design": "generate_design_spec",
+            "marketing": "build_email_html",
+            "sales": "generate_pdf",
+            "finance": "generate_pdf",
+            "legal": "format_legal_document",
+            "operations": "automation_list_flows",
+        }
+        add(role(0), f"{department}-deliverable", f"Create {role_title.lower()} deliverable{suffix}",
+            f"Produce the {role_title.lower()} contribution needed for the objective.",
+            f"{role_title} deliverable", "department_tool", group="specialist",
+            mcp_tool=department_tools.get(department))
     # A task plan must always contain lead-owned work, even for a malformed
     # capability extraction that selected no recognizable specialist lane.
     if not tasks:

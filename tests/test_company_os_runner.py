@@ -294,7 +294,7 @@ def test_publication_decision_artifact_reflects_that_publish_is_already_queued(t
     assert company_os.get_company_os(company_id)["artifacts"] == []
 
 
-def test_unwired_department_cannot_complete_as_generic_decision_brief(tmp_path, monkeypatch):
+def test_department_without_tool_contract_cannot_complete_as_generic_brief(tmp_path, monkeypatch):
     monkeypatch.setenv("ASTRA_WORKSPACE", str(tmp_path / "workspace"))
     monkeypatch.chdir(tmp_path)
     company_os.create_company_os("acme", "founder", "Acme")
@@ -302,7 +302,7 @@ def test_unwired_department_cannot_complete_as_generic_decision_brief(tmp_path, 
     company_os.create_squad("acme", "i1", "Marketing", squad_id="s1")
     task = company_os.create_task("acme", "i1", "s1", "Create a campaign", task_id="t1")
 
-    with pytest.raises(RuntimeError, match="(?i)no Company OS execution adapter"):
+    with pytest.raises(RuntimeError, match="(?i)no Company OS tool contract"):
         _execute_internal_work("acme", {"department": "marketing", "name": "Create a campaign", "mission_id": "m1", "initiative_id": "i1"}, task)
     assert company_os.get_company_os("acme")["artifacts"] == []
 
