@@ -844,12 +844,21 @@ def _company_research(args: dict) -> dict:
             except Exception:
                 pass
     attempts = []
-    for attempt_number in range(max(1, int(settings.deep_research_max_attempts))):
+    # settings.quick_research_mode short-circuits straight to the plain
+    # search+fetch call below (the same one the ODR supervisor only ever
+    # reaches itself, via its own recursive deep_worker tool call) --
+    # skipping the supervisor's multi-turn LLM loop entirely, capped at one
+    # attempt regardless of deep_research_max_attempts. That loop is the
+    # dominant token/latency cost of a research task; this is strictly a
+    # dev-iteration speed/cost switch, not a real research mode.
+    quick = bool(settings.quick_research_mode)
+    max_attempts = 1 if quick else max(1, int(settings.deep_research_max_attempts))
+    for attempt_number in range(max_attempts):
         started = time.perf_counter()
         try:
             # Research squads use the actual Open Deep Research supervisor;
             # quick lookup callers never enter this Company OS entrypoint.
-            if not args.get("deep_worker"):
+            if not args.get("deep_worker") and not quick:
                 from backend.tools.open_deep_research_adapter import run_open_deep_research
                 evidence = asyncio.run(run_open_deep_research(
                     subject, company_id=company_id, initiative_id=args.get("initiative_id"),
@@ -857,7 +866,7 @@ def _company_research(args: dict) -> dict:
                 ))
             else:
                 evidence = (run_comparison_research(subject, on_search=on_search) if "compare" in subject.lower()
-                            else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=6, on_search=on_search))
+                            else run_research_pipeline(subject, focus=str(args.get("focus") or "market"), max_results_each=5 if quick else 6, on_search=on_search))
             if task_id:
                 evidence.setdefault("search_count", counter.get("n", 0))
                 # Only a nested deep_worker call persists here -- it must write

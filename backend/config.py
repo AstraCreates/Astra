@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     deep_research_max_attempts: int = 2
     deep_research_backoff_seconds: float = 1.0
     deep_research_timeout_seconds: int = 900
+    # Dev/test iteration switch: skip the Open Deep Research supervisor
+    # (a multi-turn LangChain agent loop -- the dominant token/latency cost
+    # of a research task) and go straight to the single-pass search+fetch
+    # call it would otherwise only reach via its own internal recursive
+    # "deep_worker" tool call. Capped at 5 sources, one attempt, no
+    # iterative refinement -- for iterating on a build without burning
+    # supervisor-loop tokens on every run, not a quality mode for real use.
+    quick_research_mode: bool = False
     # Company OS copilot intent classification (typo-correction + multi-step
     # splitting + department routing in one call). Validated on a 1200-case
     # combinatorial test set: 100% accuracy, ~0.3s avg latency, honors
