@@ -382,6 +382,7 @@ body {
 }
 .ag.visible { opacity: 1; transform: translateY(0); }
 .ag.adjusted { border-color: rgba(125,143,255,0.3); }
+.ag.is-paused { opacity: 0.38; pointer-events: none; }
 
 .ag-head {
   display: flex;
@@ -1075,7 +1076,7 @@ function streamText(id, text, cb) {
   let i = 0;
   (function t() {
     if (i < text.length) {
-      bubble.innerHTML = text.slice(0, ++i).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      bubble.innerHTML = text.slice(0, ++i);
       scroll();
       setTimeout(t, 14 + Math.random() * 8);
     } else { if (cb) setTimeout(cb, 300); }
@@ -1096,26 +1097,27 @@ const SPEC = {
   sp:  { sym:'⊕', cls:'g', name:'Sales Pipeline',     instr:'Source leads, build sequences, seed CRM',       color:'#22c55e', bar:'linear-gradient(90deg,var(--mint),#86efac)', dot:'background:var(--mint)' },
 };
 
-function buildCard(key) {
+function buildCard(key, pfx) {
+  pfx = pfx || '';
   const s = SPEC[key];
-  return `<div class="ag" id="ag-${key}">
+  return `<div class="ag" id="${pfx}ag-${key}">
     <div class="ag-head">
       <div class="ag-sym ${s.cls}">${s.sym}</div>
       <div class="ag-info"><div class="ag-name">${s.name}</div><div class="ag-instr">${s.instr}</div></div>
       <div class="ag-right">
-        <div class="ag-ring" id="ring-${key}">
+        <div class="ag-ring" id="${pfx}ring-${key}">
           <svg width="34" height="34" viewBox="0 0 34 34">
             <circle cx="17" cy="17" r="13" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2.5"/>
-            <circle cx="17" cy="17" r="13" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-dasharray="81.7" stroke-dashoffset="81.7" id="ring-${key}-c" style="transition:stroke-dashoffset 1s var(--ease);"/>
+            <circle cx="17" cy="17" r="13" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-dasharray="81.7" stroke-dashoffset="81.7" id="${pfx}ring-${key}-c" style="transition:stroke-dashoffset 1s var(--ease);"/>
           </svg>
-          <div class="ag-ring-pct" id="pct-${key}">0%</div>
+          <div class="ag-ring-pct" id="${pfx}pct-${key}">0%</div>
         </div>
-        <div class="ag-status running" id="st-${key}">running</div>
+        <div class="ag-status running" id="${pfx}st-${key}">running</div>
       </div>
     </div>
-    <div class="ag-bar-wrap"><div class="ag-bar" id="bar-${key}" style="background:${s.bar};"></div></div>
-    <div class="ag-action" id="act-${key}"><div class="ag-action-dot"></div><div class="ag-action-text" id="act-${key}-txt">Initialising…</div></div>
-    <div class="ag-log" id="log-${key}"></div>
+    <div class="ag-bar-wrap"><div class="ag-bar" id="${pfx}bar-${key}" style="background:${s.bar};"></div></div>
+    <div class="ag-action" id="${pfx}act-${key}"><div class="ag-action-dot"></div><div class="ag-action-text" id="${pfx}act-${key}-txt">Initialising…</div></div>
+    <div class="ag-log" id="${pfx}log-${key}"></div>
   </div>`;
 }
 
@@ -1137,12 +1139,13 @@ function addLog(logId, text, cls) {
   while (log.children.length > 5) log.removeChild(log.firstChild);
   scroll();
 }
-function markDone(key, color) {
-  setStatus('st-'+key, 'done', 'done');
-  setBar('bar-'+key, 100); setRing('ring-'+key+'-c', 100, color); setPct('pct-'+key, 100);
-  const a = document.getElementById('act-'+key); if (a) a.className = 'ag-action done';
-  setAction('act-'+key+'-txt', '✓ Done');
-  const p = document.getElementById('pct-'+key); if (p) p.classList.add('done');
+function markDone(key, color, pfx) {
+  pfx = pfx || '';
+  setStatus(pfx+'st-'+key, 'done', 'done');
+  setBar(pfx+'bar-'+key, 100); setRing(pfx+'ring-'+key+'-c', 100, color); setPct(pfx+'pct-'+key, 100);
+  const a = document.getElementById(pfx+'act-'+key); if (a) a.className = 'ag-action done';
+  setAction(pfx+'act-'+key+'-txt', '✓ Done');
+  const p = document.getElementById(pfx+'pct-'+key); if (p) p.classList.add('done');
 }
 
 // ── agent data ────────────────────────────────────────────────────────────────
@@ -1225,7 +1228,7 @@ function sendChat() {
     chatState = 'running';
 
     astraMsg(
-      `On it. Spinning up **4 agents** in parallel — **Competitor Intel**, **Market Analysis**, **Web & Landing Page**, and **Sales Pipeline**. I'll keep you updated as work comes in.`,
+      `On it. Spinning up 4 agents in parallel — Competitor Intel, Market Analysis, Web & Landing Page, and Sales Pipeline. I'll keep you updated as work comes in.`,
       () => injectAgentCards()
     );
 
@@ -1293,46 +1296,53 @@ function injectAgentCards() {
 }
 
 function applySteering() {
-  // toast + flash
+  const P = 's2-'; // prefix for new card IDs
+
+  // toast + flash old cards, then freeze them
   const toast = document.getElementById('steerToast');
   toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
   ['ci','ma','web','sp'].forEach((key, i) => setTimeout(() => {
     const c = document.getElementById('ag-'+key); if (!c) return;
-    c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1200);
+    c.classList.add('flash');
+    setTimeout(() => { c.classList.remove('flash'); c.classList.add('is-paused'); }, 1200);
   }, i * 120));
 
-  astraMsg(`Got it — pivoting to **enterprise focus**. Dropping SMB targets, updating ICP, rewriting the landing page for Fortune 1000 buyers. All 4 agents adjusting now.`, () => {
+  astraMsg(`Got it — pivoting to enterprise focus. Dropping SMB targets, updating ICP, rewriting the landing page for Fortune 1000 buyers. Spinning up fresh agents now.`, () => {
     const adjusts = {
       ci: {
-        logs: [[900,'· Steering — enterprise focus applied','c-blue'],[3600,'⚙ web_search: "salesforce servicenow enterprise AI gaps 2025"','c-blue'],[7200,'✓ Read https://salesforce.com/editions-pricing','c-mint'],[10800,'⚙ deep_research: enterprise deals >$50K — SAP ServiceNow Oracle','c-blue'],[18000,'✓ Deep research — 21 sources, enterprise tier gaps mapped','c-mint'],[20700,'▷ wrote competitor_analysis_enterprise.md (9.4kb)','c-white']],
+        logs: [[900,'· Restarted — enterprise focus','c-blue'],[3600,'⚙ web_search: "salesforce servicenow enterprise AI gaps 2025"','c-blue'],[7200,'✓ Read https://salesforce.com/editions-pricing','c-mint'],[10800,'⚙ deep_research: enterprise deals >$50K — SAP ServiceNow Oracle','c-blue'],[18000,'✓ Deep research — 21 sources, enterprise tier gaps mapped','c-mint'],[20700,'▷ wrote competitor_analysis_enterprise.md (9.4kb)','c-white']],
         actions: [[900,'web_search — salesforce enterprise AI gaps'],[10800,'deep_research — enterprise deals >$50K'],[20700,'generate_pdf — enterprise analysis']],
       },
       ma: {
-        logs: [[1350,'· Steering — ICP pivot to enterprise','c-blue'],[4050,'⚙ web_search: "enterprise AI ops buyers Director VP CTO budget"','c-blue'],[7650,'✓ 11 sources — Gartner, Forrester, IDC','c-mint'],[12600,'⚙ deep_research: enterprise AI ops buyer journey','c-blue'],[19800,'✓ Deep research — 19 sources','c-mint'],[22500,'▷ wrote icp_enterprise.md (6.1kb)','c-white']],
+        logs: [[1350,'· Restarted — ICP pivot to enterprise','c-blue'],[4050,'⚙ web_search: "enterprise AI ops buyers Director VP CTO budget"','c-blue'],[7650,'✓ 11 sources — Gartner, Forrester, IDC','c-mint'],[12600,'⚙ deep_research: enterprise AI ops buyer journey','c-blue'],[19800,'✓ Deep research — 19 sources','c-mint'],[22500,'▷ wrote icp_enterprise.md (6.1kb)','c-white']],
         actions: [[1350,'web_search — enterprise buyers'],[12600,'deep_research — buyer journey'],[22500,'obsidian_log — ICP updated']],
       },
       web: {
-        logs: [[450,'· Steering — rewriting hero for enterprise buyer','c-blue'],[3150,'⚙ generate_landing_page_html — ROI framing, compliance badges','c-blue'],[9900,'✓ generate_landing_page_html — revised (15.8kb)','c-mint'],[11700,'⚙ vercel_deploy — redeploying enterprise copy','c-blue'],[15300,'✓ Deployed → https://yourcompany.vercel.app (enterprise)','c-mint']],
+        logs: [[450,'· Restarted — rewriting hero for enterprise buyer','c-blue'],[3150,'⚙ generate_landing_page_html — ROI framing, compliance badges','c-blue'],[9900,'✓ generate_landing_page_html — revised (15.8kb)','c-mint'],[11700,'⚙ vercel_deploy — redeploying enterprise copy','c-blue'],[15300,'✓ Deployed → https://yourcompany.vercel.app (enterprise)','c-mint']],
         actions: [[450,'generate_landing_page_html — enterprise copy'],[11700,'vercel_deploy — redeploy']],
       },
       sp: {
-        logs: [[1800,'· Steering — replacing ICP with Fortune 1000','c-blue'],[4500,'⚙ find_leads: Director+, VP Ops, Fortune 1000, >500 emp','c-blue'],[10800,'✓ find_leads — 47 enterprise leads sourced','c-mint'],[13500,'⚙ enrich_lead × 47 — LinkedIn Sales Nav + Apollo','c-blue'],[20700,'✓ enrich_lead — 41 verified (87%)','c-mint'],[22950,'⚙ build_outreach_sequence — enterprise 3-touch cadence','c-blue'],[27000,'✓ build_outreach_sequence — queued','c-mint']],
+        logs: [[1800,'· Restarted — replacing ICP with Fortune 1000','c-blue'],[4500,'⚙ find_leads: Director+, VP Ops, Fortune 1000, >500 emp','c-blue'],[10800,'✓ find_leads — 47 enterprise leads sourced','c-mint'],[13500,'⚙ enrich_lead × 47 — LinkedIn Sales Nav + Apollo','c-blue'],[20700,'✓ enrich_lead — 41 verified (87%)','c-mint'],[22950,'⚙ build_outreach_sequence — enterprise 3-touch cadence','c-blue'],[27000,'✓ build_outreach_sequence — queued','c-mint']],
         actions: [[1800,'find_leads — Fortune 1000 Director+'],[13500,'enrich_lead × 47'],[22950,'build_outreach_sequence — enterprise']],
       },
     };
 
+    // inject fresh agent cards (new IDs with prefix P)
+    const agDiv = document.createElement('div');
+    agDiv.className = 'ch-chat-row';
+    agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
+      <div class="chat-agents-grid">${['ci','ma','web','sp'].map(k => buildCard(k, P)).join('')}</div>`;
+    thread().appendChild(agDiv); scroll();
+
     ['ci','ma','web','sp'].forEach((key, i) => {
+      const adj = adjusts[key]; const color = SPEC[key].color;
       setTimeout(() => {
-        const adj = adjusts[key]; const color = SPEC[key].color;
-        const card = document.getElementById('ag-'+key); if (card) card.classList.add('adjusted');
-        setStatus('st-'+key, 'running', 'running');
-        setBar('bar-'+key, 5); setRing('ring-'+key+'-c', 5, color); setPct('pct-'+key, 5);
-        const logEl = document.getElementById('log-'+key); if (logEl) logEl.innerHTML = '';
-        adj.logs.forEach(([dt, txt, cls]) => setTimeout(() => addLog('log-'+key, txt, cls), dt));
-        adj.actions.forEach(([dt, txt]) => setTimeout(() => setAction('act-'+key+'-txt', txt), dt));
+        document.getElementById(P+'ag-'+key).classList.add('visible');
+        adj.logs.forEach(([dt, txt, cls]) => setTimeout(() => addLog(P+'log-'+key, txt, cls), dt));
+        adj.actions.forEach(([dt, txt]) => setTimeout(() => setAction(P+'act-'+key+'-txt', txt), dt));
         [[2000,15],[6500,30],[12500,52],[19000,71],[25000,88],[29000,100]].forEach(([dt, p]) =>
-          setTimeout(() => { setBar('bar-'+key, p); setRing('ring-'+key+'-c', p, color); setPct('pct-'+key, p); }, dt));
-        setTimeout(() => { markDone(key, color); addLog('log-'+key, '✓ Done', 'c-mint'); }, 32000);
+          setTimeout(() => { setBar(P+'bar-'+key, p); setRing(P+'ring-'+key+'-c', p, color); setPct(P+'pct-'+key, p); }, dt));
+        setTimeout(() => { markDone(key, color, P); addLog(P+'log-'+key, '✓ Done', 'c-mint'); }, 32000);
       }, i * 500);
     });
 
