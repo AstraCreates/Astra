@@ -329,11 +329,26 @@ def select_squad_profile(request: Mapping[str, Any], lead: str) -> dict[str, Any
               for role in definitions[1:]]
     selected.extend(role for score, role in sorted(scored, key=lambda item: (-item[0], item[1]["role_key"])) if score > 0)
     # A website needs a structural design pass as well as implementation even
-    # when the model only labels it "website". Research needs independent
-    # evidence lanes instead of one generalist pretending to validate all
-    # dimensions. These are bounded defaults, not "all roles every time".
+    # when the model only labels it "website". A genuine market/competitive
+    # question needs independent evidence lanes instead of one generalist
+    # pretending to validate all dimensions. These are bounded defaults, not
+    # "all roles every time" -- "research"/"evidence research" deliberately
+    # excluded from the research trigger below: those two are on nearly
+    # every research-department request regardless of subject (the
+    # deterministic fallback in infer_work_request tags ANY request
+    # containing the word "research" with exactly {"research", "evidence
+    # research"}), so keying off them made this fire almost unconditionally.
+    # A narrow factual/technical question ("why are qwen models so
+    # knowledge-dense") has no market dimension at all -- assigning it a
+    # Market Analyst to "investigate the market analyst dimension" is
+    # nonsense, and it's genuinely wasteful (confirmed live: 171 site visits
+    # for a single-topic technical question). Only requests that actually
+    # signal a comparison/market angle get both lanes; anything else falls
+    # through to the scored keyword-matched roles above, which is usually
+    # just the lead alone -- a single specialist, which dispatch already
+    # favors astra_quick_search for.
     defaults: list[str] = []
-    if lead == "research" and capabilities & {"research", "compare", "evidence research", "competitive analysis"}:
+    if lead == "research" and capabilities & {"compare", "competitive analysis", "market analysis"}:
         defaults = ["market_analyst", "scientific_analyst"]
     elif lead == "product_technical" and capabilities & {"website", "landing page", "website delivery", "local preview"}:
         defaults = ["architect", "frontend_engineer"]
