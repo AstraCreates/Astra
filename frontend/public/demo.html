@@ -286,6 +286,12 @@ body {
   background: linear-gradient(180deg,#6b85ff 0%,#2d48c8 100%); color: #fff;
   box-shadow: 0 3px 8px rgba(45,72,200,0.32), inset 0 1px 0 rgba(255,255,255,0.30);
 }
+.ch-av-logo {
+  width: 15px; height: 15px;
+  background: white;
+  -webkit-mask: url('logo.png') center/contain no-repeat;
+  mask: url('logo.png') center/contain no-repeat;
+}
 .ch-chat-bubble {
   max-width: min(640px,84%); padding: 12px 16px; border-radius: 20px;
   background: var(--apple-glass-bg); border: 1px solid var(--apple-glass-border);
@@ -671,7 +677,7 @@ body {
     <div class="sb-logo-mark"></div>
     <div>
       <div class="sb-logo-text">Astra</div>
-      <div class="sb-logo-sub">Your Company</div>
+      <div class="sb-logo-sub">Meridian</div>
     </div>
   </div>
 
@@ -690,7 +696,7 @@ body {
     </div>
     <div class="sb-link" id="n-brain">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9Z"/></svg>
-      Company Brain
+      Meridian Brain
     </div>
     <div class="sb-link" id="n-lib" onclick="window.canLib && goLib()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z"/></svg>
@@ -708,13 +714,13 @@ body {
 
   <div class="sb-run" id="sb-run" onclick="goScreen('s-run')">
     <div class="sb-run-top"><span class="sb-run-dot"></span><span class="sb-run-label">1 run active</span></div>
-    <div class="sb-run-name">Market validation &amp; launch prep</div>
+    <div class="sb-run-name">Meridian — market validation &amp; launch</div>
   </div>
 
   <div class="sb-bottom">
     <div class="user-row">
-      <div class="user-av">YC</div>
-      <div><div class="user-name">Your Company</div><div class="user-role">Founder</div></div>
+      <div class="user-av">V</div>
+      <div><div class="user-name">Victor</div><div class="user-role">Founder</div></div>
     </div>
   </div>
 </aside>
@@ -740,7 +746,7 @@ body {
       <div class="dash-hero-overlay"></div>
       <div class="dash-hero-inner">
         <div>
-          <p class="dash-hero-greeting">Let's get to work, Jhinkesh.</p>
+          <p class="dash-hero-greeting">Let's get to work, Victor.</p>
           <div class="dash-hero-sub">Build something people want — your north star.</div>
         </div>
         <div class="dash-hero-right">
@@ -772,7 +778,7 @@ body {
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:#7d8fff"><path d="M12 3l1.8 5.4L19 10l-5.2 3.6L15.6 19 12 15.4 8.4 19l1.8-5.4L5 10l5.2-1.6z"/></svg>
         </div>
         <div style="text-align:center;">
-          <div class="dash-empty-h">How's Your Company doing?</div>
+          <div class="dash-empty-h">How's Meridian doing?</div>
           <div class="dash-empty-s">Build something people want — ask Astra anything.</div>
         </div>
         <div class="dash-chips">
@@ -795,7 +801,7 @@ body {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/></svg>
                 mention an agent
               </span>
-              <small>Grounded in Company Brain</small>
+              <small>Grounded in Meridian Brain</small>
             </div>
             <button type="button" class="astra-composer-submit" id="submitBtn">
               <span class="astra-composer-submit-label">Ask Astra</span>
@@ -920,7 +926,7 @@ body {
             <div class="lib-title">landing_page.html</div>
             <div class="lib-desc">Enterprise hero, ROI framing, compliance badges — deployed to Vercel, 3 signups</div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <span class="lib-tag pink">↗ yourcompany.vercel.app</span>
+              <span class="lib-tag pink">↗ meridian.vercel.app</span>
               <span class="lib-tag mint">15.8 kb</span>
             </div>
           </div>
@@ -952,8 +958,8 @@ body {
           </div>
           <div class="lib-card" id="lc7">
             <div class="lib-sym">⊕</div>
-            <div class="lib-title">sarah_chen_outreach.md</div>
-            <div class="lib-desc">Personalised 3-touch sequence — Salesforce VP Ops. Touch 1 opened (3 min ago)</div>
+            <div class="lib-title">meridian_outreach_v1.md</div>
+            <div class="lib-desc">Meridian 3-touch sequence — Salesforce VP Ops. Touch 1 opened (3 min ago)</div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <span class="lib-tag mint">Opened</span>
               <span class="lib-tag blue">3-touch</span>
@@ -962,7 +968,7 @@ body {
           <div class="lib-card" id="lc8">
             <div class="lib-sym">◎</div>
             <div class="lib-title">brand_palette.json</div>
-            <div class="lib-desc">4 color tokens extracted from Company Brain — primary, accent, surface, ink</div>
+            <div class="lib-desc">4 color tokens extracted from Meridian Brain — primary, accent, surface, ink</div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <span class="lib-tag blue">0.8 kb</span>
               <span class="lib-tag dim">Design system</span>
@@ -971,7 +977,7 @@ body {
           <div class="lib-card" id="lc9">
             <div class="lib-sym">≡</div>
             <div class="lib-title">entity_formation.md</div>
-            <div class="lib-desc">Delaware C-Corp checklist, EIN 82-4917203, Mercury bank intro sent to founder@yourco.com</div>
+            <div class="lib-desc">Delaware C-Corp checklist, EIN 82-4917203, Mercury bank intro sent to victor@meridian.io</div>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
               <span class="lib-tag mint">Filed</span>
               <span class="lib-tag mint">Email sent</span>
@@ -1063,7 +1069,7 @@ function appendUserMsg(text) {
 function appendTyping(id) {
   const div = document.createElement('div');
   div.className = 'ch-chat-row'; div.id = id || 'astraTyping';
-  div.innerHTML = `<div class="ch-chat-avatar">A</div>
+  div.innerHTML = `<div class="ch-chat-avatar"><div class="ch-av-logo"></div></div>
     <div class="ch-chat-bubble"><span class="ch-thinking-dot"></span><span class="ch-thinking-dot"></span><span class="ch-thinking-dot"></span></div>`;
   thread().appendChild(div); scroll();
 }
@@ -1175,13 +1181,13 @@ const AGENTS = {
   web: {
     delay: 700,
     logs: [
-      [0,'· Started',''], [5000,'⚙ get_brand_voice — reading Company Brain','c-blue'],
-      [8400,'✓ Brand voice loaded — technical, precise, enterprise-ready','c-mint'], [10100,'⚙ generate_color_palette — extracting from Company Brain','c-blue'],
+      [0,'· Started',''], [5000,'⚙ get_brand_voice — reading Meridian Brain','c-blue'],
+      [8400,'✓ Brand voice loaded — technical, precise, enterprise-ready','c-mint'], [10100,'⚙ generate_color_palette — extracting from Meridian Brain','c-blue'],
       [12800,'✓ Palette extracted — 4 tokens','c-mint'], [15800,'⚙ generate_landing_page_html — enterprise hero, compliance badges','c-blue'],
       [27400,'✓ generate_landing_page_html — custom HTML (14.2kb)','c-mint'], [31700,'⚙ vercel_deploy — pushing to production','c-blue'],
-      [38900,'✓ Deployed → https://yourcompany.vercel.app','c-mint'],
+      [38900,'✓ Deployed → https://meridian.vercel.app','c-mint'],
     ],
-    actions: [[0,'get_brand_voice — Company Brain'],[10100,'generate_color_palette — brand tokens'],[15800,'generate_landing_page_html'],[31700,'vercel_deploy — production']],
+    actions: [[0,'get_brand_voice — Meridian Brain'],[10100,'generate_color_palette — brand tokens'],[15800,'generate_landing_page_html'],[31700,'vercel_deploy — production']],
     pcts: [[5000,14],[10100,28],[15800,44],[27400,65],[38900,88],[41600,100]], done: 43900,
   },
   sp: {
@@ -1244,11 +1250,11 @@ function injectAgentCards() {
   // brain banner message
   const brainDiv = document.createElement('div');
   brainDiv.className = 'ch-chat-row';
-  brainDiv.innerHTML = `<div class="ch-chat-avatar">A</div>
+  brainDiv.innerHTML = `<div class="ch-chat-avatar"><div class="ch-av-logo"></div></div>
     <div class="brain-banner visible" id="brainBanner">
       <span class="brain-sym">◉</span>
       <div class="brain-content">
-        <div class="brain-title"><strong>Company Brain</strong> — context injected into all agents</div>
+        <div class="brain-title"><strong>Meridian Brain</strong> — context injected into all agents</div>
         <div class="brain-chips" id="brainChips"></div>
       </div>
     </div>`;
@@ -1264,7 +1270,7 @@ function injectAgentCards() {
   // agent cards grid
   const agDiv = document.createElement('div');
   agDiv.className = 'ch-chat-row';
-  agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
+  agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start"><div class="ch-av-logo"></div></div>
     <div class="chat-agents-grid">${['ci','ma','web','sp'].map(k => buildCard(k)).join('')}</div>`;
   thread().appendChild(agDiv); scroll();
 
@@ -1318,7 +1324,7 @@ function applySteering() {
         actions: [[1350,'web_search — enterprise buyers'],[12600,'deep_research — buyer journey'],[22500,'obsidian_log — ICP updated']],
       },
       web: {
-        logs: [[450,'· Restarted — rewriting hero for enterprise buyer','c-blue'],[3150,'⚙ generate_landing_page_html — ROI framing, compliance badges','c-blue'],[9900,'✓ generate_landing_page_html — revised (15.8kb)','c-mint'],[11700,'⚙ vercel_deploy — redeploying enterprise copy','c-blue'],[15300,'✓ Deployed → https://yourcompany.vercel.app (enterprise)','c-mint']],
+        logs: [[450,'· Restarted — rewriting hero for enterprise buyer','c-blue'],[3150,'⚙ generate_landing_page_html — ROI framing, compliance badges','c-blue'],[9900,'✓ generate_landing_page_html — revised (15.8kb)','c-mint'],[11700,'⚙ vercel_deploy — redeploying enterprise copy','c-blue'],[15300,'✓ Deployed → https://meridian.vercel.app (enterprise)','c-mint']],
         actions: [[450,'generate_landing_page_html — enterprise copy'],[11700,'vercel_deploy — redeploy']],
       },
       sp: {
@@ -1330,7 +1336,7 @@ function applySteering() {
     // inject fresh agent cards (new IDs with prefix P)
     const agDiv = document.createElement('div');
     agDiv.className = 'ch-chat-row';
-    agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
+    agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start"><div class="ch-av-logo"></div></div>
       <div class="chat-agents-grid">${['ci','ma','web','sp'].map(k => buildCard(k, P)).join('')}</div>`;
     thread().appendChild(agDiv); scroll();
 
@@ -1355,7 +1361,7 @@ function showOutputs() {
   const outputs = [
     { sym:'◈', name:'market_brief.md', desc:'$4.2B TAM, 3 weak incumbents, enterprise buyer journey', tag:'8.7 kb', cls:'blue' },
     { sym:'◆', name:'competitor_analysis_enterprise.md', desc:'SAP, ServiceNow, Oracle gaps — 39 sources', tag:'9.4 kb', cls:'blue' },
-    { sym:'◎', name:'landing_page.html', desc:'Enterprise hero deployed → yourcompany.vercel.app', tag:'↗ Live', cls:'pink' },
+    { sym:'◎', name:'landing_page.html', desc:'Enterprise hero deployed → meridian.vercel.app', tag:'↗ Live', cls:'pink' },
     { sym:'⊕', name:'outreach_sequence.csv', desc:'47 Fortune 1000 leads, 81% verified, 3-touch queued', tag:'47 leads', cls:'mint' },
     { sym:'◈', name:'icp_enterprise.md', desc:'Director/VP Ops, 500+ employees, Fortune 1000', tag:'6.1 kb', cls:'blue' },
     { sym:'◆', name:'competitor_analysis.md', desc:'Notion, Linear, Monday, ClickUp gaps mapped', tag:'11.2 kb', cls:'blue' },
@@ -1377,7 +1383,7 @@ function showOutputs() {
 function startContinuousRun() {
   // Proactive autonomous updates — Astra keeping the company alive
   const pulses = [
-    { delay: 0,     text: `Sarah Chen (VP Ops, Salesforce) opened your outreach email — flagging for follow-up.` },
+    { delay: 0,     text: `Sarah Chen (VP Ops, Salesforce) opened Meridian's outreach email — flagging for follow-up.` },
     { delay: 7000,  text: `Notion just raised $150M Series D. Updating your competitor analysis now.` },
     { delay: 16000, text: `Landing page hit 3 signups in the last hour. Running conversion analysis.` },
     { delay: 26000, text: `Found 12 new Fortune 1000 leads matching your ICP. Adding to outreach queue.` },
@@ -1407,7 +1413,7 @@ function startContinuousRun() {
 (function() {
   const ta = document.getElementById('compTa');
   const btn = document.getElementById('submitBtn');
-  const goal = 'Validate my market and get me ready to launch.';
+  const goal = 'Validate Meridian\'s market and get us ready to launch.';
   setTimeout(() => {
     ta.focus(); let i = 0;
     (function t() { if (i < goal.length) { ta.value += goal[i++]; setTimeout(t, 38 + Math.random()*20); } })();
