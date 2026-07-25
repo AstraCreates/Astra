@@ -143,7 +143,7 @@ def test_research_tasks_are_per_subject_when_planner_extracts_entities():
         assert "Outcome:" not in description, description
         assert intent not in description, description
     # MCP contract preserved.
-    assert tasks[0]["mcp_tool"] == "astra_quick_search"
+    assert tasks[0]["mcp_tool"] == "astra_company_research"
     assert tasks[0]["operation"] == "internal_analysis"
     assert tasks[1]["operation"] == "internal_review"
     assert tasks[2]["operation"] == "draft"

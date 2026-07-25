@@ -373,14 +373,11 @@ def squad_task_dag(intent: str, request: Mapping[str, Any], profile: Mapping[str
     if department == "research":
         specialist_roles = role_keys[1:] or [role(0)]
         evidence_keys: list[str] = []
-        # A single specialist lane means select_squad_profile already judged
-        # this narrow enough not to need parallel evidence-gathering roles --
-        # the cheapest available signal that this is a "small" research ask,
-        # with no new classifier call needed. Favor the fast single-pass
-        # search+fetch (~5 sources, no supervisor loop) for it; anything
-        # broad enough to warrant multiple parallel specialists keeps the
-        # full Open Deep Research pipeline.
-        research_tool = "astra_quick_search" if len(specialist_roles) == 1 else "astra_company_research"
+        # Research squad evidence always uses the guarded deep-research
+        # contract. Quick lookup tools remain available to specialists, but a
+        # Company OS research deliverable must pass the evidence gate before
+        # it can create an artifact or advance the initiative.
+        research_tool = "astra_company_research"
         for specialist_role in specialist_roles:
             role_title = next(item["title"] for item in profile["roles"] if item["role_key"] == specialist_role)
             key = f"research-{specialist_role}"

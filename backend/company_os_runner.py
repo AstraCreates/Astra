@@ -435,6 +435,18 @@ def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Ma
     if mission.get("department") == "research" and task.get("task_key") == "research-review":
         title, content = _synthesis(mission_name, evidence)
         return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
+    if mission.get("department") not in {"research", "product_technical"}:
+        # Do not let a generic decision brief masquerade as work by a
+        # department whose specialist execution contract is not wired into
+        # Company OS yet. The task runner will mark this retryable/reviewable,
+        # preserving the founder's request instead of silently fabricating a
+        # completed marketing, sales, finance, legal, design, or operations
+        # deliverable.
+        department = str(mission.get("department") or "unknown")
+        raise RuntimeError(
+            f"No Company OS execution adapter is registered for the {department} department; "
+            "the task was not executed as a generic substitute."
+        )
     if task.get("name", "").lower().startswith("synthesize"):
         title, content = _synthesis(mission_name, evidence)
         return _store_artifact(company_id, task, title, {"content": content, "sources": evidence.get("source_references") or evidence.get("sources", []), "evidence_ledger": evidence.get("evidence_ledger")}, source="internal analysis", internal=True)
