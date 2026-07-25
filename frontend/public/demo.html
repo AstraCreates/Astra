@@ -1265,7 +1265,7 @@ function injectAgentCards() {
   const agDiv = document.createElement('div');
   agDiv.className = 'ch-chat-row';
   agDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
-    <div class="chat-agents-grid">${['ci','ma','web','sp'].map(buildCard).join('')}</div>`;
+    <div class="chat-agents-grid">${['ci','ma','web','sp'].map(k => buildCard(k)).join('')}</div>`;
   thread().appendChild(agDiv); scroll();
 
   document.getElementById('sb-run').style.display = 'block';
@@ -1361,36 +1361,15 @@ function showOutputs() {
     { sym:'◆', name:'competitor_analysis.md', desc:'Notion, Linear, Monday, ClickUp gaps mapped', tag:'11.2 kb', cls:'blue' },
   ];
 
-  astraMsg(`All done. Here's everything that was produced:`, () => {
-    const outDiv = document.createElement('div');
-    outDiv.className = 'ch-chat-row';
-    outDiv.innerHTML = `<div class="ch-chat-avatar" style="align-self:flex-start">A</div>
-      <div class="chat-outputs-grid">${outputs.map((o,i) => `
-        <div class="chat-output-card" id="oc${i}">
-          <div class="chat-output-sym">${o.sym}</div>
-          <div class="chat-output-name">${o.name}</div>
-          <div class="chat-output-desc">${o.desc}</div>
-          <span class="lib-tag ${o.cls}">${o.tag}</span>
-        </div>`).join('')}
-      </div>`;
-    thread().appendChild(outDiv); scroll();
+  // unlock library nav
+  window.canLib = true;
+  const lib = document.getElementById('n-lib');
+  lib.style.color = 'var(--blue)';
+  lib.style.background = 'rgba(125,143,255,0.08)';
+  lib.style.borderLeftColor = 'var(--blue)';
 
-    outputs.forEach((_, i) => setTimeout(() => {
-      const el = document.getElementById('oc'+i); if (el) el.classList.add('visible');
-    }, i * 100));
-
-    // unlock library
-    window.canLib = true;
-    setTimeout(() => {
-      const lib = document.getElementById('n-lib');
-      lib.style.color = 'var(--blue)';
-      lib.style.background = 'rgba(125,143,255,0.08)';
-      lib.style.borderLeftColor = 'var(--blue)';
-      astraMsg(`Everything's saved to your **Library**. Click Library in the sidebar to review all outputs.`);
-    }, 1500);
-
-    chatState = 'done';
-  });
+  astraMsg(`All done. Everything's saved to your Library — check the sidebar.`);
+  chatState = 'done';
 }
 
 // ── init composer ─────────────────────────────────────────────────────────────
