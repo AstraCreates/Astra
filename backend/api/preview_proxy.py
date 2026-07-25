@@ -48,6 +48,12 @@ def _preview_owner(slug: str, port: int) -> tuple[str, str] | None:
     try:
         from backend.tools import local_preview
         sessions = [session_id for session_id, value in local_preview._registry_load().items() if value == port]
+        if not sessions:
+            _session_id, record = local_preview._record_for_slug(slug)
+            if record and record.get("founder_id"):
+                owner = str(record["founder_id"])
+                return owner, str(record.get("company_id") or owner)
+            return None
         if len(sessions) != 1:
             return None
         from backend.core.session_store import get_session_meta

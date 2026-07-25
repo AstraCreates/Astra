@@ -40,6 +40,7 @@ _lock = threading.Lock()
 # Survives backend restarts so we can still tear down a detached preview server
 # whose Popen handle we no longer hold.
 _REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_REGISTRY", "/tmp/astra_previews.json"))
+_RECORDS = Path(os.environ.get("ASTRA_PREVIEW_RECORDS", str(Path(os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")) / "preview-records.json")))
 # Slug registry: maps company slug → port for subdomain routing
 _SLUG_REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_SLUG_REGISTRY", "/tmp/astra_preview_slugs.json"))
 # In-memory slug→port map (populated on start + recovered from disk on miss)
@@ -52,6 +53,61 @@ _BUILD_TIMEOUT_S = int(os.environ.get("ASTRA_PREVIEW_BUILD_TIMEOUT", "300"))
 # Idle eviction: kill previews inactive longer than TTL
 _PREVIEW_TTL = int(os.environ.get("ASTRA_PREVIEW_TTL", "1800"))  # 30 min default
 _last_access: dict[str, float] = {}
+_PREVIEW_RETENTION_S = int(os.environ.get("ASTRA_PREVIEW_RETENTION_SECONDS", str(7 * 24 * 60 * 60)))
+
+
+def _records_load() -> dict[str, dict]:
+    try:
+        value = json.loads(_RECORDS.read_text())
+        return {str(key): item for key, item in value.items() if isinstance(item, dict)}
+    except Exception:
+        return {}
+
+
+def _records_save(records: dict[str, dict]) -> None:
+    try:
+        _RECORDS.parent.mkdir(parents=True, exist_ok=True)
+        temp = _RECORDS.with_suffix(".tmp")
+        temp.write_text(json.dumps(records, separators=(",", ":")))
+        temp.replace(_RECORDS)
+    except Exception as exc:
+        logger.warning("preview record write failed: %s", exc)
+
+
+def _record_preview(session_id: str, slug: str, local: str, company_name: str, dev: bool) -> None:
+    now = time.time()
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(session_id) or {}
+    except Exception:
+        meta = {}
+    records = _records_load()
+    records[session_id] = {"session_id": session_id, "slug": slug, "workspace": local,
+                           "company_name": company_name, "dev": dev,
+                           "founder_id": str(meta.get("founder_id") or ""),
+                           "company_id": str(meta.get("company_id") or meta.get("workspace_id") or ""),
+                           "created_at": records.get(session_id, {}).get("created_at", now),
+                           "last_access": now, "expires_at": now + _PREVIEW_RETENTION_S, "state": "running"}
+    _records_save(records)
+
+
+def _record_for_slug(slug: str) -> tuple[str | None, dict | None]:
+    now = time.time()
+    records = _records_load()
+    changed = False
+    for session_id, record in list(records.items()):
+        if float(record.get("expires_at") or 0) <= now:
+            records.pop(session_id, None)
+            changed = True
+            continue
+        if record.get("slug") == slug:
+            record["last_access"] = now
+            records[session_id] = record
+            _records_save(records)
+            return session_id, record
+    if changed:
+        _records_save(records)
+    return None, None
 
 
 def _eviction_loop() -> None:
@@ -143,7 +199,18 @@ def get_port_for_slug(slug: str) -> int | None:
     port = reg.get(slug)
     if port:
         _slug_to_port[slug] = port
-    return port
+        return port
+    # The process may have been evicted or a backend release may have replaced
+    # it. Recreate it from the durable workspace record while preserving its slug.
+    session_id, record = _record_for_slug(slug)
+    if not session_id or not record:
+        return None
+    local = str(record.get("workspace") or "")
+    if not local or not Path(local).is_dir():
+        return None
+    if not start_local_preview(local, session_id, str(record.get("company_name") or ""), dev=bool(record.get("dev"))):
+        return None
+    return _slug_registry_load().get(slug)
 
 
 def _make_slug(company_name: str, fallback: str, session_id: str = "") -> str:
@@ -246,7 +313,7 @@ def _kill_port(port: int) -> None:
         pass
 
 
-def stop_local_preview(session_id: str) -> bool:
+def stop_local_preview(session_id: str, *, forget: bool = False) -> bool:
     """Stop the preview for a session: kill the server, free its port, drop the
     registry entry. Returns True if anything was torn down. Restart-safe — works
     even when the in-memory Popen handle is gone."""
@@ -273,8 +340,11 @@ def stop_local_preview(session_id: str) -> bool:
                     reg.pop(s, None)
                 _slug_registry_save(reg)
         logger.info("Stopped local preview for %s (port %s freed)", session_id, port)
-        return True
-    return bool(entry)
+    if forget:
+        records = _records_load()
+        records.pop(session_id, None)
+        _records_save(records)
+    return bool(port or entry)
 
 
 def start_local_preview(local: str, session_id: str, company_name: str = "", *, dev: bool = False) -> str | None:
@@ -418,6 +488,7 @@ def start_local_preview(local: str, session_id: str, company_name: str = "", *, 
         _slug_to_port.update({slug: port})
     _registry_set(session_id, port)
     _slug_registry_set(slug, port)
+    _record_preview(session_id, slug, local, company_name, dev)
 
     url = _preview_url(slug, port)
     logger.info("Local preview for %s at %s (slug=%s; static)", session_id, url, slug)
