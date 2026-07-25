@@ -221,12 +221,37 @@ async def create_company_os_route(body: CompanyOSCreateBody, request: Request):
 # Dropped from this response only -- they stay intact in the underlying
 # event-sourced state for any future internal/debugging use.
 _DASHBOARD_EXCLUDED_COLLECTIONS = ("policy_decisions", "mcp_audit", "dispatch_audit", "task_attempts")
+_DASHBOARD_HEAVY_FIELDS = {
+    # Full artifact/evidence bodies are fetched through the existing artifact
+    # detail endpoint only when a founder opens one. Shipping them in every
+    # Company Home poll was the dominant source of multi-megabyte responses.
+    "content", "evidence_ledger", "evidence_payload", "raw_evidence",
+    "research_metadata", "build_metadata", "discussion", "messages",
+    "transcript", "tool_output", "prompt", "completion",
+}
+
+
+def _dashboard_projection(state: dict[str, Any]) -> dict[str, Any]:
+    """Build a small read projection without altering durable Company OS data."""
+    result = {key: value for key, value in state.items() if key not in _DASHBOARD_EXCLUDED_COLLECTIONS}
+    for collection in ("artifacts", "context_records", "squad_meetings", "tasks", "squads", "missions"):
+        compact: list[dict[str, Any]] = []
+        for item in state.get(collection, []):
+            if not isinstance(item, dict):
+                continue
+            compact.append({key: value for key, value in item.items() if key not in _DASHBOARD_HEAVY_FIELDS})
+        result[collection] = compact
+    # Keep the current thread responsive even for long-lived permanent chats.
+    # Older messages remain durable and can be fetched by a history endpoint
+    # rather than making every active-work update re-render years of chat.
+    result["conversation"] = list(state.get("conversation", []))
+    return result
 
 
 @ttl_cache(ttl_seconds=2)
 def _read_company_os_state(company_id: str) -> dict[str, Any]:
     state = reconcile_initiatives(company_id, persist=False)
-    return {key: value for key, value in state.items() if key not in _DASHBOARD_EXCLUDED_COLLECTIONS}
+    return _dashboard_projection(state)
 
 
 # Every durable mutation -- not just approvals -- must invalidate this cache,
@@ -266,7 +291,7 @@ def _read_company_os_state_for_thread(company_id: str, thread_id: str) -> dict[s
     result["conversation"] = [
         message for message in state.get("conversation", [])
         if message.get("thread_id", "default") == thread_id
-    ]
+    ][-300:]
     return result
 
 
