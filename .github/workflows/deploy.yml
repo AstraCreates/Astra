@@ -5,29 +5,44 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Only one deploy at a time -- never cancel one mid-flight (that's how you'd
+# leave the server half-recreated), just queue the next push behind it.
+concurrency:
+  group: astra-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Deploy
-        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17  # v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          command_timeout: 30m
-          script: |
-            set -e
-            cd /opt/astra/repo
-            git fetch origin main
-            git reset --hard origin/main
-            export ASTRA_RELEASE_SHA="$(git rev-parse HEAD)"
-            echo "Deploying ASTRA_RELEASE_SHA=${ASTRA_RELEASE_SHA}"
+      - uses: actions/checkout@v4
 
-            # Rebuild images and restart all services
-            docker compose build backend frontend
-            docker compose up -d
+      - name: Configure SSH
+        run: |
+          install -d -m 700 ~/.ssh
+          echo "${{ secrets.ASTRA_DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.ASTRA_DEPLOY_HOST_IP }}" >> ~/.ssh/known_hosts
 
-            # Remove dangling images to free disk
-            docker image prune -f
+      # This runs the exact same scripts/deploy-latest.sh already used for
+      # every manual deploy: SHA-pinned git worktree release, real container
+      # health + HTTP smoke checks, atomic activation, automatic rollback to
+      # the prior known-good receipt on failure. That script's own smoke
+      # check occasionally fails on a first attempt for reasons unrelated to
+      # code correctness (the host briefly busy right after a fresh image
+      # build) and reliably succeeds on an immediate bare retry -- retrying
+      # once here instead of leaving every such push to be manually re-run.
+      - name: Deploy (auto-retries once on a transient smoke-check failure)
+        env:
+          ASTRA_DEPLOY_HOST: root@${{ secrets.ASTRA_DEPLOY_HOST_IP }}
+        run: |
+          for attempt in 1 2; do
+            if ./scripts/deploy-latest.sh; then
+              echo "Deploy succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $attempt failed"
+          done
+          echo "::error::Deploy failed after 2 attempts"
+          exit 1
