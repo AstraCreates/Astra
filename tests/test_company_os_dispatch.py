@@ -111,6 +111,41 @@ def test_research_handoff_gets_research_tasks_when_request_also_needs_website(mo
     assert tasks[2]["dependencies"] == ["research-market_analyst", "research-company_analyst"]
 
 
+def test_compound_plan_preserves_semantic_dependency_without_department_order(monkeypatch):
+    from backend.company_os_dispatch import infer_work_request, route_work_request
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: __import__("json").dumps({
+        "objective": "Research Qwen models and build an infographic website",
+        "deliverables": ["validated research", "website using the findings"],
+        "acceptance_criteria": ["website reflects cited findings"], "constraints": [], "entities": ["Qwen"],
+        "dependencies": [], "primary_capability": "website",
+        "required_capabilities": ["research", "website"], "required_role_capabilities": [],
+        "steps": [
+            {"department": "research", "deliverable": "Investigate Qwen models", "depends_on_step_indexes": []},
+            {"department": "product_technical", "deliverable": "Build the website from the findings", "depends_on_step_indexes": [0]},
+        ],
+        "risk": "internal", "clarification_question": None, "confidence": 0.95,
+    }))
+    request = infer_work_request("research Qwen models and build a website using the findings")
+    route = route_work_request({}, request)
+    assert request["requires_clarification"] is False
+    assert route["department"] == "research"
+    assert route["step_dependencies"]["product_technical"] == ["research"]
+
+
+def test_compound_request_without_semantic_plan_does_not_silently_dispatch(monkeypatch):
+    from backend.company_os_dispatch import infer_work_request, route_work_request
+    monkeypatch.setattr("backend.tools._llm.generate", lambda *_a, **_k: __import__("json").dumps({
+        "objective": "Research and build a website", "deliverables": ["research", "website"],
+        "acceptance_criteria": [], "constraints": [], "entities": [], "dependencies": [],
+        "primary_capability": "website", "required_capabilities": ["research", "website"],
+        "required_role_capabilities": [], "steps": [], "risk": "internal",
+        "clarification_question": None, "confidence": 0.95,
+    }))
+    request = infer_work_request("research and build a website")
+    assert request["requires_clarification"] is True
+    assert route_work_request({}, request)["requires_clarification"] is True
+
+
 def test_research_tasks_are_per_subject_when_planner_extracts_entities():
     """Real bug: research tasks used to render as three identical
     'Gather / Synthesize / Produce a decision brief' rows with the user's

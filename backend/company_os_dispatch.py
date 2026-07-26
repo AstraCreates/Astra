@@ -283,18 +283,30 @@ If this is fundamentally a research/investigation request (not a product build, 
                     if isinstance(item, dict) and str(item.get("title") or "").strip()
                 ][:3]
                 research_specialists = cleaned or None
+            steps = [
+                {"department": str(step.get("department")), "deliverable": str(step.get("deliverable") or ""),
+                 "depends_on_step_indexes": [int(index) for index in (step.get("depends_on_step_indexes") or []) if isinstance(index, int)]}
+                for step in (payload.get("steps") or [])
+                if isinstance(step, dict) and step.get("department") in CAPABILITY_REGISTRY
+            ]
+            # A compound request needs an explicit semantic plan. Without it,
+            # capability scoring quietly turns a downstream deliverable (often
+            # a website) into the lead and loses the founder's dependency.
+            departments = {department for department, profile in CAPABILITY_REGISTRY.items()
+                           if capabilities & set(profile["capabilities"])}
+            plan_valid = _validate_work_steps(steps, departments)
+            compound = len(departments) > 1
+            clarification_question = clarification_question or (
+                "I need to map the requested deliverables and their dependencies before dispatching this work."
+                if compound and not plan_valid else None
+            )
             return {"version": 1, "objective": str(payload.get("objective") or intent).strip(), "outcome": str(payload.get("objective") or intent).strip(),
                     "deliverables": [str(value) for value in payload.get("deliverables", []) if isinstance(value, str)],
                     "acceptance_criteria": [str(value) for value in payload.get("acceptance_criteria", []) if isinstance(value, str)],
                     "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
                     "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
-                    "steps": [
-                        {"department": str(step.get("department")), "deliverable": str(step.get("deliverable") or ""),
-                         "depends_on_step_indexes": [int(index) for index in (step.get("depends_on_step_indexes") or []) if isinstance(index, int)]}
-                        for step in (payload.get("steps") or [])
-                        if isinstance(step, dict) and step.get("department") in CAPABILITY_REGISTRY
-                    ],
+                    "steps": steps,
                     "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities),
                     "required_role_capabilities": sorted(role_capabilities), "research_specialists": research_specialists,
                     "confidence": min(confidence, 1.0),
@@ -310,6 +322,38 @@ If this is fundamentally a research/investigation request (not a product build, 
 
 def _active_load(company: Mapping[str, Any], department: str) -> int:
     return sum(1 for squad in company.get("squads", []) if squad.get("department") == department and squad.get("state") in {"active", "working", "review"})
+
+
+def _validate_work_steps(steps: list[Mapping[str, Any]], departments: set[str]) -> bool:
+    """Validate the model's semantic work graph without imposing an order."""
+    if len(departments) <= 1:
+        return True
+    if not steps:
+        return False
+    seen = {str(step.get("department") or "") for step in steps}
+    if not departments.issubset(seen):
+        return False
+    for index, step in enumerate(steps):
+        if not str(step.get("deliverable") or "").strip():
+            return False
+        for dependency in step.get("depends_on_step_indexes") or []:
+            if not isinstance(dependency, int) or dependency < 0 or dependency >= len(steps) or dependency == index:
+                return False
+    # A tiny DFS catches cycles before they become permanently blocked tasks.
+    visiting: set[int] = set()
+    visited: set[int] = set()
+    def visit(index: int) -> bool:
+        if index in visiting:
+            return False
+        if index in visited:
+            return True
+        visiting.add(index)
+        if any(not visit(dep) for dep in steps[index].get("depends_on_step_indexes") or []):
+            return False
+        visiting.remove(index)
+        visited.add(index)
+        return True
+    return all(visit(index) for index in range(len(steps)))
 
 
 def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -> dict[str, Any]:
@@ -342,7 +386,12 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         load = _active_load(company, department)
         score = matched * 10 - load * 2
     profile = CAPABILITY_REGISTRY[department]
-    triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
+    departments = {department for department, profile in CAPABILITY_REGISTRY.items()
+                   if required & set(profile["capabilities"])}
+    steps = request.get("steps") or []
+    triage = (bool(request.get("requires_clarification")) or matched == 0
+              or float(request.get("confidence", 0)) < 0.45
+              or not _validate_work_steps(steps, departments))
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
     # Preserve the founder's ordered multi-step intent. If a message says
     # "compare X and create a website", the website is a real downstream
@@ -357,7 +406,6 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         profile = CAPABILITY_REGISTRY[department]
         handoffs = [item for item in ordered_departments[1:] if item != department]
     step_dependencies: dict[str, list[str]] = {}
-    steps = request.get("steps") or []
     for index, step in enumerate(steps):
         current = str(step.get("department") or "")
         if current not in CAPABILITY_REGISTRY:
@@ -753,7 +801,8 @@ def _department_request(request: Mapping[str, Any], department: str, fallback_in
             "operations": ["process design"],
         }[department]
         scoped_capabilities = [cap for cap in representative if cap in department_capabilities]
-    deliverables = [str(step.get("text")) for step in steps if str(step.get("text") or "").strip()]
+    deliverables = [str(step.get("deliverable") or step.get("text") or "") for step in steps
+                    if str(step.get("deliverable") or step.get("text") or "").strip()]
     objective = deliverables[0] if deliverables else str(request.get("outcome") or request.get("objective") or fallback_intent)
     return {
         **dict(request),
