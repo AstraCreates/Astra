@@ -74,6 +74,9 @@ async def coordinate_turn(company_id: str, message: str, *, thread_id: str = "de
         repaired = await asyncio.to_thread(infer_work_request, message)
         repaired_departments = {str(step.get("department")) for step in repaired.get("steps") or [] if step.get("department")}
         if repaired.get("requires_clarification") or not _validate_work_steps(repaired.get("steps") or [], repaired_departments):
+            # Preserve every original deliverable. Never substitute a narrow
+            # research recovery request for a compound request and silently
+            # drop the website/build work.
             repaired = {**request, "requires_clarification": True,
                         "clarification_question": "I need to map the requested deliverables and their dependencies before dispatching this work."}
         request = repaired
