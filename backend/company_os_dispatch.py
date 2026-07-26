@@ -342,7 +342,7 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
     # structured work-request extractor.
     research_caps = {"research", "evidence research", "competitive analysis", "compare"}
     product_caps = {"website", "landing page", "website delivery", "local preview", "software engineering"}
-    if required & research_caps and required & product_caps and not request.get("steps"):
+    if required & research_caps and required & product_caps:
         department = "research"
         profile = CAPABILITY_REGISTRY[department]
         matched = len(required & set(profile["capabilities"]))
@@ -367,6 +367,15 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         department = ordered_departments[0]
         profile = CAPABILITY_REGISTRY[department]
         handoffs = [item for item in ordered_departments[1:] if item != department]
+    # Normalize every mixed evidence-to-build request to the Company OS
+    # dependency contract, even if the classifier supplied an illogical order
+    # such as Product Delivery -> Research. A website generated before its
+    # evidence exists is provisional; the durable plan must always be
+    # Research -> Product Delivery.
+    if required & research_caps and required & product_caps:
+        department = "research"
+        profile = CAPABILITY_REGISTRY[department]
+        handoffs = ["product_technical", *[item for item in handoffs if item != "product_technical"]][:2]
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
             "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
 
