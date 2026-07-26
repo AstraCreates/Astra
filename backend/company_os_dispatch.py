@@ -391,7 +391,7 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
     steps = request.get("steps") or []
     triage = (bool(request.get("requires_clarification")) or matched == 0
               or float(request.get("confidence", 0)) < 0.45
-              or not _validate_work_steps(steps, departments))
+              or (bool(steps) and not _validate_work_steps(steps, departments)))
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
     # Preserve the founder's ordered multi-step intent. If a message says
     # "compare X and create a website", the website is a real downstream
@@ -866,6 +866,11 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
     if work_request.get("requires_clarification"):
         return {"needs_clarification": True, "work_request": work_request}
     route = route_work_request(company, work_request)
+    request_departments = {str(step.get("department")) for step in work_request.get("steps") or [] if step.get("department")}
+    invalid_plan = bool(work_request.get("steps")) and not _validate_work_steps(work_request.get("steps") or [], request_departments)
+    if work_request.get("requires_clarification") or invalid_plan:
+        return {"needs_clarification": True, "work_request": work_request,
+                "routing": route, "clarification_question": work_request.get("clarification_question")}
     primary_request = _department_request(work_request, route["department"], intent)
     profile = select_squad_profile(primary_request, route["department"])
     research_request = bool(set(primary_request.get("required_capabilities") or []) & {"research", "evidence research", "competitive analysis", "compare"})

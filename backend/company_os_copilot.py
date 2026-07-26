@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 from backend.company_os import append_message, get_company_os
-from backend.company_os_dispatch import dispatch_intent
+from backend.company_os_dispatch import dispatch_intent, infer_work_request, _validate_work_steps
 from backend.company_os_runner import launch_mission
 from backend.tools.intent_classifier import IntentClassification, classify_intent
 
@@ -66,9 +66,24 @@ async def coordinate_turn(company_id: str, message: str, *, thread_id: str = "de
     # kind == "work"
     ground = await asyncio.to_thread(_ground_and_reply, company, message, classification, thread_id)
     request = classification.work_request(message)
+    # The cheap classifier may emit a malformed dependency graph. Repair it
+    # once through the semantic planner; never silently route an invalid graph
+    # by capability score.
+    departments = {str(step.get("department")) for step in request.get("steps") or [] if step.get("department")}
+    if len(departments) > 1 and not _validate_work_steps(request.get("steps") or [], departments):
+        repaired = await asyncio.to_thread(infer_work_request, message)
+        repaired_departments = {str(step.get("department")) for step in repaired.get("steps") or [] if step.get("department")}
+        if repaired.get("requires_clarification") or not _validate_work_steps(repaired.get("steps") or [], repaired_departments):
+            repaired = {**request, "requires_clarification": True,
+                        "clarification_question": "I need to map the requested deliverables and their dependencies before dispatching this work."}
+        request = repaired
     dispatch = await asyncio.to_thread(dispatch_intent, company_id, message,
                                         proposed_spend=proposed_spend, forced_initiative_id=ground.get("initiative_id"),
                                         work_request=request)
+    if dispatch.get("needs_clarification"):
+        reply = dispatch.get("clarification_question") or request.get("clarification_question") or "I need a little more structure before dispatching this work."
+        append_message(company_id, reply, author="copilot", role="assistant", kind="clarification", thread_id=thread_id)
+        return {"message": reply, "dispatch": dispatch}
     reply = ground.get("reply") or _fallback_reply(dispatch)
     append_message(company_id, reply, author="copilot", role="assistant",
                    scope="initiative", scope_id=dispatch["initiative"]["initiative_id"], kind="plan",
