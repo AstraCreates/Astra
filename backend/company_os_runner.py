@@ -568,6 +568,10 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
             last_progress["text"] = text
             fields: dict[str, Any] = {"terminal_session_id": session_id, "build_session_id": session_id,
                                        "progress_text": text, "activity": text,
+                                       # A progress callback proves the original PTY is alive. Do not
+                                       # leave the UI in its provisional "starting" state until the
+                                       # whole coding pass happens to finish.
+                                       "terminal_state": "live", "workspace_state": "ready",
                                        "last_progress_at": datetime.now(timezone.utc).isoformat()}
             # The live dev-mode preview (backend/tools/local_preview.py's
             # start_local_preview(..., dev=True), called from run_mvp_loop
@@ -577,6 +581,7 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
             # build finishes.
             if preview_url:
                 fields["preview_url"] = preview_url
+                fields["preview_state"] = "ready"
             update_task(company_id, str(task.get("task_id") or ""), state="working", **fields)
 
         handoffs = "\n\n".join(f"### {item.get('name')}\n{item.get('content')}" for item in context.get("handoffs") or [])
@@ -595,12 +600,32 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
             progress_callback=progress,
         ) or {}
         if result.get("error"):
+            update_task(company_id, str(task.get("task_id") or ""), terminal_state="failed",
+                        workspace_state="failed", preview_state="failed",
+                        progress_text=f"Build failed: {result['error']}")
             return {"ok": False, "error": result["error"], "result": result}
         if result.get("build_passes") is False:
+            update_task(company_id, str(task.get("task_id") or ""), terminal_state="failed",
+                        workspace_state="failed", preview_state="failed",
+                        progress_text="Build failed verification.")
             return {"ok": False, "error": "The coding agent did not produce a passing build.", "result": result}
         url = result.get("deploy_url") or result.get("preview_url")
         if not url:
+            update_task(company_id, str(task.get("task_id") or ""), terminal_state="failed",
+                        workspace_state="failed", preview_state="failed",
+                        progress_text="Build finished without a reviewable preview.")
             return {"ok": False, "error": result.get("error") or "Coding agent did not produce a reviewable preview.", "result": result}
+        # `run_mvp_loop` runs synchronously inside the task attempt. Persist its
+        # terminal/preview completion before returning control to execute_task(),
+        # which then atomically marks the task done. Without this handoff a build
+        # could pass and start `next`, yet remain visibly "working/starting" and
+        # prevent the dependent review and approval tasks from ever becoming ready.
+        update_task(company_id, str(task.get("task_id") or ""),
+                    terminal_session_id=session_id, build_session_id=session_id,
+                    terminal_state="completed", workspace_state="ready",
+                    preview_state="ready", preview_url=url,
+                    progress_text=f"Build passed — {result.get('files_in_repo', 0)} files written",
+                    activity=f"Build passed — {result.get('files_in_repo', 0)} files written")
         summary = (f"## Website build ready\n\nThe persistent coding agent created a real project and started a reviewable preview.\n\n"
                    f"- **Preview:** {url}\n- **Files:** {result.get('files_in_repo', 0)}\n"
                    f"- **Build:** {'passed' if result.get('build_passes') else 'needs review'}\n")
@@ -608,6 +633,14 @@ def _run_coding_website_agent(company_id: str, mission: Mapping[str, Any], task:
                 "build_passes": result.get("build_passes"), "result": result}
     except Exception as exc:
         logger.exception("Company OS coding website agent failed: company=%s mission=%s", company_id, mission.get("mission_id"))
+        # Preserve a visible diagnostic state even though execute_task() will
+        # subsequently mark the task blocked. This prevents a dead terminal
+        # from continuing to present itself as "starting" after a failure.
+        try:
+            update_task(company_id, str(task.get("task_id") or ""), terminal_state="failed",
+                        workspace_state="failed", preview_state="failed", progress_text=f"Build failed: {exc}")
+        except Exception:
+            logger.debug("Could not persist technical build failure state", exc_info=True)
         return {"ok": False, "error": str(exc)}
 
 
