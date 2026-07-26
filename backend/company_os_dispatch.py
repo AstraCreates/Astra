@@ -417,6 +417,16 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
                 if predecessor in CAPABILITY_REGISTRY and predecessor != current and predecessor not in predecessors:
                     predecessors.append(predecessor)
         step_dependencies[current] = predecessors
+    # The first listed step is not necessarily the first executable step. A
+    # planner may serialize steps for readability, so derive the active roots
+    # from the dependency graph itself. This preserves parallel roots and
+    # prevents a downstream deliverable from becoming the lead by position.
+    if step_dependencies:
+        roots = [item for item in ordered_departments if not step_dependencies.get(item)]
+        if roots:
+            department = roots[0]
+            profile = CAPABILITY_REGISTRY[department]
+            handoffs = [item for item in ordered_departments if item != department]
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
             "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs,
             "step_dependencies": step_dependencies, "primary_capability": primary_capability}
@@ -958,7 +968,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
                         if item in mission_ids_by_department]
         handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,
                                 name=handoff_mission_name, department=handoff_department,
-                                state="active", initiative_director=route["director"], handoff_for=mission_id,
+                                state="pending" if dependencies else "active", initiative_director=route["director"], handoff_for=mission_id,
                                 depends_on_mission_ids=dependencies)
         handoff_task_ids: dict[str, str] = {}
         for spec in squad_task_dag(handoff_mission_name, handoff_request, handoff_profile):

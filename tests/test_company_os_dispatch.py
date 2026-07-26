@@ -146,6 +146,22 @@ def test_compound_request_without_semantic_plan_does_not_silently_dispatch(monke
     assert route_work_request({}, request)["requires_clarification"] is True
 
 
+def test_dependency_graph_selects_root_even_when_downstream_step_is_listed_first():
+    from backend.company_os_dispatch import route_work_request
+    request = {
+        "required_capabilities": ["research", "website"], "primary_capability": "website",
+        "confidence": 0.95, "requires_clarification": False,
+        "steps": [
+            {"department": "product_technical", "deliverable": "Build site from findings", "depends_on_step_indexes": [1]},
+            {"department": "research", "deliverable": "Research Qwen", "depends_on_step_indexes": []},
+        ],
+    }
+    route = route_work_request({}, request)
+    assert route["department"] == "research"
+    assert route["handoffs"] == ["product_technical"]
+    assert route["step_dependencies"]["product_technical"] == ["research"]
+
+
 def test_research_tasks_are_per_subject_when_planner_extracts_entities():
     """Real bug: research tasks used to render as three identical
     'Gather / Synthesize / Produce a decision brief' rows with the user's
