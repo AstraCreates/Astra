@@ -59,7 +59,7 @@ async def coordinate_turn(company_id: str, message: str, *, thread_id: str = "de
 
     if classification.kind in ("chitchat", "answer", "mcp_command"):
         ground = await asyncio.to_thread(_ground_and_reply, company, message, classification, thread_id)
-        reply = ground["reply"]
+        reply = ground["reply"] or _fallback_ground_reply(company, message, classification)
         append_message(company_id, reply, author="copilot", role="assistant", kind="chat", thread_id=thread_id)
         return {"message": reply, "dispatch": None}
 
@@ -116,10 +116,33 @@ def _ground_and_reply(company: dict[str, Any], message: str, classification: Int
         return {"initiative_id": None, "reply": ""}
 
 
+def _fallback_ground_reply(company: dict[str, Any], message: str, classification: IntentClassification) -> str:
+    """Keep status/document questions useful when the optional LLM is down."""
+    lower = message.lower()
+    initiatives = [i for i in company.get("initiatives", []) if i.get("state") != "archived"]
+    if not initiatives:
+        return "I don't have an active initiative or saved output matching that yet."
+    target = next((i for i in initiatives if any(word in str(i.get("name", "")).lower() for word in lower.split() if len(word) > 3)), initiatives[-1])
+    iid = target.get("initiative_id")
+    tasks = [t for t in company.get("tasks", []) if t.get("initiative_id") == iid]
+    artifacts = [a for a in company.get("artifacts", []) if a.get("state") != "archived" and any(t.get("task_id") == a.get("task_id") for t in tasks)]
+    done = sum(1 for t in tasks if t.get("state") in {"done", "complete", "completed"})
+    active = [str(t.get("title") or t.get("name")) for t in tasks if t.get("state") in {"working", "active", "ready"}]
+    if "document" in lower or "research" in lower or "say" in lower:
+        if artifacts:
+            artifact = artifacts[-1]
+            content = str(artifact.get("content") or "").strip()
+            return f"The latest saved document is **{artifact.get('title') or 'the research output'}**. It contains {len(content)} characters and {len(artifact.get('source_references') or artifact.get('sources') or [])} recorded sources. The initiative is {done}/{len(tasks)} tasks complete.\n\n{content[:1800]}"
+    progress = f"{done}/{len(tasks)} tasks complete" if tasks else "no tasks recorded yet"
+    next_step = f" The active work is: {', '.join(active[:2])}." if active else ""
+    return f"The initiative **{target.get('name')}** is **{target.get('state') or 'active'}** with {progress}.{next_step}"
+
+
 def _build_prompt(company: dict[str, Any], message: str, classification: IntentClassification, thread_id: str = "default") -> str:
     initiatives = [item for item in company.get("initiatives", []) if item.get("state") != "archived"]
     tasks = company.get("tasks") or []
     squads = company.get("squads") or []
+    meetings = company.get("meetings") or []
     # Incomplete deep-research outputs remain auditable in Company OS but are
     # never silently used as Copilot context.
     artifacts = [a for a in (company.get("artifacts") or [])
@@ -129,18 +152,31 @@ def _build_prompt(company: dict[str, Any], message: str, classification: IntentC
     lines = []
     for initiative in initiatives[-_MAX_INITIATIVES_IN_CONTEXT:]:
         initiative_id = initiative.get("initiative_id")
-        squad = next((s for s in squads if s.get("initiative_id") == initiative_id), None)
-        latest_artifact = next(
-            (a for a in reversed(artifacts)
-             if task_by_id.get(a.get("task_id"), {}).get("initiative_id") == initiative_id),
-            None,
-        )
-        excerpt = str(latest_artifact.get("content") or "")[:_ARTIFACT_EXCERPT_CHARS].strip() if latest_artifact else ""
-        finding = f'\n  latest finding: "{excerpt}"' if excerpt else "\n  latest finding: none yet"
-        lines.append(
-            f'- id="{initiative_id}" "{initiative.get("name")}" '
-            f'(department={initiative.get("department")}, squad={squad.get("name") if squad else "none"}, state={initiative.get("state")}){finding}'
-        )
+        initiative_squads = [s for s in squads if s.get("initiative_id") == initiative_id]
+        initiative_tasks = [t for t in tasks if t.get("initiative_id") == initiative_id]
+        initiative_meetings = [m for m in meetings if m.get("initiative_id") == initiative_id]
+        initiative_artifacts = [a for a in artifacts if task_by_id.get(a.get("task_id"), {}).get("initiative_id") == initiative_id]
+        squad_lines = []
+        for squad in initiative_squads:
+            members = squad.get("members") or squad.get("roster") or squad.get("agents") or []
+            names = [str(m.get("name") if isinstance(m, dict) else m) for m in members]
+            squad_lines.append(f'    - {squad.get("name")} state={squad.get("state") or squad.get("lifecycle")} lead={squad.get("lead_agent") or squad.get("lead") or "none"} members={", ".join(names) or "none"}')
+        task_lines = [f'    - {t.get("title") or t.get("name")} state={t.get("state")} role={t.get("role_name") or t.get("role_id") or "none"} progress={t.get("progress_text") or ""}' for t in initiative_tasks[-12:]]
+        artifact_lines = []
+        for artifact in initiative_artifacts[-5:]:
+            content = str(artifact.get("content") or "").replace("\n", " ").strip()
+            refs = artifact.get("source_references") or artifact.get("sources") or []
+            artifact_lines.append(f'    - {artifact.get("title") or "Untitled"} type={artifact.get("artifact_type") or artifact.get("source") or "output"} status={artifact.get("research_status") or artifact.get("state") or "active"} sources={len(refs)}: {content[:900]}')
+        finding = "\n  squads:\n" + ("\n".join(squad_lines) or "    - none")
+        finding += "\n  tasks:\n" + ("\n".join(task_lines) or "    - none")
+        finding += "\n  artifacts:\n" + ("\n".join(artifact_lines) or "    - none")
+        meeting_lines = []
+        for meeting in initiative_meetings[-4:]:
+            decisions = meeting.get("decisions") or []
+            blockers = meeting.get("blockers") or []
+            meeting_lines.append(f'    - {meeting.get("phase") or meeting.get("type") or "meeting"} status={meeting.get("status")} decisions={str(decisions)[:500]} blockers={str(blockers)[:300]}')
+        finding += "\n  recent meetings:\n" + ("\n".join(meeting_lines) or "    - none")
+        lines.append(f'- id="{initiative_id}" "{initiative.get("name")}" (department={initiative.get("department")}, state={initiative.get("state")}, objective={initiative.get("objective") or initiative.get("name")}){finding}')
     initiatives_block = "\n".join(lines) if lines else "(none yet)"
 
     conversation = [m for m in (company.get("conversation") or [])
@@ -156,7 +192,8 @@ def _build_prompt(company: dict[str, Any], message: str, classification: IntentC
 
 Your only two jobs:
 1. Does this continue one of the active initiatives listed below (same real-world subject), or is it new work? A follow-up may need another department and therefore add a new squad under the same initiative. Set initiative_id to that initiative's id, or null if new.
-2. Write a natural, first-person reply (2-4 sentences) describing what you're about to do, reflecting the ACTUAL steps above in order (e.g. mention research first, then the build, if there's more than one step) -- not generic boilerplate, never "I formed the X Squad for Y", don't invent details beyond the steps."""
+2. Write a natural, first-person reply (2-4 sentences) describing what you're about to do, reflecting the ACTUAL steps above and their dependencies -- not generic boilerplate, never "I formed the X Squad for Y", don't invent details beyond the steps.
+If research and a website are both requested, explain that the site will consume validated research and can be revised after the evidence handoff; do not imply the site is complete before that handoff."""
     else:
         kind_hint = {
             "answer": "a status/meta check about existing work, with no new subject named",
@@ -167,6 +204,9 @@ Your only two jobs:
 
 Write a natural, first-person reply:
 - If this is a status check: answer directly and conversationally using the findings below, for the EXACT subject it refers to -- never use a different initiative's finding just because one exists. If nothing relevant exists yet, say so plainly and ask what they'd like next.
+- Use the initiative's actual squad, task, meeting, artifact, research, and build states. Distinguish completed research from a website that is still working, blocked, or waiting for approval.
+- If the founder asks about a document, summarize the matching artifact content and source metadata; do not substitute a generic model answer or ask an unnecessary follow-up.
+- Never answer with a generic status template or a bare "Want me to...?" when current evidence is available.
 - If this is small talk: reply briefly and warmly, no boilerplate.
 - If this is an operational command: say plainly that you can't execute that directly from chat yet, and point at the right sidebar control (Approvals / Library / the squad's own controls) if you can tell which one fits."""
 

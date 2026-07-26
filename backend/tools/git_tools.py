@@ -2060,7 +2060,10 @@ def run_mvp_loop(
         if (Path(local) / "package.json").exists():
             try:
                 from backend.tools.local_preview import start_local_preview as _start_preview
-                dev_preview_url = _start_preview(local, session_id, company_name=Path(local).name, dev=True)
+                # The authenticated preview proxy does not relay Next webpack
+                # HMR websockets. Keep the PTY live, but serve the iframe from
+                # the production server so it cannot render blank on HMR.
+                dev_preview_url = _start_preview(local, session_id, company_name=Path(local).name, dev=False)
                 if dev_preview_url:
                     _phase("Live preview is up — watch it update as the build progresses", preview_url=dev_preview_url)
             except Exception as e:
