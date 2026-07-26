@@ -197,25 +197,26 @@ export default function AstraCopilotComposer({
     setVoiceError("");
     let stream: MediaStream | null = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setRecordingStream(stream);
+      const activeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = activeStream;
+      setRecordingStream(activeStream);
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(activeStream, mimeType ? { mimeType } : undefined);
       recordingChunksRef.current = [];
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) recordingChunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setRecordingStream((current) => (current === stream ? null : current));
+        activeStream.getTracks().forEach((track) => track.stop());
+        setRecordingStream((current) => (current === activeStream ? null : current));
         recorderRef.current = null;
         setRecording(false);
         setVoiceError("Microphone recording failed. Please try again.");
       };
       recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setRecordingStream((current) => (current === stream ? null : current));
+        activeStream.getTracks().forEach((track) => track.stop());
+        setRecordingStream((current) => (current === activeStream ? null : current));
         recorderRef.current = null;
         setRecording(false);
         const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
