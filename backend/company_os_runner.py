@@ -351,9 +351,14 @@ def _queue_research_handoff_revisions(company_id: str, research_mission_id: str)
     for product in company.get("missions", []):
         if product.get("department") != "product_technical" or product.get("state") in {"archived", "cancelled"}:
             continue
-        # In the old ordering, the research mission points back to the already
-        # completed Product Delivery mission through handoff_for.
-        if str(research.get("handoff_for") or "") != str(product.get("mission_id") or ""):
+        # In the old ordering, the research mission usually points back to the
+        # Product Delivery mission through handoff_for. Some early missions
+        # lack that field, so same-initiative Research/Product pairs are also
+        # eligible for repair.
+        handoff_for = str(research.get("handoff_for") or "")
+        if handoff_for and handoff_for != str(product.get("mission_id") or ""):
+            continue
+        if str(product.get("initiative_id") or "") != str(research.get("initiative_id") or ""):
             continue
         tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == product.get("mission_id")]
         if any(str(task.get("task_key") or "").startswith("research_revision") for task in tasks):
