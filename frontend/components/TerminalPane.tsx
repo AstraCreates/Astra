@@ -9,7 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export function terminalWsUrl(sessionId: string, token: string): string {
+export function terminalWsUrl(sessionId: string, token: string, recovery = false): string {
   // Derive ws(s):// from the API origin; route /terminal/ through nginx → backend.
   let base = API;
   if (base.startsWith("https://")) base = "wss://" + base.slice(8);
@@ -24,13 +24,19 @@ export function terminalWsUrl(sessionId: string, token: string): string {
     const host = typeof window !== "undefined" ? window.location.host : "";
     base = `${proto}//${host}${base.startsWith("/") ? base : `/${base}`}`;
   }
-  return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
+  return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}${recovery ? "&recovery=1" : ""}`;
 }
 
 export default function TerminalPane({ sessionId, onClose, compact = false }: { sessionId: string; onClose: () => void; compact?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"connecting" | "live" | "closed" | "error">("connecting");
   const [shared, setShared] = useState(false);
+  const [recovery, setRecovery] = useState(false);
+  const [rawProtocol, setRawProtocol] = useState(false);
+  const rawProtocolRef = useRef(false);
+  const protocolBuffer = useRef("");
+
+  useEffect(() => { rawProtocolRef.current = rawProtocol; }, [rawProtocol]);
 
   useEffect(() => {
     let term: import("@xterm/xterm").Terminal | null = null;
@@ -54,7 +60,7 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
       fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostRef.current);
-      term.write("\x1b[2m connecting to openclaude…\x1b[0m\r\n");
+      term.write(`\x1b[2m connecting to ${recovery ? "interactive Caveman" : "the coding agent"}…\x1b[0m\r\n`);
       // Refit after the container has its final layout size (avoids a 0×0 grid
       // that renders as a black box on first paint).
       requestAnimationFrame(() => { try { fit?.fit(); } catch {} });
@@ -74,7 +80,7 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
         setStatus("error");
         return;
       }
-      ws = new WebSocket(terminalWsUrl(sessionId, token));
+      ws = new WebSocket(terminalWsUrl(sessionId, token, recovery));
       ws.binaryType = "arraybuffer";
 
       ws.onopen = () => { setStatus("live"); sendResize(); term?.focus(); };
@@ -93,7 +99,41 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
           }
           catch { term.write(ev.data); }
         } else {
-          term.write(new Uint8Array(ev.data as ArrayBuffer));
+          const bytes = new Uint8Array(ev.data as ArrayBuffer);
+          if (rawProtocolRef.current || recovery) {
+            term.write(bytes);
+            return;
+          }
+          const text = new TextDecoder().decode(bytes);
+          protocolBuffer.current += text.replace(/\r/g, "");
+          const lines = protocolBuffer.current.split("\n");
+          protocolBuffer.current = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              const type = String(event.type ?? event.kind ?? "");
+              const tool = String(event.toolName ?? event.tool ?? "");
+              const args = event.args ?? {};
+              if (type === "tool_execution_start") {
+                const target = args.path ?? args.file_path ?? args.command ?? args.query ?? "";
+                term.write(`\x1b[36mtool\x1b[0m ${tool || "working"}${target ? ` · ${String(target).slice(0, 180)}` : ""}\r\n`);
+              } else if (type === "tool_execution_end") {
+                term.write(`\x1b[32mdone\x1b[0m ${tool || "tool"}\r\n`);
+              } else if (type === "message_end") {
+                const usage = event.message?.usage ?? event.usage ?? {};
+                const tokens = Number(usage.input ?? 0) + Number(usage.output ?? 0);
+                term.write(`\x1b[35magent\x1b[0m completed a coding turn${tokens ? ` · ${tokens.toLocaleString()} tokens` : ""}\r\n`);
+              } else if (type === "error" || event.isError) {
+                term.write(`\x1b[31merror\x1b[0m ${String(event.message ?? event.error ?? "Agent step failed").slice(0, 500)}\r\n`);
+              } else if (type === "session" || type === "turn_start") {
+                term.write(`\x1b[2magent ${type === "turn_start" ? "started a turn" : "session connected"}\x1b[0m\r\n`);
+              }
+            } catch {
+              // Non-protocol output is useful (npm/build errors), so preserve it.
+              term.write(`${line.slice(0, 1200)}\r\n`);
+            }
+          }
         }
       };
       ws.onclose = () => { if (!disposed) setStatus("closed"); };
@@ -114,10 +154,10 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
       try { ws?.close(); } catch {}
       try { term?.dispose(); } catch {}
     };
-  }, [sessionId]);
+  }, [sessionId, recovery]);
 
   const dot = status === "live" ? "#34d399" : status === "connecting" ? "#fcd34d" : "#f87171";
-  const label = status === "live" ? (shared ? "live shared build shell — your input is shared with the coding agent" : "live build shell") : status === "connecting" ? "connecting to live build…" : status === "closed" ? "build completed — transcript is read-only" : "connection error";
+  const label = status === "live" ? (recovery ? "interactive Caveman session" : "live agent trace") : status === "connecting" ? "connecting to live build…" : status === "closed" ? "build completed — transcript is read-only" : "connection error";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -125,6 +165,8 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
         <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, display: "inline-block" }} />
         <span>{label}</span>
         <span style={{ flex: 1 }} />
+        {!recovery && <button onClick={() => setRawProtocol(value => !value)} style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: "var(--fm)", background: "transparent", border: 0, cursor: "pointer" }}>{rawProtocol ? "Readable trace" : "Raw protocol"}</button>}
+        {status === "closed" && !recovery && <button onClick={() => setRecovery(true)} style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: "var(--accent)", background: "transparent", border: "1px solid var(--bd)", borderRadius: 6, padding: "2px 8px", cursor: "pointer" }}>Continue in Caveman</button>}
         <button
           onClick={onClose}
           style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", color: "var(--fd)", background: "transparent", border: "1px solid rgba(0,0,0,.15)", borderRadius: 6, padding: "2px 10px", cursor: "pointer" }}

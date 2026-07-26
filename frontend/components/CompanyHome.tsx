@@ -773,6 +773,12 @@ export default function CompanyHome() {
                                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                                   {squad.tasks.map(task => (
                                     <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                      {/** Active technical work renders once in the fixed build dock above
+                                          the conversation. Keeping it out of this historical plan card
+                                          prevents duplicate iframes/terminals from consuming the chat. */}
+                                      {(() => {
+                                        const pinnedBuild = activeBuilds.some(build => build.task.id === task.id);
+                                        return <>
                                       <span style={{ flexShrink: 0, marginTop: 1, color: task.status === "complete" ? "var(--green)" : task.status === "blocked" ? "var(--red)" : "var(--fm)" }}>
                                         {task.status === "complete" ? <Check size={15} /> : task.status === "active" ? <Loader2 size={15} className="company-home-spin" /> : <Circle size={13} />}
                                       </span>
@@ -797,7 +803,7 @@ export default function CompanyHome() {
                                             </button>
                                           )}
                                         </div>
-                                        {(chatTerminalTaskId === task.id || task.status === "active") && task.terminalSessionId && (
+                                        {!pinnedBuild && (chatTerminalTaskId === task.id || task.status === "active") && task.terminalSessionId && (
                                           <div style={{ marginTop: 8 }}>
                                             <TerminalPane sessionId={task.terminalSessionId} compact onClose={() => setChatTerminalTaskId("")} />
                                           </div>
@@ -807,12 +813,12 @@ export default function CompanyHome() {
                                             together rather than only appearing once finished --
                                             the terminal stays a deliberate click (it's an
                                             interactive RCE shell, not something to auto-connect). */}
-                                        {task.status === "active" && !task.previewUrl && task.terminalSessionId && (
+                                        {!pinnedBuild && task.status === "active" && !task.previewUrl && task.terminalSessionId && (
                                           <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, padding: "10px 12px", color: "var(--fm)", fontSize: 11, display: "flex", alignItems: "center", gap: 7 }}>
                                             <Loader2 size={12} className="company-home-spin" /> Starting the local preview. It will appear here as soon as the build server is healthy.
                                           </div>
                                         )}
-                                        {task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
+                                        {!pinnedBuild && task.previewUrl && isSafeHttpUrl(task.previewUrl) && (
                                           <div style={{ marginTop: 8, border: "1px solid var(--bd)", borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
                                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderBottom: "1px solid var(--bd)", background: "var(--bg-sunken)" }}>
                                               <span style={{ fontSize: 10.5, color: "var(--fm)", display: "flex", alignItems: "center", gap: 5 }}>
@@ -831,6 +837,8 @@ export default function CompanyHome() {
                                           </div>
                                         )}
                                       </div>
+                                      </>;
+                                      })()}
                                     </div>
                                   ))}
                                 </div>
@@ -879,7 +887,7 @@ export default function CompanyHome() {
                       append a second plan message for that downstream squad. */}
                   {home.squads
                     .filter(squad => !chatTurns.some(turn => turn.kind === "plan" && turn.squadId === squad.id))
-                    .flatMap(squad => squad.tasks.filter(task => task.status === "active" && (task.terminalSessionId || /website|preview|frontend|build/i.test(task.title))).map(task => ({ squad, task })))
+                    .flatMap(squad => squad.tasks.filter(task => task.status === "active" && !activeBuilds.some(build => build.task.id === task.id) && (task.terminalSessionId || /website|preview|frontend|build/i.test(task.title))).map(task => ({ squad, task })))
                     .map(({ squad, task }) => (
                       <div key={`live-build-${task.id}`} className="ch-chat-row">
                         <span className="ch-chat-avatar"><Sparkles size={13} /></span>

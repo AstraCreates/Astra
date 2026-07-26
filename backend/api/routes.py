@@ -3718,6 +3718,7 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
 
     await websocket.accept()
     main_loop = asyncio.get_running_loop()
+    recovery_requested = websocket.query_params.get("recovery") == "1"
 
     # ── Auth: caller must own this run. This endpoint spawns interactive
     # openclaude (RCE as `astra`), so the ownership gate FAILS CLOSED on every
@@ -3769,15 +3770,21 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
             term = await asyncio.to_thread(pty_terminal.get_terminal, session_id)
         shared = bool(term and term.shared)
         if not term:
-            transcript = await asyncio.to_thread(pty_terminal.durable_transcript, session_id)
-            await websocket.send_text(json.dumps({
-                "t": "terminal_state", "state": "completed" if transcript else "unavailable", "shared": False,
-                "message": "The original terminal is no longer live after a backend restart." if transcript else "The build terminal did not start. Retry the build to create a fresh shared terminal.",
-            }))
-            if transcript:
-                await _safe_send_bytes(websocket, transcript)
-            await websocket.close(code=1013)
-            return
+            if recovery_requested:
+                # Recovery is deliberately opt-in. The normal route must never
+                # spawn a second agent while the Company OS build is starting.
+                term = await asyncio.to_thread(pty_terminal.open_takeover, session_id)
+                shared = False
+            else:
+                transcript = await asyncio.to_thread(pty_terminal.durable_transcript, session_id)
+                await websocket.send_text(json.dumps({
+                    "t": "terminal_state", "state": "completed" if transcript else "unavailable", "shared": False,
+                    "message": "The original terminal is no longer live after a backend restart." if transcript else "The build terminal did not start. Retry the build to create a fresh shared terminal.",
+                }))
+                if transcript:
+                    await _safe_send_bytes(websocket, transcript)
+                await websocket.close(code=1013)
+                return
     except Exception as e:
         logger.error("terminal takeover spawn failed: %s", e)
         try:
