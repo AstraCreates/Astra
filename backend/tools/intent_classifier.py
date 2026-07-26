@@ -51,6 +51,7 @@ _REPRESENTATIVE_CAPABILITY = {
 class IntentStep:
     text: str
     department: str
+    depends_on_step_indexes: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -72,7 +73,8 @@ class IntentClassification:
             "deliverables": deliverables, "acceptance_criteria": [], "constraints": [],
             "entities": [], "dependencies": [], "risk": "internal",
             "required_capabilities": capabilities, "primary_capability": primary,
-            "steps": [{"text": step.text, "department": step.department} for step in self.steps],
+            "steps": [{"deliverable": step.text, "department": step.department,
+                       "depends_on_step_indexes": list(step.depends_on_step_indexes)} for step in self.steps],
             "confidence": 1.0, "requires_clarification": False,
             "clarification_question": None, "clarification_options": None,
             "triage_reason": "intent_classifier",
@@ -247,14 +249,14 @@ Departments:
 - chitchat: greeting, thanks, small talk -- not a request at all
 - mcp_command: an operational command about the system itself: approve/retry/cancel/delete/schedule a task, check the library, clear chat
 {examples}
-Task: Fix only spelling/typo errors, keep wording and meaning identical. Then identify each DISTINCT actionable ask in the message (a single question with multiple parts about ONE subject is ONE ask; a count like "top 3 competitors" is ONE ask, never split per item; simple sequential steps chained by "then"/"and"/commas/semicolons are separate asks). For EACH ask, output the ask's text and which department it belongs to.
+Task: Fix only spelling/typo errors, keep wording and meaning identical. Then identify each DISTINCT actionable ask in the message (a single question with multiple parts about ONE subject is ONE ask; a count like "top 3 competitors" is ONE ask, never split per item; simple sequential steps chained by "then"/"and"/commas/semicolons are separate asks). For EACH ask, output its text, department, and semantic prerequisites using zero-based indexes in the order you output the asks. Use this exact format: <ask text> :: <department> :: depends_on=<comma-separated indexes or none>. If a later ask explicitly uses the output of an earlier ask (for example, "research X and put that in a website"), the website depends on the research ask. Do not impose a department-wide order; infer dependencies from the founder's intended deliverables. Independent asks have no prerequisites.
 
 Judge the department from the VERB/INTENT and PURPOSE of the ask, not from words that happen to appear in the subject (e.g. "build a website for our onboarding process" is product_technical, NOT operations, even though "onboarding process" sounds operational -- the ask is to BUILD A WEBSITE).
 
 If the message says not to do something yet / hold off / no need to, output exactly one line: <the full original message> :: NEGATED -- and nothing else, even if a real ask is buried inside it.
 
 Respond with ONLY lines in this exact format, nothing else, no numbering, no prose, no repeating these examples:
-<ask text> :: <department>
+<ask text> :: <department> :: depends_on=<indexes or none>
 
 Message: {message!r}"""
 
@@ -415,8 +417,17 @@ def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
         line = line.strip()
         if not line or "::" not in line:
             continue
-        text, _, label = line.rpartition("::")
-        text, label = text.strip(), label.strip().lower()
+        dependency_indexes: list[int] = []
+        parts = [part.strip() for part in line.split("::")]
+        if len(parts) >= 3:
+            text, label, raw_dependencies = parts[0], parts[1].lower(), parts[2]
+            raw_dependencies = raw_dependencies.removeprefix("depends_on=").strip()
+            if raw_dependencies and raw_dependencies != "none":
+                dependency_indexes = [int(value.strip()) for value in raw_dependencies.split(",")
+                                      if value.strip().isdigit()]
+        else:
+            text, _, label = line.rpartition("::")
+            text, label = text.strip(), label.strip().lower()
         if not text or _is_malformed(text) or _overlap_with_message(text, message) < _MIN_OVERLAP_WITH_MESSAGE:
             continue
         if label == "negated":
@@ -453,5 +464,5 @@ def _parse(content: str, message: str, elapsed: float) -> IntentClassification:
             terms = _DEPARTMENT_SIGNAL_TERMS.get(label)
             if terms is not None and not any(term in message.lower() for term in terms):
                 continue
-            steps.append(IntentStep(text=text, department=label))
+            steps.append(IntentStep(text=text, department=label, depends_on_step_indexes=dependency_indexes))
     return IntentClassification(kind="work", steps=steps, elapsed=elapsed)

@@ -172,3 +172,13 @@ def test_work_request_builds_a_dispatch_compatible_dict():
     assert set(request["required_capabilities"]) == {"research", "website"}
     assert request["requires_clarification"] is False
     assert request["deliverables"] == ["research Apple", "build a website about it"]
+
+
+def test_work_request_preserves_semantic_step_dependencies():
+    from backend.tools.intent_classifier import IntentClassification, IntentStep
+    classification = IntentClassification(kind="work", steps=[
+        IntentStep(text="build a website from the findings", department="product_technical", depends_on_step_indexes=[1]),
+        IntentStep(text="research Apple", department="research"),
+    ])
+    request = classification.work_request("research Apple and build a website from the findings")
+    assert request["steps"][0]["depends_on_step_indexes"] == [1]
