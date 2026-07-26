@@ -229,8 +229,8 @@ def _extract_work_request_with_model(intent: str) -> dict[str, Any] | None:
     prompt = f"""A founder sent this message to their company's AI operating system: {intent!r}
 Extract a compact, structured description of the work this message is asking for.
 Available capabilities: {catalog}
-Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "primary_capability": exact department capability that owns the first deliverable, "required_capabilities": [exact department capabilities from the catalog], "required_role_capabilities": [exact role capabilities needed, if any], "research_specialists": [{{"title": string, "focus": string}}]|null, "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
-Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities, and do not invent a comparison, audience, or platform the founder never mentioned.
+Return JSON only: {{"objective": string, "deliverables": [string], "acceptance_criteria": [string], "constraints": [string], "entities": [string], "dependencies": [string], "steps": [{{"department": exact department key, "deliverable": string, "depends_on_step_indexes": [number]}}], "primary_capability": exact department capability that owns the first deliverable, "required_capabilities": [exact department capabilities from the catalog], "required_role_capabilities": [exact role capabilities needed, if any], "research_specialists": [{{"title": string, "focus": string}}]|null, "risk": "internal|external|approval", "clarification_question": string|null, "clarification_options": [string]|null, "confidence": number 0-1}}.
+Reason over the meaning of the whole request, including misspellings and multiple outcomes. A product comparison needs compare and research. A website needs website or website delivery. Do not invent capabilities, and do not invent a comparison, audience, or platform the founder never mentioned. For compound requests, steps must reflect the actual dependency order implied by the outcome: research/evidence should precede a deliverable that explicitly uses its findings, while prototyping or design may precede research when the request calls for exploratory work. Do not use a default department order.
 A request to explain, describe, or research a specific named subject (a company, product, market, or person) is self-sufficient on its own -- proceed with the standard dimensions a competent analyst would cover (overview, business model, market position, competitors) rather than asking what to cover. Most requests are NOT ambiguous: default to reasonable assumptions and proceed. Only set clarification_question when the request is so vague the work genuinely cannot start at all (e.g. "build me an app" with no description of what it does) -- not to narrow scope, pick an emphasis, or confirm something you could reasonably infer. When you do ask, and the missing piece is naturally a short list of choices genuinely implied by the founder's own message, set clarification_options to 2-5 short answer strings drawn from that message; otherwise leave clarification_options null for an open-ended answer.
 If this is fundamentally a research/investigation request (not a product build, marketing plan, etc.), name 1-3 specialist researcher roles genuinely suited to THIS SPECIFIC subject -- invent the title freely from the actual topic (e.g. "Ancient Trade Historian" and "Archaeological Evidence Analyst" for a question about Roman trade routes; "Model Architecture Analyst" for a question about why an AI model is efficient; "Angling Technique Specialist" for a fishing question; "Market Analyst" and "Competitive Analyst" for a genuine product/company comparison) rather than reusing generic labels like "Research Analyst" for everything. Use exactly one role for a narrow, single-topic question; use 2-3 only when the request genuinely spans distinct evidence dimensions that each need independent investigation (e.g. a real two-company comparison, or a question spanning technical AND market AND regulatory angles at once). Each role's "focus" is one sentence naming exactly what that role investigates, specific to this request -- not a restatement of the role title. Leave research_specialists null for non-research work."""
     known = {capability for profile in CAPABILITY_REGISTRY.values() for capability in profile["capabilities"]}
@@ -289,6 +289,12 @@ If this is fundamentally a research/investigation request (not a product build, 
                     "constraints": [str(value) for value in payload.get("constraints", []) if isinstance(value, str)],
                     "entities": [str(value) for value in payload.get("entities", []) if isinstance(value, str)],
                     "dependencies": [str(value) for value in payload.get("dependencies", []) if isinstance(value, str)],
+                    "steps": [
+                        {"department": str(step.get("department")), "deliverable": str(step.get("deliverable") or ""),
+                         "depends_on_step_indexes": [int(index) for index in (step.get("depends_on_step_indexes") or []) if isinstance(index, int)]}
+                        for step in (payload.get("steps") or [])
+                        if isinstance(step, dict) and step.get("department") in CAPABILITY_REGISTRY
+                    ],
                     "risk": str(payload.get("risk") or "internal"), "required_capabilities": sorted(capabilities),
                     "required_role_capabilities": sorted(role_capabilities), "research_specialists": research_specialists,
                     "confidence": min(confidence, 1.0),
@@ -335,26 +341,9 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         matched = len(required & set(profile["capabilities"]))
         load = _active_load(company, department)
         score = matched * 10 - load * 2
-    # A research-informed build has a real dependency: Product Delivery must
-    # consume the validated research instead of starting from an empty brief.
-    # The capability combination is the signal here, not phrase matching. An
-    # explicit ordered plan still wins below when one is supplied by the
-    # structured work-request extractor.
-    research_caps = {"research", "evidence research", "competitive analysis", "compare"}
-    product_caps = {"website", "landing page", "website delivery", "local preview", "software engineering"}
-    if required & research_caps and required & product_caps:
-        department = "research"
-        profile = CAPABILITY_REGISTRY[department]
-        matched = len(required & set(profile["capabilities"]))
-        load = _active_load(company, department)
-        score = matched * 10 - load * 2
     profile = CAPABILITY_REGISTRY[department]
     triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
-    if department == "research" and required & product_caps:
-        # Preserve the downstream build explicitly, even if the scorer ranks
-        # another supporting department above Product Delivery.
-        handoffs = ["product_technical", *[item for item in handoffs if item != "product_technical"]][:2]
     # Preserve the founder's ordered multi-step intent. If a message says
     # "compare X and create a website", the website is a real downstream
     # Product Delivery mission, not extra wording inside the research subject.
@@ -367,17 +356,22 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         department = ordered_departments[0]
         profile = CAPABILITY_REGISTRY[department]
         handoffs = [item for item in ordered_departments[1:] if item != department]
-    # Normalize every mixed evidence-to-build request to the Company OS
-    # dependency contract, even if the classifier supplied an illogical order
-    # such as Product Delivery -> Research. A website generated before its
-    # evidence exists is provisional; the durable plan must always be
-    # Research -> Product Delivery.
-    if required & research_caps and required & product_caps:
-        department = "research"
-        profile = CAPABILITY_REGISTRY[department]
-        handoffs = ["product_technical", *[item for item in handoffs if item != "product_technical"]][:2]
+    step_dependencies: dict[str, list[str]] = {}
+    steps = request.get("steps") or []
+    for index, step in enumerate(steps):
+        current = str(step.get("department") or "")
+        if current not in CAPABILITY_REGISTRY:
+            continue
+        predecessors: list[str] = []
+        for dependency_index in step.get("depends_on_step_indexes") or []:
+            if isinstance(dependency_index, int) and 0 <= dependency_index < len(steps):
+                predecessor = str((steps[dependency_index] or {}).get("department") or "")
+                if predecessor in CAPABILITY_REGISTRY and predecessor != current and predecessor not in predecessors:
+                    predecessors.append(predecessor)
+        step_dependencies[current] = predecessors
     return {"department": department, "squad_name": profile["squad"], "score": score, "matched_capabilities": matched,
-            "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs, "primary_capability": primary_capability}
+            "load": load, "requires_clarification": triage, "director": department, "handoffs": handoffs,
+            "step_dependencies": step_dependencies, "primary_capability": primary_capability}
 
 
 def choose_department(intent: str) -> tuple[str, str]:
@@ -896,6 +890,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
             _create_approval_card(company_id, task, policy)
         created_tasks.append(task)
     handoff_missions = []
+    mission_ids_by_department = {department: mission_id}
     # Departments do not become pseudo-roles in the lead squad. Each matching
     # department receives its own bounded profile and a clear handoff mission.
     for handoff_department in route.get("handoffs", []):
@@ -910,7 +905,8 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
         handoff_squad_id = _entity_id(handoff_squad, "squad_id")
         handoff_role_ids = _create_squad_profile_records(company_id, company, handoff_squad_id, initiative_id, intent, handoff_request, handoff_profile)
         handoff_mission_name = str(handoff_request.get("outcome") or f"{CAPABILITY_REGISTRY[handoff_department]['squad']} support: {intent}")
-        dependencies = [mission_id] if department == "research" and handoff_department == "product_technical" else []
+        dependencies = [mission_ids_by_department[item] for item in (route.get("step_dependencies") or {}).get(handoff_department, [])
+                        if item in mission_ids_by_department]
         handoff_mission = _call("create_mission", company_id=company_id, initiative_id=initiative_id, squad_id=handoff_squad_id,
                                 name=handoff_mission_name, department=handoff_department,
                                 state="active", initiative_director=route["director"], handoff_for=mission_id,
@@ -932,6 +928,7 @@ def dispatch_intent(company_id: str, intent: str, *, proposed_spend: float = 0.0
             if policy["decision"] == "require_approval":
                 _create_approval_card(company_id, task, policy)
         handoff_missions.append(handoff_mission)
+        mission_ids_by_department[handoff_department] = _entity_id(handoff_mission, "mission_id")
     return {"department": department, "squad": squad, "initiative": initiative, "mission": mission, "tasks": created_tasks,
             "work_request": work_request, "routing": route, "handoff_missions": handoff_missions, "squad_profile": profile,
             "dispatch_metadata": {"department": department, "initiative_reused": bool(reuse),

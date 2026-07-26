@@ -14,7 +14,6 @@ from backend.company_os import (
     append_message,
     company_recovery_lock,
     create_artifact,
-    create_task,
     get_company_os,
     list_company_os,
     reconcile_initiatives,
@@ -175,8 +174,6 @@ async def run_mission(company_id: str, mission_id: str) -> None:
     await asyncio.to_thread(reconcile_initiatives, company_id)
     if final_state == "done":
         await asyncio.to_thread(_resume_ready_dependents, company_id, mission_id)
-        if str(mission.get("department") or "") == "research":
-            await asyncio.to_thread(_queue_research_handoff_revisions, company_id, mission_id)
 
 
 async def _run_task(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
@@ -334,59 +331,6 @@ async def recover_pending_missions() -> int:
 def _mission_tasks(company_id: str, mission_id: str) -> list[dict[str, Any]]:
     company = get_company_os(company_id) or {}
     return [task for task in company.get("tasks", []) if task.get("mission_id") == mission_id]
-
-
-def _queue_research_handoff_revisions(company_id: str, research_mission_id: str) -> None:
-    """Repair legacy mixed missions that built before their research handoff.
-
-    New dispatches gate Product Delivery behind Research. Older dispatches could
-    do the inverse, so a completed research handoff must turn the existing site
-    into an incremental revision rather than leaving the provisional build as
-    the final output. The revision gets its own review and approval gate.
-    """
-    company = get_company_os(company_id) or {}
-    research = _find(company.get("missions", []), "mission_id", research_mission_id)
-    if not research:
-        return
-    for product in company.get("missions", []):
-        if product.get("department") != "product_technical" or product.get("state") in {"archived", "cancelled"}:
-            continue
-        # In the old ordering, the research mission usually points back to the
-        # Product Delivery mission through handoff_for. Some early missions
-        # lack that field, so same-initiative Research/Product pairs are also
-        # eligible for repair.
-        handoff_for = str(research.get("handoff_for") or "")
-        if handoff_for and handoff_for != str(product.get("mission_id") or ""):
-            continue
-        if str(product.get("initiative_id") or "") != str(research.get("initiative_id") or ""):
-            continue
-        tasks = [task for task in company.get("tasks", []) if task.get("mission_id") == product.get("mission_id")]
-        if any(str(task.get("task_key") or "").startswith("research_revision") for task in tasks):
-            continue
-        build = next((task for task in tasks if task.get("operation") in {"local_preview", "local_build"}), None)
-        if not build:
-            continue
-        review_role = next((task.get("role_id") for task in tasks if task.get("task_key") == "product-review"), build.get("role_id"))
-        publish_role = next((task.get("role_id") for task in tasks if task.get("task_key") == "product-publish"), review_role)
-        base = {"inputs": ["validated research artifact", "existing website workspace"],
-                "expected_outputs": ["updated website preview"], "acceptance_criteria": ["research findings are visibly represented", "existing build still passes"],
-                "parallel_group": "research_revision", "handoffs": []}
-        revision = create_task(company_id, str(product.get("initiative_id")), str(product.get("squad_id")),
-                               f"Revise the website with the completed research for {product.get('name', 'this initiative')}",
-                               state="pending", role_id=build.get("role_id"), role_key="frontend_engineer", department="product_technical",
-                               task_key=f"research_revision_build_{research_mission_id}", operation="local_preview", mcp_tool=None,
-                               deliverable="Updated local website preview", description="Apply the completed research evidence to the existing website; preserve useful work and improve the information architecture.", purpose="Revise the existing website using the completed research handoff.", **base)
-        review = create_task(company_id, str(product.get("initiative_id")), str(product.get("squad_id")),
-                             "Review the research-informed website revision", state="pending", role_id=review_role, department="product_technical",
-                             role_key="product_lead", task_key=f"research_revision_review_{research_mission_id}", operation="internal_analysis", purpose="Validate the revised website against the research handoff.",
-                             depends_on_task_ids=[revision.get("task_id")], deliverable="Approved revision decision", description="Verify the website reflects the research and remains coherent.", **{**base, "expected_outputs": ["revision review"]})
-        create_task(company_id, str(product.get("initiative_id")), str(product.get("squad_id")),
-                    "Publish the research-informed website revision", state="pending", role_id=publish_role, department="product_technical",
-                    role_key="product_lead", task_key=f"research_revision_publish_{research_mission_id}", operation="external_deploy", mcp_tool="vercel_deploy", purpose="Make the reviewed revision available externally after approval.",
-                    depends_on_task_ids=[review.get("task_id")], deliverable="Published website revision", description="Publish only after the founder approves the revised preview.", **{**base, "purpose": "Make the reviewed revision available externally after approval.", "expected_outputs": ["public website URL"], "acceptance_criteria": ["founder approval is recorded"]})
-        update_mission(company_id, str(product.get("mission_id")), state="active", blocked_reason=None)
-        update_squad(company_id, str(product.get("squad_id")), state="active", lifecycle="working")
-        launch_mission(company_id, str(product.get("mission_id")))
 
 
 def _execute_internal_work(company_id: str, mission: Mapping[str, Any], task: Mapping[str, Any]) -> dict[str, Any]:
