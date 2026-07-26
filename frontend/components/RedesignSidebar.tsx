@@ -90,27 +90,27 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   }, []);
 
   const displayName = hydrated ? (customName.split(" ")[0] || user?.fullName?.split(" ")[0] || initials(userId)) : "…";
-  const accentColor = "#7d8fff";
+  const accentColor = "var(--blue)";
 
   const sidebarStyle: React.CSSProperties = mobile
-    ? { width: 214, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
-    : { width: 214, flexShrink: 0, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100vh", position: "sticky", top: 0 };
+    ? { width: 214, display: "flex", flexDirection: "column", background: "var(--bg-surface)", borderRight: "1px solid var(--bd)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
+    : { width: 214, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-surface)", borderRight: "1px solid var(--bd)", height: "100vh", position: "sticky", top: 0 };
 
   return (
     <nav onClick={e => { if (mobile && (e.target as HTMLElement).closest("a")) onClose?.(); }} style={sidebarStyle}>
       <style>{`
         @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.35} }
-        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px 'Hanken Grotesk',system-ui,sans-serif;color:#8A93AD;border-left:2px solid transparent;transition:background .12s,color .12s; }
-        .sb-link:hover { background:rgba(255,255,255,.04);color:#EDF1FB; }
-        .sb-link.active { font-weight:600;color:#fff;background:rgba(255,255,255,.06);border-left-color:${accentColor}; }
+        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px 'Hanken Grotesk',system-ui,sans-serif;color:var(--fd);border-left:2px solid transparent;transition:background .12s,color .12s; }
+        .sb-link:hover { background:var(--bg-sunken);color:var(--fg); }
+        .sb-link.active { font-weight:600;color:var(--text);background:var(--bg-sunken);border-left-color:${accentColor}; }
       `}</style>
 
       {/* Logo */}
       <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 9 }}>
         <div style={{ width: 24, height: 24, background: accentColor, flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: ".1em", color: "#EDF1FB" }}>ASTRA</span>
-          <span style={{ fontSize: 10, letterSpacing: ".08em", color: "#8A93AD", marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: ".1em", color: "var(--fg)" }}>ASTRA</span>
+          <span style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--fd)", marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: accentColor, animation: "pulseDot 2.6s infinite" }} />
             Ready
           </span>
@@ -146,17 +146,17 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
 
       {/* Chats -- own scroll region so a long list never pushes the nav
           links or the bottom user/credits block off screen. */}
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginTop: 14, padding: "8px 8px 0", borderTop: "1px solid rgba(255,255,255,.07)" }}>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, marginTop: 14, padding: "8px 8px 0", borderTop: "1px solid var(--bd)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 4px" }}>
-          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "#6f7b98" }}>Chats</span>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fm)" }}>Chats</span>
           <button type="button" onClick={() => void createChat()} title="New chat"
-            style={{ width: 20, height: 20, display: "grid", placeItems: "center", background: "transparent", border: "1px solid rgba(255,255,255,.13)", borderRadius: 5, color: "#c3cbe0", cursor: "pointer" }}>
+            style={{ width: 20, height: 20, display: "grid", placeItems: "center", background: "transparent", border: "1px solid var(--bd2)", borderRadius: 5, color: "var(--fd)", cursor: "pointer" }}>
             <Plus size={12} />
           </button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1, paddingBottom: 8 }}>
           {chats.length === 0 ? (
-            <div style={{ padding: "6px 8px", fontSize: 11.5, color: "#6f7b98" }}>{chatsLoaded ? "No chats yet" : "Loading…"}</div>
+            <div style={{ padding: "6px 8px", fontSize: 11.5, color: "var(--fm)" }}>{chatsLoaded ? "No chats yet" : "Loading…"}</div>
           ) : chats.map(chat => (
             <div key={chat.id}
               onClick={() => selectChat(chat.id)}
@@ -164,7 +164,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
               style={{ cursor: "pointer", justifyContent: "space-between" }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chat.title}</div>
-                {chat.updatedAt && <div style={{ fontSize: 9.5, color: "#6f7b98", marginTop: 1 }}>{chatRelativeTime(chat.updatedAt)}</div>}
+                {chat.updatedAt && <div style={{ fontSize: 9.5, color: "var(--fm)", marginTop: 1 }}>{chatRelativeTime(chat.updatedAt)}</div>}
               </div>
               {chats.length > 1 && (
                 <button type="button"
@@ -175,7 +175,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
                     void deleteChat(chat.id);
                   }}
                   title={pendingDeleteId === chat.id ? "Click again to confirm" : "Delete chat"}
-                  style={{ flexShrink: 0, width: 18, height: 18, display: "grid", placeItems: "center", background: "transparent", border: 0, borderRadius: 4, color: pendingDeleteId === chat.id ? "#ef4444" : "#6f7b98", cursor: "pointer", fontSize: 8.5, fontWeight: 700 }}>
+                  style={{ flexShrink: 0, width: 18, height: 18, display: "grid", placeItems: "center", background: "transparent", border: 0, borderRadius: 4, color: pendingDeleteId === chat.id ? "var(--red)" : "var(--fm)", cursor: "pointer", fontSize: 8.5, fontWeight: 700 }}>
                   {pendingDeleteId === chat.id ? "DEL?" : "✕"}
                 </button>
               )}
@@ -188,25 +188,25 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "16px 16px 20px", marginTop: "auto" }}>
         {/* Download macOS */}
         <a href={desktopDownloadHref} target="_blank" rel="noopener noreferrer"
-          style={{ width: "100%", background: "transparent", color: "#c3cbe0", border: "1px solid rgba(255,255,255,.13)", borderRadius: 8, padding: 10, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 500, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, textDecoration: "none" }}>
+          style={{ width: "100%", background: "transparent", color: "var(--fd)", border: "1px solid var(--bd2)", borderRadius: 8, padding: 10, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 500, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, textDecoration: "none" }}>
           <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg>
           Download macOS
         </a>
 
         {/* Credits */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, background: "rgba(255,255,255,.03)" }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB" }}>{credits !== null ? credits.toLocaleString() : "—"}</span>
-          <span style={{ fontSize: 10, letterSpacing: ".04em", color: "#6f7b98" }}>credits</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg-sunken)" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{credits !== null ? credits.toLocaleString() : "—"}</span>
+          <span style={{ fontSize: 10, letterSpacing: ".04em", color: "var(--fm)" }}>credits</span>
         </div>
 
         {/* User row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.07)" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#1c2536", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#EDF1FB", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, borderTop: "1px solid var(--bd)" }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--s2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--fg)", flexShrink: 0 }}>
             {hydrated ? initials(userId) : "…"}
           </div>
           <div style={{ lineHeight: 1.2, flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
-            <div style={{ fontSize: 10, color: "#6f7b98", display: "flex", gap: 6 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+            <div style={{ fontSize: 10, color: "var(--fm)", display: "flex", gap: 6 }}>
               <Link href="/settings" style={{ color: "inherit", textDecoration: "none" }}>Settings</Link>
               <span>·</span>
               {hydrated && isSignedIn

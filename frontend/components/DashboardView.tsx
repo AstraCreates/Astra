@@ -367,7 +367,7 @@ export default function DashboardView() {
         @keyframes mascot-float { 0%,100%{transform:translateY(-44%)} 50%{transform:translateY(calc(-44% - 5px))} }
       `}</style>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "var(--bg)", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
         {/* ── Hero — exact from reference HTML ── */}
         <div style={{ position: "relative", height: 240, flexShrink: 0, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
@@ -381,7 +381,7 @@ export default function DashboardView() {
             <div style={{ fontSize: 13.5, color: "rgba(255,255,255,0.78)", marginBottom: 18 }}>{heroSubtitle}</div>
             <div style={{ display: "flex", gap: 16 }}>
               <button data-tour="dash-new-run" onClick={() => router.push("/dashboard?new=1")}
-                style={{ background: "#fff", color: "#002EFF", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                style={{ background: "#fff", color: "var(--accent)", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                 + New run
               </button>
               <button onClick={load}
@@ -393,7 +393,7 @@ export default function DashboardView() {
         </div>
 
         {toastErr && (
-          <div style={{ background: "rgba(255,80,80,0.08)", borderBottom: "1px solid rgba(255,80,80,.18)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#ff6b6b" }}>
+          <div style={{ background: "rgba(239,68,68,0.10)", borderBottom: "1px solid rgba(255,80,80,.18)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--red)" }}>
             <span>✗</span><span style={{ flex: 1 }}>{toastErr}</span>
             <button onClick={() => setToastErr("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 14, padding: 0 }}>✕</button>
           </div>
@@ -403,24 +403,24 @@ export default function DashboardView() {
         <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22, flex: 1 }}>
 
           {/* TODAY */}
-          <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
 
           {/* Two-column layout */}
           <div style={{ display: "flex", gap: 18, alignItems: "stretch", minHeight: 260 }}>
 
             {/* Active Goal — exact from reference */}
-            <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Active goal</div>
+            <div style={{ width: 330, flex: "0 0 auto", background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>Active goal</div>
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
                 if (!active) return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", flex: 1, gap: 12 }}>
                     <div style={{ position: "relative", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <div style={{ width: 40, height: 40, border: "1.5px solid rgba(125,143,255,0.45)", background: "rgba(125,143,255,0.06)", transform: "rotate(45deg)", borderRadius: 6, position: "absolute" }} />
-                      <div style={{ width: 16, height: 16, background: "rgb(125,143,255)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
+                      <div style={{ width: 16, height: 16, background: "var(--blue)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>No active goals</div>
-                    <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start a run and Astra will get to work.</div>
+                    <div style={{ fontSize: 11.5, color: "var(--fm)" }}>Start a run and Astra will get to work.</div>
                   </div>
                 );
                 const digest = digests.get(active.session_id);
@@ -432,14 +432,14 @@ export default function DashboardView() {
                 const isDone = active.status === "done";
                 const circumference = 157;
                 const progress = phasesTotal > 0 ? phasesDone / phasesTotal : 0;
-                const ringColor = isStalled ? "#FFFFA6" : "#7D8FFF";
+                const ringColor = isStalled ? "var(--amber)" : "var(--blue)";
                 const creditsStr = phasesDone > 0 ? `${phasesDone} of ${phasesTotal} tasks done` : "";
                 return (
                   <>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
                       <div>
                         <div style={{ fontSize: 18, fontWeight: 700 }}>{cleanTitle}</div>
-                        <div style={{ fontSize: 12, color: "rgb(111,123,152)", marginTop: 4 }}>{creditsStr}</div>
+                        <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 4 }}>{creditsStr}</div>
                       </div>
                       <div style={{ position: "relative", width: 58, height: 58, flex: "0 0 auto" }}>
                         <svg width={58} height={58} viewBox="0 0 58 58">
@@ -450,20 +450,20 @@ export default function DashboardView() {
                         </svg>
                         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
                           <span style={{ fontSize: 15, fontWeight: 700 }}>{isDone ? "✓" : phasesDone}</span>
-                          {phasesTotal > 0 && <span style={{ fontSize: 9, color: "rgb(111,123,152)" }}>/ {phasesTotal}</span>}
+                          {phasesTotal > 0 && <span style={{ fontSize: 9, color: "var(--fm)" }}>/ {phasesTotal}</span>}
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: "rgb(138,147,173)", marginTop: 10 }}>
-                      <span>✓ <b style={{ color: "#EDF1FB" }}>{phasesDone}</b> done</span>
-                      <span>○ <b style={{ color: "#EDF1FB" }}>{phasesPending}</b> queued</span>
+                    <div style={{ display: "flex", gap: 14, fontSize: 11.5, color: "var(--fd)", marginTop: 10 }}>
+                      <span>✓ <b style={{ color: "var(--fg)" }}>{phasesDone}</b> done</span>
+                      <span>○ <b style={{ color: "var(--fg)" }}>{phasesPending}</b> queued</span>
                     </div>
                     <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                       <button onClick={() => router.push(`/s/${active.session_id}`)}
-                        style={{ flex: 1, background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "9px 0", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                        style={{ flex: 1, background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 0", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                         Run now
                       </button>
-                      <button style={{ background: "transparent", color: "rgb(195,203,224)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "9px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                      <button style={{ background: "transparent", color: "var(--fd)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 8, padding: "9px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
                         Pause
                       </button>
                     </div>
@@ -473,32 +473,32 @@ export default function DashboardView() {
             </div>
 
             {/* Recent Runs */}
-            <div style={{ flex: 1, minWidth: 0, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
+            <div style={{ flex: 1, minWidth: 0, background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Recent runs</div>
+                <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>Recent runs</div>
                 <button onClick={() => setViewMode(v => v === "populated" ? "first-run" : "populated")}
-                  style={{ fontSize: 12, color: "rgb(125,143,255)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>
+                  style={{ fontSize: 12, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "inherit" }}>
                   View all →
                 </button>
               </div>
 
               {sessions === null ? (
-                <div style={{ color: "rgb(111,123,152)", fontSize: 13 }}>Loading…</div>
+                <div style={{ color: "var(--fm)", fontSize: 13 }}>Loading…</div>
               ) : error ? (
                 <div style={{ textAlign: "center", padding: "20px 0" }}>
-                  <div style={{ fontSize: 12, color: "rgb(111,123,152)", marginBottom: 10 }}>{error}</div>
-                  <button onClick={load} style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 8, fontFamily: "inherit" }}>Try again</button>
+                  <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 10 }}>{error}</div>
+                  <button onClick={load} style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff", background: "var(--accent)", border: "none", cursor: "pointer", borderRadius: 8, fontFamily: "inherit" }}>Try again</button>
                 </div>
               ) : !regularSessions.length ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "28px 16px", gap: 10 }}>
                   <div style={{ position: "relative", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 2 }}>
                     <div style={{ width: 40, height: 40, border: "1.5px solid rgba(125,143,255,0.45)", background: "rgba(125,143,255,0.06)", transform: "rotate(45deg)", borderRadius: 6, position: "absolute" }} />
-                    <div style={{ width: 16, height: 16, background: "rgb(125,143,255)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
+                    <div style={{ width: 16, height: 16, background: "var(--blue)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>No runs yet</div>
-                  <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start your first run and Astra will get to work.</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fm)" }}>Start your first run and Astra will get to work.</div>
                   <button onClick={() => router.push("/dashboard?new=1")}
-                    style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
+                    style={{ background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}>
                     Start first run →
                   </button>
                 </div>
@@ -519,8 +519,8 @@ export default function DashboardView() {
                         })(),
                       },
                     ].map(({ label, value }) => (
-                      <div key={label} style={{ background: "rgb(7,9,17)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 9, padding: 12 }}>
-                        <div style={{ fontSize: 10.5, color: "rgb(111,123,152)" }}>{label}</div>
+                      <div key={label} style={{ background: "var(--bg-sunken)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 9, padding: 12 }}>
+                        <div style={{ fontSize: 10.5, color: "var(--fm)" }}>{label}</div>
                         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 5 }}>{value}</div>
                       </div>
                     ))}
@@ -555,10 +555,10 @@ export default function DashboardView() {
                           <span style={{ width: 7, height: 7, borderRadius: "50%", flex: "0 0 auto", background: DOT_COLORS[s.status] || "rgb(74,85,104)" }} />
                           <div style={{ flex: "1 1 0%", minWidth: 0 }}>
                             <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {child && <span style={{ fontSize: 9, color: "rgb(125,143,255)", marginRight: 4 }}>↳</span>}
+                              {child && <span style={{ fontSize: 9, color: "var(--blue)", marginRight: 4 }}>↳</span>}
                               {extractGoalTitle(s.goal || "Untitled run")}
                             </div>
-                            <div style={{ fontSize: 11, color: "rgb(111,123,152)", marginTop: 2 }}>{metaLine(s)}</div>
+                            <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{metaLine(s)}</div>
                           </div>
                           {chip(s.status)}
                           <button
@@ -566,7 +566,7 @@ export default function DashboardView() {
                             disabled={deleting.has(s.session_id)}
                             onClick={e => del(e, s)}
                             onPointerDown={e => e.stopPropagation()}
-                            style={{ width: pendingDel.has(s.session_id) ? "auto" : 20, height: 20, padding: pendingDel.has(s.session_id) ? "0 5px" : 0, display: "flex", alignItems: "center", justifyContent: "center", background: pendingDel.has(s.session_id) ? "rgba(255,80,80,.1)" : "transparent", border: pendingDel.has(s.session_id) ? "1px solid rgba(255,80,80,.3)" : "none", color: pendingDel.has(s.session_id) ? "#ff6b6b" : "rgba(237,241,251,.2)", cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 10, borderRadius: 5, opacity: deleting.has(s.session_id) ? 0.4 : 1, flexShrink: 0, fontWeight: 700, fontFamily: "inherit" }}
+                            style={{ width: pendingDel.has(s.session_id) ? "auto" : 20, height: 20, padding: pendingDel.has(s.session_id) ? "0 5px" : 0, display: "flex", alignItems: "center", justifyContent: "center", background: pendingDel.has(s.session_id) ? "rgba(239,68,68,0.12)" : "transparent", border: pendingDel.has(s.session_id) ? "1px solid rgba(255,80,80,.3)" : "none", color: pendingDel.has(s.session_id) ? "#ff6b6b" : "rgba(237,241,251,.2)", cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 10, borderRadius: 5, opacity: deleting.has(s.session_id) ? 0.4 : 1, flexShrink: 0, fontWeight: 700, fontFamily: "inherit" }}
                           >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DEL?" : "✕"}</button>
                         </div>
                       ));
@@ -580,17 +580,17 @@ export default function DashboardView() {
           <AdSenseSlot slot={process.env.NEXT_PUBLIC_ADSENSE_DASHBOARD_SLOT} minHeight={90} />
 
           {/* Automations — exact from reference */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>
             <div>
-              <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Automations</div>
-              <div style={{ fontSize: 13, color: "rgb(195,203,224)", marginTop: 6 }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>Automations</div>
+              <div style={{ fontSize: 13, color: "var(--fd)", marginTop: 6 }}>
                 No automations yet.{" "}
                 <a href="#" onClick={(e) => { e.preventDefault(); router.push("/automations"); }}
-                  style={{ color: "rgb(125,143,255)", textDecoration: "none", fontWeight: 600 }}>Create one →</a>
+                  style={{ color: "var(--blue)", textDecoration: "none", fontWeight: 600 }}>Create one →</a>
               </div>
             </div>
             <a href="#" onClick={(e) => { e.preventDefault(); router.push("/automations"); }}
-              style={{ fontSize: 12.5, color: "rgb(125,143,255)", textDecoration: "none", fontWeight: 600 }}>
+              style={{ fontSize: 12.5, color: "var(--blue)", textDecoration: "none", fontWeight: 600 }}>
               Manage automations →
             </a>
           </div>
@@ -603,11 +603,11 @@ export default function DashboardView() {
                   {message.role !== "founder" && (
                     <img src="/astra-mascot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 4, imageRendering: "pixelated", flexShrink: 0 }} />
                   )}
-                  <div style={{ maxWidth: "85%", padding: "8px 10px", borderRadius: 10, background: message.role === "founder" ? "#002EFF" : "rgba(255,255,255,0.06)", color: "#EDF1FB", fontSize: 11, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                  <div style={{ maxWidth: "85%", padding: "8px 10px", borderRadius: 10, background: message.role === "founder" ? "var(--accent)" : "rgba(255,255,255,0.06)", color: "var(--fg)", fontSize: 11, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                     {message.content}
                     {(message.actions || []).filter(a => a.tool === "submit_goal" && a.session_id).map((a, i) => (
                       <div key={i} style={{ marginTop: 6 }}>
-                        <a href={`/s/${a.session_id}`} style={{ fontSize: 11, fontWeight: 600, color: "rgb(125,143,255)" }}>Open new run →</a>
+                        <a href={`/s/${a.session_id}`} style={{ fontSize: 11, fontWeight: 600, color: "var(--blue)" }}>Open new run →</a>
                       </div>
                     ))}
                   </div>
@@ -617,7 +617,7 @@ export default function DashboardView() {
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                   <img src="/astra-mascot.png" alt="" style={{ width: 22, height: 22, objectFit: "contain", borderRadius: 4, imageRendering: "pixelated", flexShrink: 0 }} />
                   <div style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "8px 10px", borderRadius: 10, background: "rgba(255,255,255,0.06)" }}>
-                    {[0, 120, 240].map(d => <span key={d} style={{ width: 5, height: 5, borderRadius: "50%", background: "rgb(125,143,255)", opacity: 0.4, animation: `sc-shimmer 1s ease-in-out ${d}ms infinite` }} />)}
+                    {[0, 120, 240].map(d => <span key={d} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--blue)", opacity: 0.4, animation: `sc-shimmer 1s ease-in-out ${d}ms infinite` }} />)}
                   </div>
                 </div>
               )}
@@ -626,14 +626,14 @@ export default function DashboardView() {
 
           {/* Copilot bar — full-width pill, oversized mascot floats over left edge */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "auto" }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative" }}>
               {/* Mascot: 130px, body covers left pill edge and overflows above */}
               <div style={{ position: "absolute", left: -34, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width; padding clears visible astronaut body */}
-              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 52px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
@@ -643,7 +643,7 @@ export default function DashboardView() {
                   style={{ flex: "1 1 0%", background: "transparent", border: "none", outline: "none", color: "rgb(237,241,251)", fontSize: 13.5, fontFamily: "'Hanken Grotesk', inherit" }}
                 />
                 <button onClick={sendCopilot} disabled={copilotBusy || !copilotInput.trim() || (!copilotSessionId && !bootstrapMode)}
-                  style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || (!copilotSessionId && !bootstrapMode)) ? 0.5 : 1 }}>
+                  style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto", opacity: (!copilotInput.trim() || (!copilotSessionId && !bootstrapMode)) ? 0.5 : 1 }}>
                   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>

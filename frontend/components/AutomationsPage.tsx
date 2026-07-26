@@ -32,9 +32,9 @@ type OverviewWorkflow = {
 type ChipTone = "active" | "paused" | "draft";
 function Chip({ tone }: { tone: ChipTone }) {
   const styles: Record<ChipTone, { fg: string; bg: string; label: string }> = {
-    active: { fg: "#7d8fff", bg: "rgba(125,143,255,.12)", label: "Active" },
-    paused: { fg: "#FFFFA6", bg: "rgba(255,255,166,.08)", label: "Paused" },
-    draft:  { fg: "#c3cbe0", bg: "rgba(255,255,255,.06)", label: "Draft" },
+    active: { fg: "var(--blue)", bg: "var(--bdim)", label: "Active" },
+    paused: { fg: "var(--amber)", bg: "var(--adim)", label: "Paused" },
+    draft:  { fg: "#c3cbe0", bg: "var(--bd)", label: "Draft" },
   };
   const s = styles[tone];
   return (
@@ -72,9 +72,9 @@ function Flash({ msg, onClose }: { msg: { tone: "success" | "error"; text: strin
   return (
     <div style={{
       padding: "11px 16px", borderRadius: 9, fontSize: 13, marginBottom: 14,
-      color: msg.tone === "success" ? "#7d8fff" : "#f87171",
-      background: msg.tone === "success" ? "rgba(125,143,255,.1)" : "rgba(248,113,113,.1)",
-      border: `1px solid ${msg.tone === "success" ? "rgba(125,143,255,.3)" : "rgba(248,113,113,.3)"}`,
+      color: msg.tone === "success" ? "var(--blue)" : "var(--red)",
+      background: msg.tone === "success" ? "rgba(125,143,255,.1)" : "var(--rdim)",
+      border: `1px solid ${msg.tone === "success" ? "var(--bb)" : "var(--rb)"}`,
       display: "flex", alignItems: "center", justifyContent: "space-between",
     }}>
       {msg.text}
@@ -104,17 +104,17 @@ function NewAgentDrawer({ onClose, onCreated }: { onClose: () => void; onCreated
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 900 }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", zIndex: 900 }} />
       <div style={{
         position: "fixed", right: 0, top: 0, bottom: 0, width: 380, zIndex: 901,
-        background: "#0A0D17", borderLeft: "1px solid rgba(255,255,255,.1)",
+        background: "var(--bg-surface)", borderLeft: "1px solid rgba(255,255,255,.1)",
         display: "flex", flexDirection: "column", padding: 28,
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>New custom agent</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#6f7b98", fontSize: 18 }}>✕</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fm)", fontSize: 18 }}>✕</button>
         </div>
-        {err && <div style={{ marginBottom: 14, color: "#f87171", fontSize: 12.5 }}>{err}</div>}
+        {err && <div style={{ marginBottom: 14, color: "var(--red)", fontSize: 12.5 }}>{err}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="f-field" style={{ marginBottom: 0 }}>
             <label className="f-label">Agent name</label>
@@ -242,47 +242,47 @@ export default function AutomationsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <button
           onClick={() => setShowNewAgent(true)}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = "#7d8fff")}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,.1)")}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--blue)")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--bd2)")}
           style={{
-            background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
+            background: "var(--bg-surface)", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
             padding: 18, display: "flex", flexDirection: "column", gap: 8,
             cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="1.6">
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--bdim)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="1.6">
               <path d="M12 2.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6-4.6-1.9 4.6-1.9L12 2.5Z" />
               <circle cx="19" cy="19" r="2.2" />
             </svg>
           </div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Create a custom agent</div>
-          <div style={{ fontSize: 11.5, color: "#6f7b98" }}>Give it a goal and let it own the job end-to-end.</div>
+          <div style={{ fontSize: 11.5, color: "var(--fm)" }}>Give it a goal and let it own the job end-to-end.</div>
         </button>
 
         <button
           onClick={() => router.push("/automations/canvas/new")}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = "#7d8fff")}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,.1)")}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--blue)")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--bd2)")}
           style={{
-            background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
+            background: "var(--bg-surface)", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
             padding: 18, display: "flex", flexDirection: "column", gap: 8,
             cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="1.8">
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "var(--bdim)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="1.8">
               <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
             </svg>
           </div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Create a workflow automation</div>
-          <div style={{ fontSize: 11.5, color: "#6f7b98" }}>One action, on a schedule or a trigger.</div>
+          <div style={{ fontSize: 11.5, color: "var(--fm)" }}>One action, on a schedule or a trigger.</div>
         </button>
       </div>
 
       {loading && (
         <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,255,255,.1)", borderTopColor: "#7d8fff", animation: "spin 0.7s linear infinite" }} />
+          <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,255,255,.1)", borderTopColor: "var(--blue)", animation: "spin 0.7s linear infinite" }} />
         </div>
       )}
 
@@ -290,28 +290,28 @@ export default function AutomationsPage() {
         <>
           {/* ── Custom agents ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>
               Custom agents {agents.length > 0 && <span style={{ opacity: 0.6, textTransform: "none", letterSpacing: 0 }}>({agents.length})</span>}
             </div>
 
             {agents.length === 0 ? (
-              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "#0A0D17", textAlign: "center" }}>
+              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "var(--bg-surface)", textAlign: "center" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>No custom agents yet</div>
-                <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 14 }}>Build an agent that works continuously on a goal.</div>
+                <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 14 }}>Build an agent that works continuously on a goal.</div>
                 <button className="btn pri" onClick={() => setShowNewAgent(true)}>+ New agent</button>
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 {agents.map(a => (
                   <div key={a.id} style={{
-                    background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)",
+                    background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,.08)",
                     borderRadius: 11, padding: 13, display: "flex", flexDirection: "column", gap: 6,
                   }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3 }}>{a.name}</span>
                       <Chip tone={agentTone(a)} />
                     </div>
-                    <div style={{ fontSize: 10.5, color: "#6f7b98", flex: 1 }}>{agentMeta(a)}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--fm)", flex: 1 }}>{agentMeta(a)}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
                       <button className="btn pri sm" disabled={runningAgent === a.id} onClick={() => doRunAgent(a)} style={{ fontSize: 11 }}>
                         {runningAgent === a.id ? "Running…" : "▶ Run"}
@@ -319,7 +319,7 @@ export default function AutomationsPage() {
                       <button className="btn sm" onClick={() => router.push(`/automations/canvas?agent=${a.id}`)} style={{ fontSize: 11 }}>Edit</button>
                       <button
                         className="btn sm" disabled={deletingAgent === a.id} onClick={() => doDeleteAgent(a)}
-                        style={{ fontSize: 11, color: "#f87171", borderColor: "rgba(248,113,113,.3)", marginLeft: "auto" }}
+                        style={{ fontSize: 11, color: "var(--red)", borderColor: "var(--rb)", marginLeft: "auto" }}
                       >
                         {deletingAgent === a.id ? "…" : "✕"}
                       </button>
@@ -330,7 +330,7 @@ export default function AutomationsPage() {
                   onClick={() => setShowNewAgent(true)}
                   style={{
                     background: "transparent", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 11,
-                    padding: 13, cursor: "pointer", color: "#6f7b98", fontSize: 12.5,
+                    padding: 13, cursor: "pointer", color: "var(--fm)", fontSize: 12.5,
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 7, minHeight: 80,
                   }}
                 >
@@ -343,7 +343,7 @@ export default function AutomationsPage() {
           {/* ── Workflow automations ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>
+              <div style={{ fontSize: 11, letterSpacing: ".06em", color: "var(--fm)", fontWeight: 700, textTransform: "uppercase" }}>
                 Workflow automations {allFlows.length > 0 && <span style={{ opacity: 0.6, textTransform: "none", letterSpacing: 0 }}>({allFlows.length})</span>}
               </div>
               <button className="btn sm" onClick={() => router.push("/automations/canvas/new")} style={{ fontSize: 11 }}>
@@ -352,13 +352,13 @@ export default function AutomationsPage() {
             </div>
 
             {allFlows.length === 0 ? (
-              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "#0A0D17", textAlign: "center" }}>
+              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "var(--bg-surface)", textAlign: "center" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>No workflows yet</div>
-                <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 14 }}>Scheduled actions and event-triggered flows live here.</div>
+                <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 14 }}>Scheduled actions and event-triggered flows live here.</div>
                 <button className="btn pri" onClick={() => router.push("/automations/canvas/new")}>+ New workflow</button>
               </div>
             ) : (
-              <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: "6px 14px" }}>
+              <div style={{ background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: "6px 14px" }}>
                 {allFlows.map((f, i) => (
                   <div key={f.id} style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "10px 0",
@@ -366,7 +366,7 @@ export default function AutomationsPage() {
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.name}</div>
-                      {f.meta && <div style={{ fontSize: 10.5, color: "#6f7b98", marginTop: 1 }}>{f.meta}</div>}
+                      {f.meta && <div style={{ fontSize: 10.5, color: "var(--fm)", marginTop: 1 }}>{f.meta}</div>}
                     </div>
                     <Chip tone={f.tone} />
                     {f.isCanvas && (

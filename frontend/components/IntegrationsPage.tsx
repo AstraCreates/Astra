@@ -32,17 +32,17 @@ const c = {
   textSecondary: "var(--text-2)",
   textMuted: "var(--text-3)",
   grey: "var(--text-muted)",
-  blue: "#002EFF",
-  blueHover: "#1f36e0",
+  blue: "var(--accent)",
+  blueHover: "var(--accent-hover)",
   blueTint: "var(--accent-light)",
-  blueBorder: "rgba(47,85,255,0.35)",
-  green: "#16a34a",
-  greenTint: "rgba(22,163,74,0.10)",
-  greenBorder: "rgba(22,163,74,0.30)",
-  red: "#dc2626",
-  redTint: "rgba(220,38,38,0.10)",
-  redBorder: "rgba(220,38,38,0.30)",
-  amber: "#d97706",
+  blueBorder: "var(--bb)",
+  green: "var(--green)",
+  greenTint: "var(--gdim)",
+  greenBorder: "var(--gb)",
+  red: "var(--red)",
+  redTint: "var(--rdim)",
+  redBorder: "var(--rb)",
+  amber: "var(--amber)",
 };
 
 const SERVICES = [
@@ -658,7 +658,7 @@ function IntegrationModal({
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(0,0,0,0.5)",
+      background: "var(--scrim)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
     }}>
       <div style={{
@@ -747,14 +747,14 @@ function IntegrationModal({
           )}
 
           {(phase === "running" || phase === "bot_filling") && (
-            <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", padding: "8px 20px", borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 8, zIndex: 20, whiteSpace: "nowrap" }}>
+            <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", padding: "8px 20px", borderRadius: 20, background: "var(--scrim)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 8, zIndex: 20, whiteSpace: "nowrap" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.blue, animation: "spin 0.8s linear infinite" }} />
               <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{stepName || "Working…"}</span>
             </div>
           )}
 
           {phase === "done" && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "var(--scrim)" }}>
               <div style={{ padding: "28px 40px", borderRadius: 16, background: c.bg, border: `1px solid ${c.greenBorder}`, textAlign: "center", boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
                 <div style={{ width: 48, height: 48, borderRadius: "50%", background: c.greenTint, border: `1px solid ${c.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>✓</div>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: c.green }}>{label} Connected!</p>
@@ -767,7 +767,7 @@ function IntegrationModal({
           )}
 
           {phase === "error" && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "var(--scrim)" }}>
               <div style={{ padding: "24px 32px", borderRadius: 16, background: c.bg, border: `1px solid ${c.redBorder}`, textAlign: "center", maxWidth: 400, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
                 <div style={{ fontSize: 24, marginBottom: 8, color: c.red }}>⚠</div>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: c.red }}>Connection failed</p>
@@ -1387,7 +1387,7 @@ function LinkedInCard({ founderId, onSaved, linkedinConnected }: { founderId: st
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 10, fontWeight: 600, margin: "0 0 10px" }}>
+    <p style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 10, fontWeight: 600, margin: "0 0 10px" }}>
       {children}
     </p>
   );

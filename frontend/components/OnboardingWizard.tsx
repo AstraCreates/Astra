@@ -91,28 +91,28 @@ const COMPOSIO_APP_KEYS: Record<string, string> = {
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const T = {
-  bg:            "#05070D",           // page background
-  white:         "#0D111C",           // panel / card surface (dark)
-  surface:       "#141926",           // elevated surface within panel
-  textPrimary:   "#F6F8FF",
-  textSecondary: "#CAD2E4",
-  textMuted:     "#8590A6",
-  grey:          "#8590A6",
-  blue:          "#0B31FF",
-  blueHover:     "#0024D9",
-  blueTint:      "rgba(11,49,255,0.12)",
-  blueMid:       "rgba(11,49,255,0.35)",
+  bg:            "var(--bg)",             // page background
+  white:         "var(--bg-surface)",     // panel / card surface
+  surface:       "var(--bg-sunken)",      // elevated surface within panel
+  textPrimary:   "var(--text)",
+  textSecondary: "var(--text-2)",
+  textMuted:     "var(--text-3)",
+  grey:          "var(--text-3)",
+  blue:          "var(--accent)",
+  blueHover:     "var(--accent-hover)",
+  blueTint:      "var(--accent-light)",
+  blueMid:       "var(--bb)",
   mint:          "#7CFFC6",
-  border:        "rgba(255,255,255,0.09)",
-  borderStrong:  "rgba(255,255,255,0.18)",
-  green:         "#22C55E",
-  greenTint:     "rgba(34,197,94,0.10)",
-  greenBorder:   "rgba(34,197,94,0.30)",
-  red:           "#F87171",
-  redTint:       "rgba(248,113,113,0.10)",
-  redBorder:     "rgba(248,113,113,0.30)",
-  shadow:        "0 1px 4px rgba(0,0,0,0.5)",
-  shadowMd:      "0 8px 40px rgba(0,0,0,0.6)",
+  border:        "var(--bd)",
+  borderStrong:  "var(--bd2)",
+  green:         "var(--green)",
+  greenTint:     "var(--gdim)",
+  greenBorder:   "var(--gb)",
+  red:           "var(--red)",
+  redTint:       "var(--rdim)",
+  redBorder:     "var(--rb)",
+  shadow:        "var(--shadow-sm)",
+  shadowMd:      "var(--shadow)",
 };
 
 // ── Shared style objects ──────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ const INPUT: React.CSSProperties = {
   padding: "11px 14px",
   borderRadius: 10,
   border: `1px solid ${T.border}`,
-  background: "#05070D",
+  background: "var(--bg)",
   color: T.textPrimary,
   fontSize: 14,
   outline: "none",
@@ -193,7 +193,7 @@ function StepDots({ step, total = 4 }: { step: number; total?: number }) {
   const pct = total <= 1 ? 100 : Math.round((step / (total - 1)) * 100);
   return (
     <div style={{ marginBottom: 32 }}>
-      <div style={{ height: 2, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+      <div style={{ height: 2, background: "var(--bd)", borderRadius: 2, overflow: "hidden" }}>
         <div style={{
           height: "100%",
           width: "100%",
@@ -293,7 +293,7 @@ function StepCustomStack({ selected, onToggle, onBack, onNext, stackName, setSta
           value={stackName}
           onChange={e => setStackName(e.target.value)}
           placeholder="e.g. My Growth Stack"
-          style={{ width: "100%", padding: "9px 12px", fontSize: 14, fontWeight: 600, border: `1.5px solid ${T.border}`, borderRadius: 10, background: "#05070D", color: T.textPrimary, outline: "none", fontFamily: "var(--font-geist-sans), sans-serif", boxSizing: "border-box" }}
+          style={{ width: "100%", padding: "9px 12px", fontSize: 14, fontWeight: 600, border: `1.5px solid ${T.border}`, borderRadius: 10, background: "var(--bg)", color: T.textPrimary, outline: "none", fontFamily: "var(--font-geist-sans), sans-serif", boxSizing: "border-box" }}
         />
       </div>
 
@@ -480,7 +480,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     fontSize: 12,
     fontFamily: "var(--font-mono, monospace)",
     border: `1px solid ${T.border}`,
-    background: "#05070D",
+    background: "var(--bg)",
     color: T.textPrimary,
     outline: "none",
   };
@@ -1717,7 +1717,7 @@ export default function OnboardingWizard() {
       alignItems: "flex-start",
       justifyContent: "center",
       padding: "48px 16px",
-      background: "#05070D",
+      background: "var(--bg)",
       fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
       position: "relative",
     }}>

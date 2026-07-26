@@ -22,10 +22,14 @@ export const metadata: Metadata = {
   description: "Launch and operate a company with a coordinated AI founding team.",
 };
 
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("astra-theme");if(t!=="dark"&&t!=="light"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t;}catch(e){try{document.documentElement.setAttribute("data-theme","dark");document.documentElement.style.colorScheme="dark";}catch(_){}}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} suppressHydrationWarning>
       <head>
+        {/* Set theme + color-scheme synchronously before first paint to avoid any FOUC. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3644250649570397"
