@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, AtSign, LoaderCircle, Mic, MicOff, Paperclip } from "lucide-react";
 import { transcribeAudio } from "@/lib/api";
 import { extractCopilotMentions, type CopilotMention, type CopilotMentionOption } from "@/lib/copilot-mentions";
