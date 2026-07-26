@@ -335,9 +335,26 @@ def route_work_request(company: Mapping[str, Any], request: Mapping[str, Any]) -
         matched = len(required & set(profile["capabilities"]))
         load = _active_load(company, department)
         score = matched * 10 - load * 2
+    # A research-informed build has a real dependency: Product Delivery must
+    # consume the validated research instead of starting from an empty brief.
+    # The capability combination is the signal here, not phrase matching. An
+    # explicit ordered plan still wins below when one is supplied by the
+    # structured work-request extractor.
+    research_caps = {"research", "evidence research", "competitive analysis", "compare"}
+    product_caps = {"website", "landing page", "website delivery", "local preview", "software engineering"}
+    if required & research_caps and required & product_caps and not request.get("steps"):
+        department = "research"
+        profile = CAPABILITY_REGISTRY[department]
+        matched = len(required & set(profile["capabilities"]))
+        load = _active_load(company, department)
+        score = matched * 10 - load * 2
     profile = CAPABILITY_REGISTRY[department]
     triage = bool(request.get("requires_clarification")) or matched == 0 or float(request.get("confidence", 0)) < 0.45
     handoffs = [entry[2] for entry in scored if entry[1] > 0 and entry[2] != department][:2]
+    if department == "research" and required & product_caps:
+        # Preserve the downstream build explicitly, even if the scorer ranks
+        # another supporting department above Product Delivery.
+        handoffs = ["product_technical", *[item for item in handoffs if item != "product_technical"]][:2]
     # Preserve the founder's ordered multi-step intent. If a message says
     # "compare X and create a website", the website is a real downstream
     # Product Delivery mission, not extra wording inside the research subject.

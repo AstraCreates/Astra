@@ -174,7 +174,7 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
           Release ✕
         </button>
       </div>
-      <div ref={hostRef} style={{ background: "#0c0d10", borderRadius: 8, padding: 8, height: compact ? 150 : "60vh", overflow: "hidden" }} />
+      <div ref={hostRef} style={{ background: "#0c0d10", borderRadius: 8, padding: 8, height: compact ? 96 : "60vh", overflow: "hidden" }} />
     </div>
   );
 }
