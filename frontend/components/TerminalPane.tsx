@@ -87,7 +87,8 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
             if (m?.t === "terminal_state") {
               setShared(Boolean(m.shared));
               setStatus(m.state === "live" ? "live" : "closed");
-              term.write(`\r\n\x1b[2m[${m.shared ? "shared live build terminal" : "recovery terminal"} · ${m.state}${m.workspace ? ` · ${m.workspace}` : ""}]\x1b[0m\r\n`);
+              const terminalKind = m.shared ? "shared live build terminal" : m.state === "completed" ? "completed build transcript" : "build terminal";
+              term.write(`\r\n\x1b[2m[${terminalKind} · ${m.state}${m.workspace ? ` · ${m.workspace}` : ""}]\x1b[0m\r\n`);
             } else if (m?.t === "error") term.write(`\r\n\x1b[31m[${m.message}]\x1b[0m\r\n`);
           }
           catch { term.write(ev.data); }
@@ -116,7 +117,7 @@ export default function TerminalPane({ sessionId, onClose, compact = false }: { 
   }, [sessionId]);
 
   const dot = status === "live" ? "#34d399" : status === "connecting" ? "#fcd34d" : "#f87171";
-  const label = status === "live" ? (shared ? "live shared build shell — your input is shared with the coding agent" : "recovery shell") : status === "connecting" ? "connecting to live build…" : status === "closed" ? "build completed — transcript is read-only" : "connection error";
+  const label = status === "live" ? (shared ? "live shared build shell — your input is shared with the coding agent" : "live build shell") : status === "connecting" ? "connecting to live build…" : status === "closed" ? "build completed — transcript is read-only" : "connection error";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

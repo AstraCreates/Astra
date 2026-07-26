@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -37,6 +38,42 @@ _FORWARD_HEADERS = {
     "content-type", "content-length", "range", "user-agent", "referer",
     "if-modified-since", "if-none-match",
 }
+
+
+def _rewrite_preview_asset_paths(body: bytes, content_type: str, slug: str, request: Request) -> bytes:
+    """Keep framework assets inside the signed preview route.
+
+    Next emits root-relative ``/_next/...`` URLs.  When a preview is embedded
+    at ``/preview/<slug>``, those URLs otherwise escape to the API application
+    itself, where the generated site's assets do not exist.  Carry the same
+    short-lived preview token through rewritten asset URLs so stylesheet and
+    script requests remain authorized without relying on cross-origin cookies.
+    """
+    if not any(kind in (content_type or "").lower() for kind in ("text/html", "text/css", "javascript")):
+        return body
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+    token = request.query_params.get("preview_token", "")
+    if not _valid_signed_token(slug, token):
+        # Authenticated browser access can still use the route, but never leak
+        # an unsigned URL into generated page content.
+        return body
+    prefix = f"/preview/{slug}"
+    encoded_token = quote(token, safe=".")
+
+    def replace(match: re.Match[str]) -> str:
+        path = match.group(0)
+        if path.startswith(prefix):
+            return path
+        separator = "&" if "?" in path else "?"
+        return f"{prefix}{path}{separator}preview_token={encoded_token}"
+
+    # Asset URLs occur in HTML attributes, CSS url(), and Next's emitted
+    # bootstrap JavaScript.  Rewriting the root-relative token is sufficient
+    # for all three without touching external URLs or user content.
+    return re.sub(r"/_next/[A-Za-z0-9_./?=&%:@+,-]+", replace, text).encode("utf-8")
 
 
 def _preview_owner(slug: str, port: int | None) -> tuple[str, str] | None:
@@ -139,8 +176,9 @@ async def _proxy(slug: str, path: str, request: Request, port: int | None) -> St
     skip_resp = {"transfer-encoding", "connection", "keep-alive", "content-encoding"}
     resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip_resp}
 
+    content = _rewrite_preview_asset_paths(resp.content, resp.headers.get("content-type", ""), slug, request)
     return StreamingResponse(
-        iter([resp.content]),
+        iter([content]),
         status_code=resp.status_code,
         headers=resp_headers,
     )

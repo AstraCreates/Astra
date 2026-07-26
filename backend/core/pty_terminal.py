@@ -47,6 +47,14 @@ class PtyTerm:
         self._next_subscriber = 1
         self._transcript = bytearray()
         self._transcript_limit = 512 * 1024
+        # Persist the rolling transcript beside the workspace.  The PTY itself
+        # cannot survive a backend restart, but founders can still inspect what
+        # the original agent did instead of being offered a fake recovery shell.
+        self.transcript_path = Path(workspace) / ".astra-terminal-transcript.log"
+        try:
+            self.transcript_path.write_bytes(b"")
+        except OSError:
+            pass
         self._alive = True
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
@@ -95,6 +103,11 @@ class PtyTerm:
                 if len(self._transcript) > self._transcript_limit:
                     del self._transcript[:-self._transcript_limit]
                 subscribers = list(self._subscribers.values())
+            try:
+                with self.transcript_path.open("ab") as transcript_file:
+                    transcript_file.write(data)
+            except OSError:
+                pass
             for cb in subscribers:
                 try:
                     cb(data)
@@ -146,6 +159,21 @@ _terminals: dict[str, PtyTerm] = {}
 def get_terminal(app_session_id: str) -> PtyTerm | None:
     with _lock:
         return _terminals.get(app_session_id)
+
+
+def durable_transcript(app_session_id: str) -> bytes:
+    """Return the latest persisted transcript after a backend restart."""
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(app_session_id) or {}
+        # Company OS coding workspaces use the task ID as the directory name.
+        root = Path(os.environ.get("ASTRA_WORKSPACE_ROOT", "/data/astra-workspaces"))
+        candidate = root / app_session_id / "mvp" / ".astra-terminal-transcript.log"
+        if candidate.is_file():
+            return candidate.read_bytes()[-512 * 1024:]
+    except OSError:
+        pass
+    return b""
 
 
 def spawn_shared_process(app_session_id: str, cmd: list[str], *, cwd: str, env: dict[str, str], workspace: str) -> PtyTerm:
