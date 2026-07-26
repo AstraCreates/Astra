@@ -53,7 +53,7 @@ def _install_fake_openai(monkeypatch):
 def test_voice_transcribe_uses_whisper_default_without_realtime(monkeypatch):
     monkeypatch.setattr(settings, "astra_require_auth", False)
     monkeypatch.setattr(settings, "openai_api_key", "sk-test")
-    monkeypatch.setattr(settings, "voice_transcription_model", "whisper-1")
+    monkeypatch.setattr(settings, "voice_transcription_model", "openai/whisper-1")
     monkeypatch.setattr(settings, "voice_transcription_max_bytes", 25 * 1024 * 1024)
     _install_fake_openai(monkeypatch)
 
@@ -64,7 +64,7 @@ def test_voice_transcribe_uses_whisper_default_without_realtime(monkeypatch):
         "ok": True,
         "filename": "note.webm",
         "mime": "audio/webm",
-        "model": "whisper-1",
+        "model": "openai/whisper-1",
         "text": "voice note text",
         "size_bytes": 11,
     }

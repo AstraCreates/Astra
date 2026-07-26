@@ -78,8 +78,12 @@ async def transcribe_audio(body: TranscribeAudioBody, request: Request):
     if not api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured")
 
-    model = (body.model or settings.voice_transcription_model or "whisper-1").strip()
-    kwargs: dict[str, Any] = {"model": model, "response_format": "text"}
+    # Accept provider-prefixed identifiers like "openai/whisper-1" but the OpenAI
+    # SDK rejects "openai/..." as a model id — strip the prefix before the SDK call
+    # while echoing the original identifier back to the caller.
+    raw_model = (body.model or settings.voice_transcription_model or "openai/whisper-1").strip()
+    upstream_model = raw_model.split("/", 1)[-1] if raw_model else "whisper-1"
+    kwargs: dict[str, Any] = {"model": upstream_model, "response_format": "text"}
     if body.language:
         kwargs["language"] = body.language.strip()
     if body.prompt:
@@ -112,7 +116,7 @@ async def transcribe_audio(body: TranscribeAudioBody, request: Request):
         "ok": True,
         "filename": body.filename,
         "mime": body.mime,
-        "model": model,
+        "model": raw_model,
         "text": text,
         "size_bytes": len(audio),
     }

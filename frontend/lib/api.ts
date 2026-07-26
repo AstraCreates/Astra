@@ -1660,7 +1660,7 @@ export async function transcribeAudio(
       ok: false,
       filename: file.name || "speech.webm",
       mime: file.type || "audio/webm",
-      model: opts.model || "whisper-1",
+      model: opts.model || "openai/whisper-1",
       text: "",
       size_bytes: file.size,
       error: t || `Transcription failed (HTTP ${res.status})`,

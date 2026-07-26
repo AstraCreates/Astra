@@ -17,6 +17,73 @@ export function extractAgentMentions(value: string, agents: CopilotAgentOption[]
   return Array.from(new Set(found.filter((id) => valid.has(id))));
 }
 
+function AudioWave({ stream, active }: { stream: MediaStream | null; active: boolean }) {
+  const barRefs = useRef<Array<HTMLSpanElement | null>>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!active || !stream) {
+      // Collapse any in-flight bars so the layout doesn't snap.
+      for (const bar of barRefs.current) if (bar) bar.style.transform = "scaleY(0.08)";
+      return;
+    }
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      for (const bar of barRefs.current) if (bar) bar.style.transform = "scaleY(0.5)";
+      return;
+    }
+    type AudioContextCtor = typeof AudioContext;
+    const WindowWithWebkit = window as unknown as { webkitAudioContext?: AudioContextCtor };
+    const Ctor: AudioContextCtor | undefined = window.AudioContext ?? WindowWithWebkit.webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 64;
+    analyser.smoothingTimeConstant = 0.75;
+    source.connect(analyser);
+    const bins = new Uint8Array(analyser.frequencyBinCount); // 32 bins
+    let raf = 0;
+    const BARS = 20; // ignore the top 12 bins (mostly noise / harmonics)
+    const tick = () => {
+      analyser.getByteFrequencyData(bins);
+      for (let i = 0; i < BARS; i++) {
+        const bar = barRefs.current[i];
+        if (!bar) continue;
+        const v = (bins[i] ?? 0) / 255;
+        // Floor so bars never fully collapse to 0 — keeps the strip alive during pauses.
+        bar.style.transform = `scaleY(${Math.max(0.08, v).toFixed(3)})`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const start = () => { tick(); };
+    if (ctx.state === "suspended") {
+      void ctx.resume()?.then(start)?.catch(start);
+    } else {
+      start();
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      try { source.disconnect(); } catch { /* noop */ }
+      try { analyser.disconnect(); } catch { /* noop */ }
+      void ctx.close()?.catch(() => { /* noop */ });
+    };
+  }, [stream, active]);
+
+  if (!active) return null;    return (
+      <div className="astra-composer-wave" role="status" aria-label="Recording waveform">
+        {Array.from({ length: 20 }, (_, i) => (
+          <span
+            key={i}
+            ref={(el) => { barRefs.current[i] = el; }}
+            aria-hidden="true"
+            style={{ transform: "scaleY(0.08)" }}
+          />
+        ))}
+      </div>
+    );
+}
+
 export default function AstraCopilotComposer({
   value,
   onChange,
@@ -49,6 +116,7 @@ export default function AstraCopilotComposer({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
+  const [recordingStream, setRecordingStream] = useState<MediaStream | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState(-1);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -127,8 +195,10 @@ export default function AstraCopilotComposer({
       return;
     }
     setVoiceError("");
+    let stream: MediaStream | null = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setRecordingStream(stream);
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recordingChunksRef.current = [];
@@ -138,12 +208,14 @@ export default function AstraCopilotComposer({
       };
       recorder.onerror = () => {
         stream.getTracks().forEach((track) => track.stop());
+        setRecordingStream((current) => (current === stream ? null : current));
         recorderRef.current = null;
         setRecording(false);
         setVoiceError("Microphone recording failed. Please try again.");
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        setRecordingStream((current) => (current === stream ? null : current));
         recorderRef.current = null;
         setRecording(false);
         const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -172,12 +244,15 @@ export default function AstraCopilotComposer({
       recorder.start();
       setRecording(true);
     } catch {
+      stream?.getTracks()?.forEach((track) => track.stop());
+      setRecordingStream(null);
+      recorderRef.current = null;
       setVoiceError("Microphone access was blocked. Check your browser permission and try again.");
     }
   }
 
   return (
-    <div className="astra-composer-shell">
+    <div className={`astra-composer-shell${(recording || transcribing) ? " is-recording" : ""}`}>
       {filteredMentionOptions.length > 0 && (
         <div className="astra-mention-menu" role="listbox" aria-label="Mention a squad, squad member, or Library file">
           <div className="astra-mention-heading">Mention a squad, teammate, or Library file</div>
@@ -262,6 +337,13 @@ export default function AstraCopilotComposer({
           )}
           {founderId && (
             <button type="button" onClick={() => void toggleRecording()} disabled={disabled || transcribing} aria-label={recording ? "Stop recording" : "Record voice message"} title={recording ? "Stop recording" : "Record voice message"} className={recording ? "is-recording" : undefined}>
+              {recording && !transcribing && (
+                <>
+                  <span className="astra-record-ring" style={{ animationDelay: "0s" }} aria-hidden="true" />
+                  <span className="astra-record-ring" style={{ animationDelay: "0.45s" }} aria-hidden="true" />
+                  <span className="astra-record-ring" style={{ animationDelay: "0.9s" }} aria-hidden="true" />
+                </>
+              )}
               {transcribing ? <LoaderCircle size={16} className="astra-composer-spin" /> : recording ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
           )}
@@ -273,7 +355,8 @@ export default function AstraCopilotComposer({
           <ArrowUp size={17} strokeWidth={2.4} />
         </button>
       </div>
-      {(recording || transcribing || voiceError) && <div className={`astra-composer-voice-status${voiceError ? " is-error" : ""}`} role="status">{voiceError || (transcribing ? "Transcribing recording…" : "Recording… click the microphone to stop")}</div>}
+      {recording && <AudioWave stream={recordingStream} active={true} />}
+      {(transcribing || voiceError) && <div className={`astra-composer-voice-status${voiceError ? " is-error" : ""}`} role="status">{voiceError || "Transcribing recording…"}</div>}
     </div>
   );
 }

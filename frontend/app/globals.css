@@ -210,6 +210,62 @@
 .astra-composer-spin { animation: astra-composer-spin .9s linear infinite; }
 @keyframes astra-mic-pulse { 50% { box-shadow: 0 0 0 5px rgba(220,38,38,.14); } }
 @keyframes astra-composer-spin { to { transform: rotate(360deg); } }
+
+/* ── Voice-entry waveform + Siri-style rings ─────────────────────────── */
+.astra-composer-shell.is-recording {
+  border-color: var(--accent);
+  box-shadow: var(--apple-glass-shadow-hover);
+}
+
+.astra-composer-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 28px;
+  margin: 6px 14px 2px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: var(--apple-glass-bg-soft);
+  border: 1px solid var(--apple-glass-border);
+}
+.astra-composer-wave > span {
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  border-radius: 999px;
+  transform: scaleY(0.08);
+  transform-origin: center;
+  will-change: transform;
+  transition: transform 60ms linear;
+  box-shadow: 0 0 8px var(--bdim);
+}
+.astra-composer-wave > span:nth-child(3n+1) { background: linear-gradient(180deg, var(--blue), var(--accent)); }
+.astra-composer-wave > span:nth-child(5n+4) { background: linear-gradient(180deg, var(--accent), var(--accent-hover)); }
+
+/* Siri/Apple-style expanding halos around the mic button while recording. */
+.astra-composer-tools > button.is-recording .astra-record-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, var(--accent) 0%, transparent 70%);
+  opacity: 0;
+  animation: astra-ring-pulse 1.7s var(--apple-ease-out) infinite;
+  will-change: transform, opacity;
+}
+@keyframes astra-ring-pulse {
+  0%   { transform: scale(0.55); opacity: 0.7; }
+  80%  { opacity: 0.05; }
+  100% { transform: scale(2.1);  opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .astra-composer-shell.is-recording { animation: none; }
+  .astra-composer-tools > button.is-recording .astra-record-ring { animation: none; opacity: 0.35; transform: scale(0.9); }
+  .astra-composer-wave { height: 12px; }
+  .astra-composer-wave > span { transition: none; transform: scaleY(0.5); }
+}
 .astra-composer-tools > button span { position: absolute; right: -5px; top: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: linear-gradient(180deg, #526cff, #3a55ff); color: white; font-size: 9.5px; font-weight: 600; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(82,108,255,0.5); }
 .astra-composer-tools > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; color: var(--text-3); }
 .astra-composer-tools > small { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-3); }
