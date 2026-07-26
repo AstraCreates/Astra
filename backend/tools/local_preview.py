@@ -269,13 +269,16 @@ def _public_host() -> str:
 
 
 def _preview_url(slug: str, port: int) -> str:
-    """Return a signed HTTPS preview URL when the public API is configured.
+    """Return a signed HTTPS preview URL when a dedicated preview host is configured.
 
-    Embedding a plain HTTP nip.io subdomain inside HTTPS Company Home is mixed
-    content, and that subdomain cannot receive the authenticated app request.
-    The API proxy is HTTPS and accepts a scoped, expiring preview token instead.
+    ``ASTRA_PREVIEW_PUBLIC_URL`` is deliberately distinct from the API origin:
+    preview sites are user-facing products, while the API remains an internal
+    service.  The API proxy is retained only as a compatibility fallback until
+    the dedicated preview hostname has DNS and TLS configured.
     """
-    proxy_base = os.environ.get("ASTRA_PREVIEW_PROXY_URL", "").rstrip("/")
+    proxy_base = os.environ.get("ASTRA_PREVIEW_PUBLIC_URL", "").rstrip("/")
+    if not proxy_base:
+        proxy_base = os.environ.get("ASTRA_PREVIEW_PROXY_URL", "").rstrip("/")
     if not proxy_base and _public_host() not in {"", "localhost"}:
         proxy_base = "https://api.astracreates.com"
     secret = os.environ.get("ASTRA_PREVIEW_SIGNING_SECRET", "")
